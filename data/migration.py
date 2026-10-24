@@ -24,6 +24,17 @@ async def _add_column_if_missing(conn: aiosqlite.Connection, table: str, column:
         return
     await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
 
+
+async def _ensure_latest_columns(conn: aiosqlite.Connection):
+    """终极兜底：无论哪条建库路径（全新建表/旧库升级/已是最新），确保 v27-v28 新增列全部存在。
+    修复「全新安装走 _create_all_tables_v2 直接建表但建表 SQL 未含新列」的问题。"""
+    await _add_column_if_missing(conn, "players", "karma", "INTEGER NOT NULL DEFAULT 0")
+    await _add_column_if_missing(conn, "players", "life_skill", "TEXT NOT NULL DEFAULT ''")
+    await _add_column_if_missing(conn, "spirit_farms", "fertility", "INTEGER NOT NULL DEFAULT 100")
+    await _add_column_if_missing(conn, "blessed_lands", "furniture", "TEXT NOT NULL DEFAULT '[]'")
+    await _add_column_if_missing(conn, "sects", "buildings", "TEXT NOT NULL DEFAULT '{}'")
+    await conn.commit()
+
 class MigrationManager:
     """数据库迁移管理器"""
 
@@ -42,6 +53,8 @@ class MigrationManager:
                 await _create_all_tables_v2(self.conn)
                 await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 await self.conn.commit()
+                # 全新建表的 SQL 可能未包含最新增量列，统一补齐
+                await _ensure_latest_columns(self.conn)
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
                 return
 
@@ -70,6 +83,9 @@ class MigrationManager:
             logger.info(f"数据库已升级到最新版本: v{LATEST_DB_VERSION}")
         else:
             logger.info("数据库已是最新版本，无需升级。")
+
+        # 终极兜底：无论升级路径如何，确保最新增量列齐全（修复历史坏库）
+        await _ensure_latest_columns(self.conn)
 
 async def _create_all_tables_v1(conn: aiosqlite.Connection):
     """创建所有表 - v1，只保留玩家基础信息"""
@@ -289,7 +305,9 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             reincarnation_count INTEGER NOT NULL DEFAULT 0,
             fate_points INTEGER NOT NULL DEFAULT 0,
             permanent_bonus TEXT NOT NULL DEFAULT '{}',
-            title TEXT NOT NULL DEFAULT ''
+            title TEXT NOT NULL DEFAULT '',
+            karma INTEGER NOT NULL DEFAULT 0,
+            life_skill TEXT NOT NULL DEFAULT ''
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_player_level ON players(level_index)")
@@ -314,7 +332,8 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             sect_materials INTEGER NOT NULL DEFAULT 0,
             mainbuff TEXT NOT NULL DEFAULT '0',
             secbuff TEXT NOT NULL DEFAULT '0',
-            elixir_room_level INTEGER NOT NULL DEFAULT 0
+            elixir_room_level INTEGER NOT NULL DEFAULT 0,
+            buildings TEXT NOT NULL DEFAULT '{}'
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_sect_owner ON sects(sect_owner)")
@@ -436,7 +455,8 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             level INTEGER NOT NULL DEFAULT 1,
             exp_bonus REAL NOT NULL DEFAULT 0.05,
             gold_per_hour INTEGER NOT NULL DEFAULT 100,
-            last_collect_time INTEGER NOT NULL DEFAULT 0
+            last_collect_time INTEGER NOT NULL DEFAULT 0,
+            furniture TEXT NOT NULL DEFAULT '[]'
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_blessed_lands_user ON blessed_lands(user_id)")
@@ -445,7 +465,8 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL UNIQUE,
             level INTEGER NOT NULL DEFAULT 1,
-            crops TEXT NOT NULL DEFAULT '[]'
+            crops TEXT NOT NULL DEFAULT '[]',
+            fertility INTEGER NOT NULL DEFAULT 100
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_spirit_farms_user ON spirit_farms(user_id)")
