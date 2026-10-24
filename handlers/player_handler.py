@@ -19,10 +19,22 @@ CMD_END_CULTIVATION = "出关"
 CMD_CHECK_IN = "签到"
 REBIRTH_COOLDOWN = 7 * 24 * 3600
 
+# 七大职业与别名（单字简称、常见写法），入口统一归一化
+CULTIVATION_ALIASES = {
+    "灵修": "灵修", "灵": "灵修", "法师": "灵修", "灵修者": "灵修",
+    "体修": "体修", "体": "体修", "武僧": "体修", "体修者": "体修",
+    "魔修": "魔修", "魔": "魔修", "魔修者": "魔修",
+    "剑修": "剑修", "剑": "剑修", "剑修者": "剑修", "剑客": "剑修",
+    "鬼修": "鬼修", "鬼": "鬼修", "鬼修者": "鬼修",
+    "佛修": "佛修", "佛": "佛修", "佛修者": "佛修", "和尚": "佛修",
+    "御兽": "御兽", "兽": "御兽", "御兽师": "御兽", "驭兽": "御兽",
+}
+VALID_CULTIVATIONS = ["灵修", "体修", "魔修", "剑修", "鬼修", "佛修", "御兽"]
+
 __all__ = ["PlayerHandler"]
 
 class PlayerHandler:
-    """玩家基础信息处理器 - 支持灵修/体修选择"""
+    """玩家基础信息处理器 - 支持七大职业（灵/体/魔/剑/鬼/佛/御兽，含单字别名）"""
 
     def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
         self.db = db
@@ -112,22 +124,43 @@ class PlayerHandler:
             return
 
         if not cultivation_type or cultivation_type.strip() == "":
-            help_msg = (
-                "🌟 欢迎踏入修仙之路！\n"
-                "━━━━━━━━━━━━━━━\n"
-                "请选择你的修炼方式（发送：我要修仙 职业名）：\n\n"
-                "【灵修】法系群攻，灵力充沛\n【体修】血厚防高，物理输出\n【魔修】高攻低防，吸血为生\n"
-                "【剑修】极致物理爆发\n【鬼修】高闪避与法系伤害\n【佛修】超级肉盾，反伤\n【御兽】与灵兽协同作战\n"
-                "━━━━━━━━━━━━━━━\n"
-                f"💡 使用方法：\n  {CMD_START_XIUXIAN} 剑修"
-            )
-            yield event.plain_result(help_msg)
-            return
+            # 参数为空时，从完整消息文本兜底提取职业关键词
+            # （兼容「我要修仙御兽」无空格、带 / 前缀等写法）
+            raw_msg = ""
+            try:
+                raw_msg = (event.get_message_str() or "").strip()
+            except Exception:
+                pass
+            for alias in sorted(CULTIVATION_ALIASES.keys(), key=len, reverse=True):
+                if alias in raw_msg:
+                    cultivation_type = alias
+                    break
+            if not cultivation_type:
+                help_msg = (
+                    "🌟 欢迎踏入修仙之路！\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    "请选择你的修炼方式（发送：我要修仙 职业名）：\n\n"
+                    "【灵修】法系群攻，灵力充沛\n【体修】血厚防高，物理输出\n【魔修】高攻低防，吸血为生\n"
+                    "【剑修】极致物理爆发\n【鬼修】高闪避与法系伤害\n【佛修】超级肉盾，反伤\n【御兽】与灵兽协同作战\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    f"💡 使用方法：\n  {CMD_START_XIUXIAN} 剑修\n"
+                    f"（也支持单字：{CMD_START_XIUXIAN} 剑）"
+                )
+                yield event.plain_result(help_msg)
+                return
 
-        cultivation_type = cultivation_type.strip()
-        if cultivation_type not in ["灵修", "体修", "魔修", "剑修", "鬼修", "佛修", "御兽"]:
-            yield event.plain_result(f"职业选择错误！请选择上述 7 种职业之一。")
+        cultivation_type = cultivation_type.strip().replace("　", " ").strip()
+        # 别名归一化：支持单字简称（灵/体/魔/剑/鬼/佛/兽）与常见写法
+        normalized = CULTIVATION_ALIASES.get(cultivation_type, cultivation_type)
+        if normalized not in VALID_CULTIVATIONS:
+            yield event.plain_result(
+                f"❌ 职业选择错误！收到的是「{cultivation_type}」。\n"
+                f"请从以下 7 种职业中选择其一：灵修 / 体修 / 魔修 / 剑修 / 鬼修 / 佛修 / 御兽\n"
+                f"（也支持单字简称：灵 / 体 / 魔 / 剑 / 鬼 / 佛 / 兽）\n"
+                f"例如：我要修仙 剑修"
+            )
             return
+        cultivation_type = normalized
 
         new_player = self.cultivation_manager.generate_new_player_stats(user_id, cultivation_type)
         await self.db.create_player(new_player)

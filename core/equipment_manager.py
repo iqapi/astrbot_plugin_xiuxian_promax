@@ -141,13 +141,19 @@ class EquipmentManager:
         return True, ""
 
     def _format_required_level(self, level_index: int) -> str:
-        """格式化需求境界名称（同时显示灵修/体修）"""
+        """格式化需求境界名称（同时显示灵修/体修境界）"""
         if not self.config_manager: return f"境界{level_index}"
         names = []
-        if 0 <= level_index < len(self.config_manager.level_data):
-            name = self.config_manager.level_data[level_index].get("level_name", "")
+        level_data = getattr(self.config_manager, "level_data", [])
+        body_data = getattr(self.config_manager, "body_level_data", [])
+        if 0 <= level_index < len(level_data):
+            name = level_data[level_index].get("level_name", "")
             if name: names.append(name)
-        if not names: return f"境界{level_index}"
+        if 0 <= level_index < len(body_data):
+            name = body_data[level_index].get("level_name", "")
+            if name and name not in names: names.append(name)
+        if not names:
+            return f"境界{level_index}"
         return " / ".join(names)
 
     async def equip_item(self, player: Player, item: Item) -> tuple[bool, str]:

@@ -12,6 +12,7 @@ PKG = ROOT.name  # 自动探测项目目录名，兼容插件改名
 # ---- stub astrbot 依赖，使模块可脱离框架导入 ----
 astrbot = types.ModuleType("astrbot")
 api_mod = types.ModuleType("astrbot.api")
+event_mod = types.ModuleType("astrbot.api.event")
 
 
 class _StubLogger:
@@ -21,8 +22,17 @@ class _StubLogger:
 
 
 api_mod.logger = _StubLogger()
+api_mod.AstrBotConfig = dict
+event_mod.AstrMessageEvent = object
+api_mod.event = event_mod
+all_mod = types.ModuleType("astrbot.api.all")
+all_mod.At = object
+all_mod.Plain = object
+api_mod.all = all_mod
 sys.modules.setdefault("astrbot", astrbot)
 sys.modules.setdefault("astrbot.api", api_mod)
+sys.modules.setdefault("astrbot.api.event", event_mod)
+sys.modules.setdefault("astrbot.api.all", all_mod)
 
 
 def _imp(module_path: str):
@@ -104,6 +114,23 @@ class TestConfigElements(unittest.TestCase):
         self.assertEqual(cm._infer_element("庚金剑"), "金")
         self.assertEqual(cm._infer_element("闪电豹"), "木")  # 雷→木
         self.assertEqual(cm._infer_element("普通物品"), "")
+
+
+class TestCultivationEntry(unittest.TestCase):
+    def test_cultivation_aliases(self):
+        """七大职业入口别名归一化"""
+        ph = _imp("handlers.player_handler")
+        aliases = ph.CULTIVATION_ALIASES
+        valid = set(ph.VALID_CULTIVATIONS)
+        # 所有别名都必须映射到 7 大职业之一
+        for alias, target in aliases.items():
+            self.assertIn(target, valid, f"别名 {alias} 映射到未知职业 {target}")
+        # 单字简称齐全
+        for short in ("灵", "体", "魔", "剑", "鬼", "佛", "兽"):
+            self.assertIn(short, aliases, f"缺少单字简称 {short}")
+        # 全名必须映射到自身
+        for name in valid:
+            self.assertEqual(aliases[name], name)
 
 
 class TestEncounterOutcomes(unittest.TestCase):
