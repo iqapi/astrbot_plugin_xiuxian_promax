@@ -1,0 +1,240 @@
+{
+  "routes": [
+    {
+      "key": "scout",
+      "name": "巡山问道",
+      "aliases": ["短途", "巡山", "巡山问道", "巡逻"],
+      "description": "巡视宗门附近的山麓，收集灵药与情报，风险最低，适合试探与凑进度。",
+      "risk": "低",
+      "duration": 1800,
+      "min_level": 0,
+      "fatigue_cooldown": 300,
+      "base_exp_per_min": 45,
+      "base_gold_per_min": 10,
+      "level_bonus_exp": 12,
+      "level_bonus_gold": 3,
+      "completion_bonus": {
+        "exp": 300,
+        "gold": 120
+      },
+      "event_weights": {
+        "safe": 60,
+        "standard": 30,
+        "risky": 10
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
+      "key": "journey",
+      "name": "云游四方",
+      "aliases": ["中途", "游历", "云游"],
+      "description": "穿梭各地延绵山川，结识奇人异士，收益稳定且偶有奇遇。",
+      "risk": "中",
+      "duration": 3600,
+      "min_level": 3,
+      "fatigue_cooldown": 600,
+      "base_exp_per_min": 55,
+      "base_gold_per_min": 14,
+      "level_bonus_exp": 18,
+      "level_bonus_gold": 5,
+      "completion_bonus": {
+        "exp": 500,
+        "gold": 180
+      },
+      "event_weights": {
+        "safe": 35,
+        "standard": 45,
+        "risky": 20
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 1
+    },
+    {
+      "key": "hunt",
+      "name": "猎魔肃清",
+      "aliases": ["猎魔", "肃清", "长途"],
+      "description": "深入妖兽巢穴围猎，收益显著但常伴激烈战斗，完成可大幅推进猎杀悬赏。",
+      "risk": "高",
+      "duration": 5400,
+      "min_level": 7,
+      "fatigue_cooldown": 900,
+      "base_exp_per_min": 65,
+      "base_gold_per_min": 18,
+      "level_bonus_exp": 24,
+      "level_bonus_gold": 7,
+      "completion_bonus": {
+        "exp": 800,
+        "gold": 260
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 40,
+        "risky": 30,
+        "disaster": 10
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 2
+    },
+    {
+      "key": "peril",
+      "name": "九死一生",
+      "aliases": ["绝境", "九死", "险行"],
+      "description": "闯入上古禁地寻找传承，历程充满未知与陷阱，但若成功可收获顶尖资源。",
+      "risk": "极高",
+      "duration": 7200,
+      "min_level": 12,
+      "fatigue_cooldown": 1200,
+      "base_exp_per_min": 80,
+      "base_gold_per_min": 22,
+      "level_bonus_exp": 30,
+      "level_bonus_gold": 9,
+      "completion_bonus": {
+        "exp": 1200,
+        "gold": 320
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 30,
+        "risky": 35,
+        "disaster": 25
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    }
+  ],
+  "event_groups": {
+    "safe": [
+      {
+        "key": "herb_bloom",
+        "name": "灵药丰收",
+        "desc": "你偶遇灵药盛放之地，顺手采撷一批。",
+        "exp_mult": 1.15,
+        "gold_mult": 1.1,
+        "item_chance": 80,
+        "bonus_progress": 0
+      },
+      {
+        "key": "travel_insight",
+        "name": "旅途悟道",
+        "desc": "沿途的山河激发灵感，你对大道多了几分理解。",
+        "exp_mult": 1.25,
+        "gold_mult": 1.0,
+        "item_chance": 60,
+        "bonus_progress": 0
+      },
+      {
+        "key": "ally_help",
+        "name": "前辈相助",
+        "desc": "路遇前辈赠予心得与灵石，你受益良多。",
+        "exp_mult": 1.1,
+        "gold_mult": 1.35,
+        "item_chance": 40,
+        "bonus_progress": 0
+      }
+    ],
+    "standard": [
+      {
+        "key": "steady_path",
+        "name": "平稳推进",
+        "desc": "历练过程顺风顺水，按部就班地完成既定目标。",
+        "exp_mult": 1.0,
+        "gold_mult": 1.0,
+        "item_chance": 35,
+        "bonus_progress": 0
+      },
+      {
+        "key": "beast_skirmish",
+        "name": "遭遇拦路妖兽",
+        "desc": "你击退了扰民的妖兽，增长了实战经验。",
+        "exp_mult": 1.2,
+        "gold_mult": 1.25,
+        "item_chance": 55,
+        "bonus_progress": 1
+      },
+      {
+        "key": "secret_cache",
+        "name": "秘宝遗迹",
+        "desc": "意外发现遗迹残骸，获得少量古物。",
+        "exp_mult": 1.05,
+        "gold_mult": 1.4,
+        "item_chance": 65,
+        "bonus_progress": 0
+      }
+    ],
+    "risky": [
+      {
+        "key": "blood_battle",
+        "name": "血战妖巢",
+        "desc": "你一鼓作气攻陷妖兽巢穴，凶险却收获颇丰。",
+        "exp_mult": 1.45,
+        "gold_mult": 1.35,
+        "item_chance": 85,
+        "bonus_progress": 2
+      },
+      {
+        "key": "ancient_trial",
+        "name": "远古试炼",
+        "desc": "触发古阵心法考验，险些身陨，所幸理解了新的法则。",
+        "exp_mult": 1.6,
+        "gold_mult": 1.1,
+        "item_chance": 50,
+        "bonus_progress": 1
+      },
+      {
+        "key": "trade_windfall",
+        "name": "天降横财",
+        "desc": "解救的商队奉上重金答谢。",
+        "exp_mult": 0.9,
+        "gold_mult": 1.8,
+        "item_chance": 55,
+        "bonus_progress": 0
+      }
+    ],
+    "disaster": [
+      {
+        "key": "ambush_fail",
+        "name": "埋伏受创",
+        "desc": "敌对势力趁你不备发动袭击，你被迫撤退并整理伤势。",
+        "exp_mult": 0.55,
+        "gold_mult": 0.5,
+        "item_chance": 15,
+        "bonus_progress": 0,
+        "injury": true
+      },
+      {
+        "key": "lost_in_fog",
+        "name": "迷失古雾",
+        "desc": "你陷入幻雾耽误大量时间，所幸保住性命。",
+        "exp_mult": 0.6,
+        "gold_mult": 0.4,
+        "item_chance": 20,
+        "bonus_progress": 0
+      }
+    ]
+  },
+  "drop_tables": {
+    "low": [
+      { "name": "灵草", "weight": 50, "min": 1, "max": 3 },
+      { "name": "精铁", "weight": 30, "min": 1, "max": 2 },
+      { "name": "灵石碎片", "weight": 20, "min": 2, "max": 5 }
+    ],
+    "mid": [
+      { "name": "灵草", "weight": 35, "min": 2, "max": 5 },
+      { "name": "玄铁", "weight": 25, "min": 1, "max": 3 },
+      { "name": "灵兽毛皮", "weight": 20, "min": 1, "max": 3 },
+      { "name": "星辰石", "weight": 20, "min": 1, "max": 2 }
+    ],
+    "high": [
+      { "name": "玄铁", "weight": 30, "min": 2, "max": 4 },
+      { "name": "星辰石", "weight": 25, "min": 1, "max": 2 },
+      { "name": "灵兽内丹", "weight": 20, "min": 1, "max": 1 },
+      { "name": "功法残页", "weight": 15, "min": 1, "max": 1 },
+      { "name": "天材地宝", "weight": 10, "min": 1, "max": 1 }
+    ]
+  }
+}

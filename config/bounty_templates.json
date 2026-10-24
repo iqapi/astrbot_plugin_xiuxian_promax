@@ -1,0 +1,149 @@
+{
+  "difficulties": {
+    "easy": {
+      "name": "F级",
+      "stone_scale": 1.0,
+      "exp_scale": 1.0,
+      "min_level": 0
+    },
+    "normal": {
+      "name": "E级",
+      "stone_scale": 1.2,
+      "exp_scale": 1.2,
+      "min_level": 3
+    },
+    "hard": {
+      "name": "D级",
+      "stone_scale": 1.45,
+      "exp_scale": 1.5,
+      "min_level": 7
+    },
+    "elite": {
+      "name": "C级",
+      "stone_scale": 1.8,
+      "exp_scale": 1.9,
+      "min_level": 12
+    }
+  },
+  "templates": [
+    {
+      "id": 301,
+      "name": "巡山情报",
+      "difficulty": "easy",
+      "category": "巡山",
+      "progress_tags": ["adventure_scout", "gather"],
+      "min_target": 3,
+      "max_target": 6,
+      "time_limit": 4500,
+      "reward": { "stone": 260, "exp": 2200 },
+      "item_table": "scout",
+      "description": "巡查宗门周边并汇报妖兽动向。",
+      "weight": 35
+    },
+    {
+      "id": 302,
+      "name": "灵药补给",
+      "difficulty": "normal",
+      "category": "采集",
+      "progress_tags": ["adventure_roam", "gather", "collect"],
+      "min_target": 4,
+      "max_target": 8,
+      "time_limit": 5400,
+      "reward": { "stone": 360, "exp": 3200 },
+      "item_table": "gather",
+      "description": "云游各地采摘灵草，补足丹阁库存。",
+      "weight": 30
+    },
+    {
+      "id": 303,
+      "name": "妖兽清剿",
+      "difficulty": "hard",
+      "category": "猎杀",
+      "progress_tags": ["adventure_hunt", "adventure_peril", "kill"],
+      "min_target": 3,
+      "max_target": 6,
+      "time_limit": 7200,
+      "reward": { "stone": 520, "exp": 5200 },
+      "item_table": "hunt",
+      "description": "对指定妖兽巢穴实施围剿，确保附近居民安全。",
+      "weight": 30
+    },
+    {
+      "id": 304,
+      "name": "秘境侦察",
+      "difficulty": "normal",
+      "category": "探索",
+      "progress_tags": ["rift", "explore"],
+      "min_target": 2,
+      "max_target": 4,
+      "time_limit": 7200,
+      "reward": { "stone": 480, "exp": 4800 },
+      "item_table": "explore",
+      "description": "深入秘境探查地势，为大部队绘制安全路线。",
+      "weight": 25
+    },
+    {
+      "id": 305,
+      "name": "护送商旅",
+      "difficulty": "hard",
+      "category": "护送",
+      "progress_tags": ["adventure_roam", "adventure_hunt", "escort"],
+      "min_target": 2,
+      "max_target": 5,
+      "time_limit": 5400,
+      "reward": { "stone": 600, "exp": 5600 },
+      "item_table": "supply",
+      "description": "护送商队穿越险地，保证补给入城。",
+      "weight": 20
+    },
+    {
+      "id": 306,
+      "name": "禁地余波",
+      "difficulty": "elite",
+      "category": "镇压",
+      "progress_tags": ["adventure_peril", "rift", "explore"],
+      "min_target": 2,
+      "max_target": 4,
+      "time_limit": 9000,
+      "reward": { "stone": 900, "exp": 7800 },
+      "item_table": "mystic",
+      "description": "封印上古禁地残余煞气，仅限身经百战者参与。",
+      "weight": 15
+    }
+  ],
+  "item_tables": {
+    "scout": [
+      { "name": "灵草", "weight": 45, "min": 2, "max": 4 },
+      { "name": "灵石碎片", "weight": 35, "min": 3, "max": 6 },
+      { "name": "精铁", "weight": 20, "min": 1, "max": 2 }
+    ],
+    "gather": [
+      { "name": "灵草", "weight": 45, "min": 3, "max": 6 },
+      { "name": "玄铁", "weight": 30, "min": 1, "max": 3 },
+      { "name": "天材地宝", "weight": 25, "min": 1, "max": 1 }
+    ],
+    "hunt": [
+      { "name": "灵兽毛皮", "weight": 40, "min": 1, "max": 3 },
+      { "name": "妖兽精血", "weight": 30, "min": 1, "max": 2 },
+      { "name": "灵兽内丹", "weight": 20, "min": 1, "max": 1 },
+      { "name": "玄铁", "weight": 10, "min": 1, "max": 3 }
+    ],
+    "explore": [
+      { "name": "秘境精华", "weight": 35, "min": 1, "max": 2 },
+      { "name": "功法残页", "weight": 30, "min": 1, "max": 1 },
+      { "name": "星辰石", "weight": 20, "min": 1, "max": 2 },
+      { "name": "灵草", "weight": 15, "min": 2, "max": 4 }
+    ],
+    "supply": [
+      { "name": "灵石碎片", "weight": 45, "min": 4, "max": 8 },
+      { "name": "精铁", "weight": 30, "min": 2, "max": 4 },
+      { "name": "玄铁", "weight": 25, "min": 1, "max": 2 }
+    ],
+    "mystic": [
+      { "name": "功法残页", "weight": 35, "min": 1, "max": 1 },
+      { "name": "星辰石", "weight": 30, "min": 1, "max": 2 },
+      { "name": "秘境精华", "weight": 20, "min": 1, "max": 2 },
+      { "name": "天材地宝", "weight": 15, "min": 1, "max": 1 }
+    ]
+  }
+}

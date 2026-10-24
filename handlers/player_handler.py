@@ -1,0 +1,586 @@
+# handlers/player_handler.py
+import time
+import random
+from datetime import datetime
+from astrbot.api.event import AstrMessageEvent
+from astrbot.api import AstrBotConfig
+from ..data import DataBase
+from ..core import CultivationManager, PillManager, StorageRingManager
+from ..models import Player
+from ..models_extended import UserStatus
+from ..config_manager import ConfigManager
+from ..managers.tutorial_manager import TutorialManager
+from .utils import player_required
+
+CMD_START_XIUXIAN = "我要修仙"
+CMD_PLAYER_INFO = "我的信息"
+CMD_START_CULTIVATION = "闭关"
+CMD_END_CULTIVATION = "出关"
+CMD_CHECK_IN = "签到"
+REBIRTH_COOLDOWN = 7 * 24 * 3600
+
+__all__ = ["PlayerHandler"]
+
+class PlayerHandler:
+    """玩家基础信息处理器 - 支持灵修/体修选择"""
+
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
+        self.db = db
+        self.config = config
+        self.config_manager = config_manager
+        self.cultivation_manager = CultivationManager(config, config_manager)
+        self.pill_manager = PillManager(self.db, self.config_manager)
+        self.storage_ring_mgr = StorageRingManager(db, config_manager)
+        self.tutorial_mgr = TutorialManager(self.db)
+        
+        # ===== 修仙界专属节日配置表 =====
+        self.FESTIVALS = {
+            "01-01": {
+                "name": "问道节", "desc": "一元复始，感悟天地法则，闭关修炼效率大增。", 
+                "gold": 8888, "exp": 8888, "item": "洗练石", "item_count": 1
+            },
+            "02-14": {
+                "name": "结缘节", "desc": "红线牵缘，道侣情深，天地灵气化作祝福。", 
+                "gold": 5200, "exp": 5200, "item": "强化石", "item_count": 2
+            },
+            "03-03": {
+                "name": "蟠桃盛会", "desc": "瑶池金母设宴，三千年一开花，三千年一结果。", 
+                "gold": 30000, "exp": 50000, "item": "极品洗练石", "item_count": 2
+            },
+            "05-04": {
+                "name": "百器争鸣", "desc": "天下炼器师齐聚，地火涌动，正是炼器好时节。", 
+                "gold": 10400, "exp": 10400, "item": "天外陨铁", "item_count": 3
+            },
+            "06-06": {
+                "name": "镇魔日", "desc": "天狗食日，魔气肆虐，天道赐下护身法宝。", 
+                "gold": 6666, "exp": 6666, "item": "迷神香", "item_count": 2
+            },
+            "07-07": {
+                "name": "双星会", "desc": "牛郎织女星交汇，此时双修可得双倍天地馈赠。", 
+                "gold": 7700, "exp": 7700, "item": "护府令", "item_count": 1
+            },
+            "08-15": {
+                "name": "太阴盛会", "desc": "月圆之夜，太阴之精最盛，适合吸收月华修炼。", 
+                "gold": 15000, "exp": 15000, "item": "九叶灵芝", "item_count": 1
+            },
+            "09-09": {
+                "name": "重阳飞升日", "desc": "登高望远，触摸天门，各大宗门发放试炼奖励。", 
+                "gold": 9999, "exp": 9999, "item": "洗练石", "item_count": 3
+            },
+            "10-01": {
+                "name": "万仙来朝", "desc": "普天同庆，仙界大开宝库，降下海量修行资源。", 
+                "gold": 19490, "exp": 19490, "item": "极品洗练石", "item_count": 1
+            },
+            "11-11": {
+                "name": "清心寡欲日", "desc": "红尘滚滚，我自独行，极致的孤独带来极致的道心。", 
+                "gold": 11110, "exp": 11110, "item": "强化石", "item_count": 5
+            },
+            "12-22": {
+                "name": "阴极冬至", "desc": "阴极之至，阳气始生，天道赐下纯阳之气助你突破。", 
+                "gold": 12220, "exp": 12220, "item": "天阶·混元道果", "item_count": 1
+            },
+            "12-25": {
+                "name": "瑞雪丰年", "desc": "天降祥瑞，灵石矿脉爆发，万物生机盎然。", 
+                "gold": 12250, "exp": 12250, "item": "极品洗练石", "item_count": 1
+            },
+        }
+
+    def _avatar_status(self, player: Player) -> str:
+        """化身傀儡剩余时间描述"""
+        import json as _json
+        import time as _time
+        try:
+            bonus = _json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            until = int(bonus.get("avatar_until", 0))
+            if until > int(_time.time()):
+                return f"行功中（剩{(until - int(_time.time())) // 86400}天，闭关+20%）"
+        except Exception:
+            pass
+        return "无"
+
+    def _get_today_festival(self) -> dict:
+        """获取今天的节日信息（如果没有则返回 None）"""
+        today_md = datetime.now().strftime("%m-%d")
+        return self.FESTIVALS.get(today_md)
+
+    async def handle_start_xiuxian(self, event: AstrMessageEvent, cultivation_type: str = ""):
+        """处理创建角色"""
+        user_id = event.get_sender_id()
+
+        if await self.db.get_player_by_id(user_id):
+            yield event.plain_result("道友，你已踏入仙途，无需重复此举。")
+            return
+
+        if not cultivation_type or cultivation_type.strip() == "":
+            help_msg = (
+                "🌟 欢迎踏入修仙之路！\n"
+                "━━━━━━━━━━━━━━━\n"
+                "请选择你的修炼方式（发送：我要修仙 职业名）：\n\n"
+                "【灵修】法系群攻，灵力充沛\n【体修】血厚防高，物理输出\n【魔修】高攻低防，吸血为生\n"
+                "【剑修】极致物理爆发\n【鬼修】高闪避与法系伤害\n【佛修】超级肉盾，反伤\n【御兽】与灵兽协同作战\n"
+                "━━━━━━━━━━━━━━━\n"
+                f"💡 使用方法：\n  {CMD_START_XIUXIAN} 剑修"
+            )
+            yield event.plain_result(help_msg)
+            return
+
+        cultivation_type = cultivation_type.strip()
+        if cultivation_type not in ["灵修", "体修", "魔修", "剑修", "鬼修", "佛修", "御兽"]:
+            yield event.plain_result(f"职业选择错误！请选择上述 7 种职业之一。")
+            return
+
+        new_player = self.cultivation_manager.generate_new_player_stats(user_id, cultivation_type)
+        await self.db.create_player(new_player)
+
+        root_name = new_player.spiritual_root.replace("灵根", "")
+        root_description = self.cultivation_manager._get_root_description(root_name)
+
+        reply_msg = (
+            f"🎉 恭喜道友 {event.get_sender_name()} 踏上仙途！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"修炼方式：【{new_player.cultivation_type}】\n"
+            f"灵根：【{new_player.spiritual_root}】\n"
+            f"评价：{root_description}\n"
+            f"启动资金：{new_player.gold} 灵石\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💡 发送「{CMD_PLAYER_INFO}」查看状态"
+        )
+        
+        tutorial_msg = await self.tutorial_mgr.check_and_advance(new_player, "create")
+        reply_msg += tutorial_msg
+        
+        yield event.plain_result(reply_msg)
+
+    @player_required
+    async def handle_player_info(self, player: Player, event: AstrMessageEvent):
+        """处理查看玩家信息"""
+        display_name = event.get_sender_name()
+        required_exp = player.get_required_exp(self.config_manager)
+
+        await self.pill_manager.update_temporary_effects(player)
+        pill_multipliers = self.pill_manager.calculate_pill_attribute_effects(player)
+
+        from ..core import EquipmentManager
+        equipment_manager = EquipmentManager(self.db, self.config_manager)
+        equipped_items = equipment_manager.get_equipped_items(
+            player, self.config_manager.items_data, self.config_manager.weapons_data
+        )
+        total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
+
+        combat_power = (
+            int(total_attrs['physical_damage']) + int(total_attrs['magic_damage']) +
+            int(total_attrs['physical_defense']) + int(total_attrs['magic_defense']) +
+            int(total_attrs['mental_power']) // 10
+        )
+        
+        sect_name = "无宗门"
+        position_name = "散修"
+        if player.sect_id and player.sect_id != 0:
+            sect = await self.db.ext.get_sect_by_id(player.sect_id)
+            if sect:
+                sect_name = sect.sect_name
+                if sect.sect_owner == player.user_id: position_name = "宗主"
+                elif player.sect_position == 1: position_name = "长老"
+                elif player.sect_position == 2: position_name = "亲传弟子"
+                elif player.sect_position == 3: position_name = "内门弟子"
+                else: position_name = "外门弟子"
+        
+        weapon_name = player.weapon if player.weapon else "无"
+        armor_name = player.armor if player.armor else "无"
+        technique_name = player.main_technique if player.main_technique else "无"
+        
+        dao_hao = player.user_name if player.user_name else display_name
+        display_title = f"【{player.title}】" if player.title else ""
+        full_name = f"{display_title}{dao_hao}"
+
+        reply_msg = (
+            f"📋 道友 {full_name} 的信息\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"【基本信息】\n"
+            f"  道号：{full_name}\n"
+            f"  境界：{player.get_level(self.config_manager)}\n"
+            f"  修为：{int(player.experience):,}/{int(required_exp):,}\n"
+            f"  灵石：{player.gold:,}\n"
+            f"  战力：{combat_power:,}\n"
+            f"  灵根：{player.spiritual_root}\n"
+            f"【修炼属性】\n"
+            f"  修炼方式：{player.cultivation_type}\n"
+            f"  状态：{player.state}\n"
+            f"  寿命：{player.lifespan}\n"
+            f"  精神力：{total_attrs['mental_power']}\n"
+        )
+        
+        if player.cultivation_type == "体修":
+            reply_msg += (
+                f"  气血：{player.blood_qi}/{total_attrs.get('max_blood_qi', 0)}\n"
+                f"  物伤：{total_attrs['physical_damage']} | 法伤：{total_attrs['magic_damage']}\n"
+                f"  物防：{total_attrs['physical_defense']} | 法防：{total_attrs['magic_defense']}\n"
+            )
+        else:
+            reply_msg += (
+                f"  灵气：{player.spiritual_qi}/{total_attrs.get('max_spiritual_qi', 0)}\n"
+                f"  法伤：{total_attrs['magic_damage']} | 物伤：{total_attrs['physical_damage']}\n"
+                f"  法防：{total_attrs['magic_defense']} | 物防：{total_attrs['physical_defense']}\n"
+            )
+        
+        reply_msg += (
+            f"【装备与宗门】\n"
+            f"  主修心法：{technique_name}\n"
+            f"  法器：{weapon_name} | 防具：{armor_name}\n"
+            f"  宗门：{sect_name} | 职位：{position_name}\n"
+        )
+        
+        loan = await self.db.ext.get_active_loan(player.user_id)
+        if loan:
+            now = int(time.time())
+            remaining_seconds = loan["due_at"] - now
+            remaining_days = remaining_seconds // 86400
+            remaining_hours = (remaining_seconds % 86400) // 3600
+            days_borrowed = max(1, (now - loan["borrowed_at"]) // 86400)
+            interest = int(loan["principal"] * loan["interest_rate"] * days_borrowed)
+            total_due = loan["principal"] + interest
+            loan_type_name = "突破贷款" if loan["loan_type"] == "breakthrough" else "普通贷款"
+            
+            if remaining_seconds <= 0: time_str = "⚠️ 已逾期！"
+            elif remaining_days <= 0: time_str = f"🔴 {remaining_hours}小时"
+            elif remaining_days <= 1: time_str = f"🟠 {remaining_days}天{remaining_hours}小时"
+            else: time_str = f"🟡 {remaining_days}天"
+            
+            reply_msg += (
+                f"\n【贷款信息】💰\n"
+                f"  类型：{loan_type_name}\n"
+                f"  应还：{total_due:,} 灵石\n"
+                f"  剩余：{time_str}\n"
+                f"  💀 逾期将被追杀致死！\n"
+            )
+        
+        reply_msg += "━━━━━━━━━━━━━━━"
+        yield event.plain_result(reply_msg)
+
+        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        try:
+            from ..utils.image_generator import render_card, card_enabled
+            if not card_enabled("CARD_INFO"):
+                return
+            if player.cultivation_type == "体修":
+                energy_row = ("气血", f"{player.blood_qi}/{total_attrs.get('max_blood_qi', 0)}")
+            else:
+                energy_row = ("灵气", f"{player.spiritual_qi}/{total_attrs.get('max_spiritual_qi', 0)}")
+
+            card_path = render_card(
+                "info",
+                full_name,
+                f"ID: {player.user_id} · {player.get_level(self.config_manager)}",
+                sections=[
+                    {"name": "基础", "rows": [
+                        ("职业", player.cultivation_type),
+                        ("境界", player.get_level(self.config_manager)),
+                        ("修为", f"{int(player.experience):,}/{int(required_exp):,}"),
+                        ("灵石", f"{player.gold:,}"),
+                        ("战力", f"{combat_power:,}"),
+                        ("灵根", player.spiritual_root),
+                        ("功德/业力", f"{getattr(player, 'karma', 0) or 0:+d}"),
+                        ("生活职业", getattr(player, "life_skill", "") or "无"),
+                        ("五行属性",
+                         (self.config_manager.get_item_element(player.main_technique)
+                          or self.config_manager.get_item_element(player.weapon)
+                          or "无")),
+                        ("化身", self._avatar_status(player)),
+                    ]},
+                    {"name": "属性", "rows": [
+                        energy_row,
+                        ("物伤/法伤", f"{total_attrs['physical_damage']}/{total_attrs['magic_damage']}"),
+                        ("物防/法防", f"{total_attrs['physical_defense']}/{total_attrs['magic_defense']}"),
+                        ("精神力", f"{total_attrs['mental_power']}"),
+                        ("状态", player.state),
+                        ("寿命", f"{player.lifespan}"),
+                    ]},
+                    {"name": "装备与宗门", "rows": [
+                        ("法器", weapon_name),
+                        ("防具", armor_name),
+                        ("主修心法", technique_name),
+                        ("宗门", sect_name),
+                        ("职位", position_name),
+                    ]},
+                ],
+                footer="模拟修仙 · 发送 /修仙帮助 查看全部指令",
+            )
+            if card_path:
+                yield event.image_result(card_path)
+        except Exception as e:
+            from astrbot.api import logger
+            logger.warning(f"我的信息卡片生成失败（已降级为文本）: {e}")
+
+    @player_required
+    async def handle_start_cultivation(self, player: Player, event: AstrMessageEvent):
+        """处理闭关指令"""
+        if player.state == "修炼中":
+            yield event.plain_result("道友已在闭关中，请勿重复进入。")
+            return
+        user_cd = await self.db.ext.get_user_cd(player.user_id)
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            yield event.plain_result(f"❌ 道友当前正{UserStatus.get_name(user_cd.type)}，无法闭关！")
+            return
+
+        player.state = "修炼中"
+        player.cultivation_start_time = int(time.time())
+        await self.db.update_player(player)
+        await self.db.ext.set_user_busy(player.user_id, UserStatus.CULTIVATING, 0)
+
+        yield event.plain_result(f"🧘 道友已进入闭关状态\n💡 发送「{CMD_END_CULTIVATION}」结束闭关")
+
+    @player_required
+    async def handle_end_cultivation(self, player: Player, event: AstrMessageEvent):
+        """处理出关指令"""
+        if player.state != "修炼中":
+            yield event.plain_result("道友当前并未闭关，无需出关。")
+            return
+        if player.cultivation_start_time == 0:
+            yield event.plain_result("数据异常：未记录闭关开始时间。")
+            return
+
+        end_time = int(time.time())
+        duration_seconds = end_time - player.cultivation_start_time
+        duration_minutes = duration_seconds // 60
+
+        if duration_minutes < 1:
+            yield event.plain_result("道友闭关时间不足1分钟，未获得修为。")
+            return
+
+        base_minutes = 1440
+        realm_bonus = (player.level_index // 9) * 360
+        MAX_CULTIVATION_MINUTES = base_minutes + realm_bonus
+        effective_minutes = min(duration_minutes, MAX_CULTIVATION_MINUTES)
+        exceeded_time = duration_minutes > MAX_CULTIVATION_MINUTES
+
+        await self.pill_manager.update_temporary_effects(player)
+        pill_multipliers = self.pill_manager.calculate_pill_attribute_effects(player)
+
+        technique_bonus = 0.0
+        if player.main_technique:
+            from ..core import EquipmentManager
+            equipment_manager = EquipmentManager(self.db, self.config_manager)
+            equipped_items = equipment_manager.get_equipped_items(
+                player, self.config_manager.items_data, self.config_manager.weapons_data
+            )
+            for item in equipped_items:
+                if item.item_type == "main_technique":
+                    technique_bonus = item.exp_multiplier
+                    break
+
+        gained_exp = self.cultivation_manager.calculate_cultivation_exp(
+            player, effective_minutes, technique_bonus, pill_multipliers
+        )
+
+        # 聚灵蒲团：洞天家具，闭关收益+5%
+        furniture_note = ""
+        try:
+            land = await self.db.conn.execute(
+                "SELECT furniture FROM blessed_lands WHERE user_id = ?", (player.user_id,)
+            )
+            row = await land.fetchone()
+            if row and row[0] and "聚灵蒲团" in row[0]:
+                gained_exp = int(gained_exp * 1.05)
+                furniture_note = "\n🛋️ 聚灵蒲团生效：闭关收益+5%"
+        except Exception:
+            pass
+
+        # 宗门藏经阁：全宗闭关收益+3%/级
+        try:
+            if player.sect_id:
+                sect = await self.db.ext.get_sect_by_id(player.sect_id)
+                if sect:
+                    import json as _json
+                    levels = _json.loads(getattr(sect, "buildings", "{}") or "{}")
+                    lib_lv = int(levels.get("藏经阁", 0))
+                    if lib_lv > 0:
+                        gained_exp = int(gained_exp * (1 + 0.03 * lib_lv))
+                        furniture_note += f"\n🏛️ 宗门藏经阁 Lv.{lib_lv} 生效：+{3 * lib_lv}%"
+        except Exception:
+            pass
+
+        # 魔潮天灾：期间及余波中全服修炼效率-20%；抵御魔潮的义士获24小时天道庇佑(+10%)
+        tide_note = ""
+        try:
+            tide_flag = await self.db.ext.get_system_config("tide_active")
+            tide_aftermath = await self.db.ext.get_system_config("tide_aftermath_until")
+            in_aftermath = bool(tide_aftermath) and int(time.time()) < int(tide_aftermath)
+            if tide_flag == "1" or in_aftermath:
+                gained_exp = int(gained_exp * 0.8)
+                tide_note = "\n🌑 魔气侵蚀：修炼收益-20%"
+            bless_until = await self.db.ext.get_system_config(f"tide_bless_{player.user_id}")
+            if bless_until and int(time.time()) < int(bless_until):
+                gained_exp = int(gained_exp * 1.10)
+                tide_note += "\n🌟 天道庇佑：修炼收益+10%"
+        except Exception:
+            pass
+
+        # 化身傀儡：激活期间化身代为行功，闭关收益+20%
+        try:
+            import json as _json2
+            _bonus = _json2.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            _avatar_until = int(_bonus.get("avatar_until", 0))
+            if _avatar_until > int(time.time()):
+                gained_exp = int(gained_exp * 1.20)
+                tide_note += "\n🤖 化身行功：修炼收益+20%"
+        except Exception:
+            pass
+
+        player.experience += gained_exp
+        player.state = "空闲"
+        player.cultivation_start_time = 0
+        await self.db.update_player(player)
+        await self.db.ext.set_user_free(player.user_id)
+
+        await self.db.ext.add_task_progress(player.user_id, "cultivate", 1)
+        tutorial_msg = await self.tutorial_mgr.check_and_advance(player, "cultivate")
+
+        hours = duration_minutes // 60
+        minutes = duration_minutes % 60
+        time_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+
+        exceed_msg = f"\n⚠️ 闭关超过{MAX_CULTIVATION_MINUTES//60}小时，仅计算前{MAX_CULTIVATION_MINUTES//60}小时修为" if exceeded_time else ""
+        
+        reply_msg = (
+            "🌟 道友出关成功！\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"⏱️ 闭关时长：{time_str}\n"
+            f"📈 获得修为：{gained_exp:,}{exceed_msg}{furniture_note}{tide_note}\n"
+            f"💫 当前修为：{player.experience:,}\n"
+        )
+        reply_msg += tutorial_msg
+        yield event.plain_result(reply_msg)
+
+    @player_required
+    async def handle_check_in(self, player: Player, event: AstrMessageEvent):
+        """处理签到指令（包含修仙界节日特殊福利）"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        if player.last_check_in_date == today:
+            yield event.plain_result("📅 道友今日已经签到过了，请明日再来。")
+            return
+
+        check_in_gold_min = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MIN", 50)
+        check_in_gold_max = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MAX", 500)
+        if check_in_gold_min > check_in_gold_max:
+            check_in_gold_min, check_in_gold_max = check_in_gold_max, check_in_gold_min
+
+        check_in_gold = random.randint(check_in_gold_min, check_in_gold_max)
+        player.gold += check_in_gold
+        player.last_check_in_date = today
+        
+        # ===== 修仙界节日福利判定 =====
+        festival = self._get_today_festival()
+        festival_msg = ""
+        if festival:
+            player.gold += festival["gold"]
+            player.experience += festival["exp"]
+            
+            item_name = festival.get("item")
+            item_count = festival.get("item_count", 1)
+            if item_name:
+                await self.storage_ring_mgr.store_item(player, item_name, item_count, silent=True)
+            
+            festival_msg = (
+                f"\n🎊【{festival['name']}】专属福利降临！🎊\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"“{festival['desc']}”\n"
+                f"额外获得：{festival['gold']:,} 灵石、{festival['exp']:,} 修为\n"
+            )
+            if item_name:
+                festival_msg += f"福泽恩赐：【{item_name}】x{item_count}\n"
+        # =================================
+
+        await self.db.update_player(player)
+        await self.db.ext.add_task_progress(player.user_id, "check_in", 1)
+
+        reply_msg = (
+            "✅ 签到成功！\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"💰 获得灵石：{check_in_gold}\n"
+            f"💎 当前灵石：{player.gold}\n"
+            "━━━━━━━━━━━━━━━\n"
+            "明日再来，莫要忘记哦~"
+        )
+        reply_msg += festival_msg
+        yield event.plain_result(reply_msg)
+
+        # ===== 签到图片卡片（节日自动切换背景）=====
+        try:
+            from ..utils.image_generator import render_card, card_enabled
+            if not card_enabled("CARD_CHECKIN"):
+                return
+            card_path = render_card(
+                "festival" if festival else "login",
+                f"签到成功 · {player.user_name or '道友'}",
+                today,
+                sections=[
+                    {"name": "本次收益", "rows": [
+                        ("签到灵石", f"+{check_in_gold}"),
+                        ("当前灵石", f"{player.gold:,}"),
+                        ("当前修为", f"{player.experience:,}"),
+                    ] + (
+                        [("节日福利", f"+{festival['gold']:,} 灵石 +{festival['exp']:,} 修为")]
+                        if festival else []
+                    )},
+                ],
+                footer="每日签到 · 节日有大礼 · 明日再来",
+            )
+            if card_path:
+                yield event.image_result(card_path)
+        except Exception:
+            pass
+
+    @player_required
+    async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):
+        """弃道重修（7天冷却）"""
+        user_cd = await self.db.ext.get_user_cd(player.user_id)
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            status_name = UserStatus.get_name(user_cd.type)
+            yield event.plain_result(f"❌ 你当前正在「{status_name}」，无法弃道重修。")
+            return
+
+        if player.state != "空闲":
+            yield event.plain_result("❌ 只有处于空闲状态时才能弃道重修。请先结束闭关/历练等活动。")
+            return
+
+        loan = await self.db.ext.get_active_loan(player.user_id)
+        if loan:
+            yield event.plain_result("❌ 你仍有未结清的灵石贷款，无法重修。请先还款。")
+            return
+
+        key = f"rebirth_last_{player.user_id}"
+        last_ts = await self.db.ext.get_system_config(key)
+        now = int(time.time())
+        if last_ts:
+            diff = now - int(last_ts)
+            if diff < REBIRTH_COOLDOWN:
+                remaining = REBIRTH_COOLDOWN - diff
+                days = remaining // 86400
+                hours = (remaining % 86400) // 3600
+                minutes = (remaining % 3600) // 60
+                yield event.plain_result(
+                    "⌛ 弃道重修冷却中\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    f"距离下次重修还需：{days}天{hours}小时{minutes}分钟"
+                )
+                return
+
+        if confirm_text.strip() != "确认":
+            yield event.plain_result(
+                "⚠️ 弃道重修将删除当前角色的所有数据，并无法撤回！\n"
+                "限制：每7天只能重修一次，且必须在空闲状态、无贷款时使用。\n"
+                "━━━━━━━━━━━━━━━\n"
+                "若你已做好准备，请发送：\n"
+                "弃道重修 确认"
+            )
+            return
+
+        await self.db.delete_player_cascade(player.user_id)
+        await self.db.ext.set_system_config(key, str(now))
+
+        yield event.plain_result(
+            "💀 你选择了弃道重修，旧生一切化为尘埃。\n"
+            "━━━━━━━━━━━━━━━\n"
+            "可立即使用「我要修仙」重新踏上仙途。\n"
+            "（7天内不可再次重修）"
+        )

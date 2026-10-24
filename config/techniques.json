@@ -1,0 +1,54 @@
+{
+  "黄阶功法：基础剑诀": {
+    "name": "黄阶功法：基础剑诀",
+    "type": "technique",
+    "rank": "黄阶",
+    "description": "修仙入门剑法，略微提升暴击率。",
+    "exp_multiplier": 0.05,
+    "effects": {
+      "crit_rate": 5,
+      "crit_damage": 1.5
+    },
+    "shop_weight": 100,
+    "price": 5000
+  },
+  "玄阶功法：血魔大法": {
+    "name": "玄阶功法：血魔大法",
+    "type": "technique",
+    "rank": "玄阶",
+    "description": "魔道功法，攻击时吸取敌人气血。",
+    "exp_multiplier": 0.1,
+    "effects": {
+      "lifesteal": 15 
+    },
+    "shop_weight": 30,
+    "price": 50000
+  },
+  "地阶功法：金刚不坏体": {
+    "name": "地阶功法：金刚不坏体",
+    "type": "main_technique",
+    "rank": "地阶",
+    "description": "佛门至高炼体术，受击时反弹伤害。",
+    "exp_multiplier": 0.2,
+    "effects": {
+      "counter_damage": 20,
+      "defense_bonus": 50
+    },
+    "shop_weight": 10,
+    "price": 200000
+  },
+  "天阶功法：太极剑意": {
+    "name": "天阶功法：太极剑意",
+    "type": "technique",
+    "rank": "天阶",
+    "description": "一剑破万法，高暴击与高吸血并存。",
+    "exp_multiplier": 0.5,
+    "effects": {
+      "crit_rate": 20,
+      "lifesteal": 10,
+      "combo_rate": 15
+    },
+    "shop_weight": 1,
+    "price": 1000000
+  }
+}

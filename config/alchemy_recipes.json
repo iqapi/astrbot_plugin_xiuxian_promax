@@ -1,0 +1,50 @@
+[
+    {
+        "id": 1,
+        "name": "炼气丹",
+        "level_required": 0,
+        "materials": {"灵石": 100},
+        "success_rate": 85,
+        "desc": "最基础的聚气丹药，服下可增加少量修为。"
+    },
+    {
+        "id": 2,
+        "name": "聚灵丹",
+        "level_required": 0,
+        "materials": {"灵石": 250},
+        "success_rate": 80,
+        "desc": "汇聚天地灵气，适合初期修炼。"
+    },
+    {
+        "id": 3,
+        "name": "凝气丹",
+        "level_required": 1,
+        "materials": {"灵石": 500},
+        "success_rate": 75,
+        "desc": "辅助突破，稳固根基。"
+    },
+    {
+        "id": 4,
+        "name": "培元丹",
+        "level_required": 3,
+        "materials": {"灵石": 1000},
+        "success_rate": 70,
+        "desc": "固本培元，大幅度提升修为。"
+    },
+    {
+        "id": 5,
+        "name": "玄灵丹",
+        "level_required": 5,
+        "materials": {"灵石": 2500},
+        "success_rate": 60,
+        "desc": "金丹期修士常用的珍贵丹药。"
+    },
+    {
+        "id": 6,
+        "name": "造化丹",
+        "level_required": 8,
+        "materials": {"灵石": 8000},
+        "success_rate": 50,
+        "desc": "夺天地之造化，拥有不可思议的功效。"
+    }
+]

@@ -1,0 +1,1950 @@
+import asyncio
+import time
+import random
+from datetime import datetime
+from functools import wraps
+from pathlib import Path
+from astrbot.api import logger, AstrBotConfig
+from astrbot.api.star import Context, Star, StarTools
+from astrbot.api.event import AstrMessageEvent, filter
+from .data import DataBase, MigrationManager
+from .config_manager import ConfigManager
+from .handlers import (
+    MiscHandler, PlayerHandler, EquipmentHandler, BreakthroughHandler, 
+    PillHandler, ShopHandler, StorageRingHandler,
+    SectHandlers, BossHandlers, CombatHandlers, RankingHandlers,
+    RiftHandlers, AdventureHandlers, AlchemyHandlers, ImpartHandlers,
+    NicknameHandler, BankHandlers, BountyHandlers, ImpartPkHandlers,
+    BlessedLandHandlers, SpiritFarmHandlers, DualCultivationHandlers, SpiritEyeHandlers,
+    DailyTaskHandlers, WorldBossHandlers, RobberyHandlers, ReincarnationHandlers,
+    GambleHandlers, ForgeHandlers, DemonInvasionHandlers, PetHandlers,
+    AuctionHandlers
+)
+from .managers import (
+    CombatManager, SectManager, BossManager, RiftManager,
+    RankingManager, AdventureManager, AlchemyManager, ImpartManager,
+    BankManager, BountyManager, ImpartPkManager,
+    BlessedLandManager, SpiritFarmManager, DualCultivationManager, SpiritEyeManager,
+    DailyTaskManager, WorldBossManager, RobberyManager, ReincarnationManager,
+    TutorialManager, GambleManager, ForgeManager, DemonInvasionManager, PetManager,
+    AuctionManager, EscortManager, EncounterManager, LifeSkillManager, CalamityManager
+)
+from .models_extended import UserStatus
+
+
+def require_whitelist(func):
+    """装饰器：检查群聊白名单权限"""
+    @wraps(func)
+    async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for result in func(self, event, *args, **kwargs):
+            yield result
+    return wrapper
+
+# 指令定义
+CMD_HELP = "修仙帮助"
+CMD_START_XIUXIAN = "我要修仙"
+CMD_PLAYER_INFO = "我的信息"
+CMD_START_CULTIVATION = "闭关"
+CMD_END_CULTIVATION = "出关"
+CMD_CHECK_IN = "签到"
+CMD_SHOW_EQUIPMENT = "我的装备"
+CMD_EQUIP_ITEM = "装备"
+CMD_UNEQUIP_ITEM = "卸下"
+CMD_BREAKTHROUGH = "突破"
+CMD_BREAKTHROUGH_INFO = "突破信息"
+CMD_USE_PILL = "服用丹药"
+CMD_SHOW_PILLS = "丹药背包"
+CMD_PILL_INFO = "丹药信息"
+CMD_PILL_PAVILION = "丹阁"
+CMD_WEAPON_PAVILION = "器阁"
+CMD_TREASURE_PAVILION = "百宝阁"
+CMD_ITEM_INFO = "物品信息"
+CMD_BUY = "购买"
+CMD_STORAGE_RING = "储物戒"
+CMD_RETRIEVE_ITEM = "取出"
+CMD_UPGRADE_RING = "更换储物戒"
+CMD_DISCARD_ITEM = "丢弃"
+CMD_GIFT_ITEM = "赠予"
+CMD_ACCEPT_GIFT = "接收"
+CMD_REJECT_GIFT = "拒绝"
+CMD_SEARCH_ITEM = "搜索物品"
+CMD_RETRIEVE_ALL = "取出所有"
+CMD_CREATE_SECT = "创建宗门"
+CMD_JOIN_SECT = "加入宗门"
+CMD_LEAVE_SECT = "退出宗门"
+CMD_MY_SECT = "我的宗门"
+CMD_SECT_LIST = "宗门列表"
+CMD_SECT_DONATE = "宗门捐献"
+CMD_SECT_KICK = "踢出成员"
+CMD_SECT_TRANSFER = "宗主传位"
+CMD_SECT_TASK = "宗门任务"
+CMD_FINISH_SECT_TASK = "完成宗门任务"
+CMD_SECT_POSITION = "职位变更"
+CMD_BOSS_INFO = "世界Boss"
+CMD_BOSS_FIGHT = "挑战Boss"
+CMD_SPAWN_BOSS = "生成Boss"
+CMD_RANK_LEVEL = "境界排行"
+CMD_RANK_POWER = "战力排行"
+CMD_RANK_WEALTH = "灵石排行"
+CMD_RANK_SECT = "宗门排行"
+CMD_RANK_DEPOSIT = "存款排行"
+CMD_RANK_CONTRIBUTION = "贡献排行"
+CMD_DUEL = "决斗"
+CMD_SPAR = "切磋"
+CMD_RIFT_LIST = "秘境列表"
+CMD_RIFT_EXPLORE = "探索秘境"
+CMD_RIFT_COMPLETE = "完成探索"
+CMD_RIFT_EXIT = "退出秘境"
+CMD_ADVENTURE_START = "开始历练"
+CMD_ADVENTURE_COMPLETE = "完成历练"
+CMD_ADVENTURE_STATUS = "历练状态"
+CMD_ADVENTURE_INFO = "历练信息"
+CMD_ALCHEMY_RECIPES = "丹药配方"
+CMD_ALCHEMY_CRAFT = "炼丹"
+CMD_IMPART_INFO = "传承信息"
+CMD_CHANGE_NICKNAME = "改道号"
+CMD_BANK_INFO = "银行"
+CMD_BANK_DEPOSIT = "存灵石"
+CMD_BANK_WITHDRAW = "取灵石"
+CMD_BANK_INTEREST = "领取利息"
+CMD_BANK_LOAN = "贷款"
+CMD_BANK_REPAY = "还款"
+CMD_BANK_TRANSACTIONS = "银行流水"
+CMD_BANK_BREAKTHROUGH_LOAN = "突破贷款"
+CMD_BOUNTY_LIST = "悬赏令"
+CMD_BOUNTY_ACCEPT = "接取悬赏"
+CMD_BOUNTY_STATUS = "悬赏状态"
+CMD_BOUNTY_COMPLETE = "完成悬赏"
+CMD_BOUNTY_ABANDON = "放弃悬赏"
+CMD_IMPART_CHALLENGE = "传承挑战"
+CMD_IMPART_RANKING = "传承排行"
+CMD_BLESSED_LAND_INFO = "我的洞天"
+CMD_BLESSED_LAND_BUY = "购买洞天"
+CMD_BLESSED_LAND_UPGRADE = "升级洞天"
+CMD_BLESSED_LAND_COLLECT = "洞天收取"
+CMD_BLESSED_LAND_ADVANCE = "进阶洞天"
+CMD_SPIRIT_FARM_INFO = "我的灵田"
+CMD_SPIRIT_FARM_CREATE = "开垦灵田"
+CMD_SPIRIT_FARM_PLANT = "种植"
+CMD_SPIRIT_FARM_HARVEST = "收获"
+CMD_SPIRIT_FARM_UPGRADE = "升级灵田"
+CMD_DUAL_CULT_REQUEST = "双修"
+CMD_DUAL_CULT_ACCEPT = "接受双修"
+CMD_DUAL_CULT_REJECT = "拒绝双修"
+CMD_SPIRIT_EYE_INFO = "灵眼信息"
+CMD_SPIRIT_EYE_CLAIM = "抢占灵眼"
+CMD_SPIRIT_EYE_COLLECT = "灵眼收取"
+CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
+CMD_REBIRTH = "弃道重修"
+
+class XiuXianPlugin(Star):
+    """修仙插件 - 文字修仙游戏"""
+
+    def __init__(self, context: Context, config: AstrBotConfig):
+        super().__init__(context)
+        self.config = config
+        _current_dir = Path(__file__).parent
+        self.config_manager = ConfigManager(_current_dir)
+
+        files_config = self.config.get("FILES", {})
+        db_filename = files_config.get("DATABASE_FILE", "xiuxian_data_v2.db")
+        plugin_data_path = StarTools.get_data_dir("astrbot_plugin_xiuxian_promax")
+        plugin_data_path.mkdir(parents=True, exist_ok=True)
+
+        # 项目改名迁移：若历史旧目录有数据而新目录为空，自动整体迁移（按时间从新到旧尝试）
+        try:
+            import shutil as _shutil
+            for old_name in ("astrbot_plugin_xiuxian", "astrbot_plugin_monixiuxian2"):
+                old_data_path = plugin_data_path.parent / old_name
+                if old_data_path.exists() and not any(plugin_data_path.iterdir()):
+                    _shutil.copytree(old_data_path, plugin_data_path, dirs_exist_ok=True)
+                    logger.info(f"【修仙插件】已将旧数据目录 {old_name} 迁移至 {plugin_data_path.name}")
+                    break
+        except Exception as e:
+            logger.warning(f"【修仙插件】旧数据目录迁移检查失败（不影响新库使用）: {e}")
+
+        db_path = plugin_data_path / db_filename
+        self.db = DataBase(str(db_path))
+
+        # ===== 基础管理器与处理器 =====
+        self.misc_handler = MiscHandler(self.db)
+        self.player_handler = PlayerHandler(self.db, self.config, self.config_manager)
+        self.equipment_handler = EquipmentHandler(self.db, self.config_manager)
+        self.breakthrough_handler = BreakthroughHandler(self.db, self.config_manager, self.config)
+        self.pill_handler = PillHandler(self.db, self.config_manager)
+        self.shop_handler = ShopHandler(self.db, self.config, self.config_manager)
+        self.storage_ring_handler = StorageRingHandler(self.db, self.config_manager)
+        
+        from .core import StorageRingManager
+        self.storage_ring_mgr = StorageRingManager(self.db, self.config_manager)
+        
+        self.combat_mgr = CombatManager()
+        self.sect_mgr = SectManager(self.db, self.config_manager)
+        self.boss_mgr = BossManager(self.db, self.combat_mgr, self.config_manager, self.storage_ring_mgr)
+        self.rift_mgr = RiftManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.rank_mgr = RankingManager(self.db, self.combat_mgr, self.config_manager)
+        self.adventure_mgr = AdventureManager(self.db, self.storage_ring_mgr)
+        self.alchemy_mgr = AlchemyManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.impart_mgr = ImpartManager(self.db)
+
+        # ===== 功能处理器 =====
+        self.sect_handlers = SectHandlers(self.db, self.sect_mgr)
+        self.boss_handlers = BossHandlers(self.db, self.boss_mgr)
+        self.combat_handlers = CombatHandlers(self.db, self.combat_mgr, self.config_manager)
+        self.ranking_handlers = RankingHandlers(self.db, self.rank_mgr)
+        self.rift_handlers = RiftHandlers(self.db, self.rift_mgr)
+        self.adventure_handlers = AdventureHandlers(self.db, self.adventure_mgr)
+        self.alchemy_handlers = AlchemyHandlers(self.db, self.alchemy_mgr)
+        self.impart_handlers = ImpartHandlers(self.db, self.impart_mgr)
+        self.nickname_handler = NicknameHandler(self.db)
+        
+        self.bank_mgr = BankManager(self.db, self.config)
+        self.bounty_mgr = BountyManager(self.db, self.storage_ring_mgr)
+        self.bank_handlers = BankHandlers(self.db, self.bank_mgr)
+        self.bounty_handlers = BountyHandlers(self.db, self.bounty_mgr)
+        
+        self.impart_pk_mgr = ImpartPkManager(self.db, self.combat_mgr)
+        self.impart_pk_handlers = ImpartPkHandlers(self.db, self.impart_pk_mgr)
+        
+        self.blessed_land_mgr = BlessedLandManager(self.db)
+        self.blessed_land_handlers = BlessedLandHandlers(self.db, self.blessed_land_mgr)
+        self.spirit_farm_mgr = SpiritFarmManager(self.db, self.storage_ring_mgr)
+        self.spirit_farm_handlers = SpiritFarmHandlers(self.db, self.spirit_farm_mgr)
+        self.dual_cult_mgr = DualCultivationManager(self.db)
+        self.dual_cult_handlers = DualCultivationHandlers(self.db, self.dual_cult_mgr)
+        self.spirit_eye_mgr = SpiritEyeManager(self.db)
+        self.spirit_eye_handlers = SpiritEyeHandlers(self.db, self.spirit_eye_mgr)
+        
+        # v6.1 系统
+        self.robbery_mgr = RobberyManager(self.db, self.storage_ring_mgr)
+        self.robbery_handlers = RobberyHandlers(self.db, self.robbery_mgr)
+        self.daily_task_mgr = DailyTaskManager(self.db)
+        self.daily_task_handlers = DailyTaskHandlers(self.db, self.daily_task_mgr, self.storage_ring_mgr)
+        self.world_boss_mgr = WorldBossManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.world_boss_handlers = WorldBossHandlers(self.db, self.world_boss_mgr)
+        self.reinc_mgr = ReincarnationManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.reinc_handlers = ReincarnationHandlers(self.db, self.reinc_mgr)
+        self.tutorial_mgr = TutorialManager(self.db)
+
+        # v6.2 & v6.3
+        self.gamble_mgr = GambleManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.gamble_handlers = GambleHandlers(self.db, self.gamble_mgr)
+        self.forge_mgr = ForgeManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.forge_handlers = ForgeHandlers(self.db, self.forge_mgr)
+
+        # v6.4 天魔入侵
+        self.demon_mgr = DemonInvasionManager(self.db)
+        self.demon_handlers = DemonInvasionHandlers(self.db, self.demon_mgr, self.storage_ring_mgr)
+        self.demon_handlers.context = self.context
+        
+        # v6.5 灵兽系统
+        self.pet_mgr = PetManager(self.db)
+        self.pet_handlers = PetHandlers(self.db, self.pet_mgr)
+
+        # v6.6 交易坊市
+        self.auction_mgr = AuctionManager(self.db, self.storage_ring_mgr)
+        self.auction_handlers = AuctionHandlers(self.db, self.auction_mgr)
+
+        # v6.8 押镖劫道 & 奇遇
+        self.escort_mgr = EscortManager(self.db, self.combat_mgr, self.storage_ring_mgr)
+        self.encounter_mgr = EncounterManager(self.db, self.storage_ring_mgr)
+
+        # v6.10 生活职业 & 魔潮天灾
+        self.life_skill_mgr = LifeSkillManager(self.db, self.storage_ring_mgr)
+        self.calamity_mgr = CalamityManager(self.db)
+
+        # v6.11 图片卡片开关注入
+        try:
+            from .utils import image_generator as _ig
+            card_cfg = dict(self.config.get("IMAGE_CARDS", {}) or {})
+            card_cfg["__enabled__"] = card_cfg.pop("ENABLED", True)
+            _ig.set_card_flags(card_cfg)
+        except Exception as e:
+            logger.warning(f"卡片配置注入失败（将全部启用）: {e}")
+        
+        # 后台任务句柄
+        self.boss_task = None
+        self.loan_check_task = None
+        self.spirit_eye_task = None
+        self.bounty_check_task = None
+        self.demon_check_task = None
+
+        access_control_config = self.config.get("ACCESS_CONTROL", {})
+        self.whitelist_groups = [str(g) for g in access_control_config.get("WHITELIST_GROUPS", [])]
+        self.boss_admins = [str(a) for a in access_control_config.get("BOSS_ADMINS", [])]
+
+        logger.info(f"【修仙插件】XiuXianPlugin 初始化完成，数据库路径: {db_path}")
+
+    def _check_access(self, event: AstrMessageEvent) -> bool:
+        if not self.whitelist_groups: return True
+        group_id = event.get_group_id()
+        if not group_id: return True
+        if str(group_id) in self.whitelist_groups: return True
+        return False
+
+    def _check_boss_admin(self, event: AstrMessageEvent) -> bool:
+        if not self.boss_admins: return False
+        sender_id = str(event.get_sender_id())
+        return sender_id in self.boss_admins
+
+    async def _send_access_denied_message(self, event: AstrMessageEvent):
+        try:
+            await event.send("抱歉，此群聊未在修仙插件的白名单中，无法使用相关功能。")
+        except:
+            pass
+
+    async def initialize(self):
+        await self.db.connect()
+        migration_manager = MigrationManager(self.db.conn, self.config_manager)
+        await migration_manager.migrate()
+        await self.db.ext.ensure_system_config_table()
+        
+        self.boss_task = asyncio.create_task(self._schedule_boss_spawn())
+        self.loan_check_task = asyncio.create_task(self._schedule_loan_check())
+        self.spirit_eye_task = asyncio.create_task(self._schedule_spirit_eye_spawn())
+        self.bounty_check_task = asyncio.create_task(self._schedule_bounty_check())
+        self.demon_check_task = asyncio.create_task(self._schedule_demon_check())
+        self.tide_check_task = asyncio.create_task(self._schedule_tide_check())
+        
+        logger.info("【修仙插件】已加载。")
+
+    async def terminate(self):
+        for task in (self.boss_task, self.loan_check_task, self.spirit_eye_task,
+                     self.bounty_check_task, self.demon_check_task,
+                     getattr(self, "tide_check_task", None)):
+            if task: task.cancel()
+        await self.db.close()
+        logger.info("【修仙插件】已卸载。")
+
+    # ===== 定时任务与广播逻辑 =====
+    
+    async def _schedule_boss_spawn(self):
+        retry_count = 0
+        max_retry_delay = 3600
+        while True:
+            try:
+                await self.db.ensure_connection()
+                interval = self.config_manager.boss_config.get("spawn_interval", 3600)
+                next_spawn_str = await self.db.ext.get_system_config("boss_next_spawn_time")
+                current_time = int(time.time())
+                
+                if next_spawn_str:
+                    next_spawn_time = int(next_spawn_str)
+                    remaining = next_spawn_time - current_time
+                    if remaining > 0:
+                        logger.info(f"【修仙插件】动态世界Boss将在 {remaining} 秒后刷新")
+                        await asyncio.sleep(remaining)
+                else:
+                    next_spawn_time = current_time + interval
+                    await self.db.ext.set_system_config("boss_next_spawn_time", str(next_spawn_time))
+                    await asyncio.sleep(interval)
+                
+                # 清理过期未击杀的旧世界Boss
+                async with self.db.conn.execute("SELECT boss_id FROM world_boss WHERE status=1 AND expire_time < ?", (current_time,)) as cur:
+                    if await cur.fetchone():
+                        await self.db.conn.execute("UPDATE world_boss SET status=3 WHERE status=1 AND expire_time < ?", (current_time,))
+                        await self.db.conn.commit()
+                        logger.info("【修仙插件】清理了超时未击杀的旧世界Boss")
+
+                # 检查并生成新Boss
+                if self.world_boss_mgr:
+                    async with self.db.conn.execute("SELECT * FROM world_boss WHERE status=1") as cur:
+                        if not await cur.fetchone():
+                            success, msg = await self.world_boss_mgr.spawn_boss()
+                            if success:
+                                logger.info(f"【修仙插件】自动生成动态世界Boss")
+                                await self._broadcast_world_boss_spawn(msg)
+                
+                next_spawn_time = int(time.time()) + interval
+                await self.db.ext.set_system_config("boss_next_spawn_time", str(next_spawn_time))
+                retry_count = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Boss生成任务异常: {e}")
+                retry_count += 1
+                delay = min(60 * (2 ** retry_count), max_retry_delay)
+                logger.info(f"【修仙插件】Boss任务将在 {delay} 秒后重试（第{retry_count}次）")
+                await asyncio.sleep(delay)
+
+    async def _schedule_demon_check(self):
+        """定时检查天魔入侵是否超时并自动结算"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(300)
+                
+                is_active = await self.db.ext.get_system_config("demon_invasion_active")
+                if is_active == "1":
+                    end_time_str = await self.db.ext.get_system_config("demon_invasion_end_time")
+                    if end_time_str and end_time_str.isdigit() and int(time.time()) > int(end_time_str):
+                        success, msg = await self.demon_mgr.end_invasion()
+                        if success:
+                            logger.info(f"【修仙插件】天魔入侵超时自动结算：{msg}")
+                            await self._broadcast_world_boss_spawn(msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"天魔入侵检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    def _warn_no_whitelist(self, event_name: str):
+        """全服事件广播因未配置白名单而被丢弃时提示管理员"""
+        if not hasattr(self, "_whitelist_warned"):
+            self._whitelist_warned = set()
+        if event_name not in self._whitelist_warned:
+            self._whitelist_warned.add(event_name)
+            logger.warning(f"【修仙插件】{event_name} 广播被跳过：未配置白名单 WHITELIST_GROUPS，全服事件将不会通知任何群聊！")
+
+    async def _broadcast_world_boss_spawn(self, msg: str):
+        """广播动态世界Boss降临/天魔结算"""
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("世界Boss/魔潮")
+            return
+        message_chain = MessageChain().message(msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】广播失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】广播异常: {e}")
+
+    async def _broadcast_boss_defeat(self, player_name: str, battle_result: dict):
+        """兼容旧版 Boss 击杀广播"""
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("Boss击杀")
+            return
+        reward = battle_result.get("reward", 0)
+        rounds = battle_result.get("rounds", 0)
+        broadcast_msg = (
+            f"🎉 世界Boss已被击杀！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"击杀者：{player_name}\n"
+            f"战斗回合：{rounds}\n"
+            f"获得奖励：{reward} 灵石\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"恭喜大侠！下一只Boss即将刷新..."
+        )
+        message_chain = MessageChain().message(broadcast_msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】Boss击杀广播发送失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】Boss击杀广播异常: {e}")
+
+    async def _schedule_loan_check(self):
+        retry_count = 0
+        max_retry_delay = 3600
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(3600)
+                processed = await self.bank_mgr.check_and_process_overdue_loans()
+                if processed:
+                    logger.info(f"【修仙插件】处理了 {len(processed)} 笔逾期贷款")
+                    for loan_info in processed:
+                        if loan_info.get("death"):
+                            await self._broadcast_loan_death(loan_info)
+                retry_count = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"贷款检查任务异常: {e}")
+                retry_count += 1
+                delay = min(60 * (2 ** retry_count), max_retry_delay)
+                logger.info(f"【修仙插件】贷款检查任务将在 {delay} 秒后重试（第{retry_count}次）")
+                await asyncio.sleep(delay)
+
+    async def _broadcast_loan_death(self, loan_info: dict):
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("贷款追杀")
+            return
+        player_name = loan_info.get("player_name", "某修士")
+        principal = loan_info.get("principal", 0)
+        broadcast_msg = (
+            f"💀 银行追杀公告 💀\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"修士【{player_name}】因贷款逾期未还\n"
+            f"欠款：{principal:,} 灵石\n"
+            f"已被灵石银行追杀致死！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"⚠️ 借贷有风险，还款需及时！"
+        )
+        message_chain = MessageChain().message(broadcast_msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】贷款追杀广播发送失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】贷款追杀广播异常: {e}")
+
+    async def _schedule_spirit_eye_spawn(self):
+        retry_count = 0
+        max_retry_delay = 3600
+        while True:
+            try:
+                await self.db.ensure_connection()
+                spawn_interval = 7200
+                next_spawn_str = await self.db.ext.get_system_config("spirit_eye_next_spawn_time")
+                current_time = int(time.time())
+                
+                if next_spawn_str:
+                    next_spawn_time = int(next_spawn_str)
+                    remaining = next_spawn_time - current_time
+                    if remaining > 0:
+                        logger.info(f"【修仙插件】灵眼将在 {remaining} 秒后刷新")
+                        await asyncio.sleep(remaining)
+                else:
+                    next_spawn_time = current_time + spawn_interval
+                    await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
+                    await asyncio.sleep(spawn_interval)
+                
+                success, msg = await self.spirit_eye_mgr.spawn_spirit_eye()
+                if success:
+                    logger.info(f"【修仙插件】{msg}")
+                    await self._broadcast_spirit_eye_spawn(msg)
+                
+                next_spawn_time = int(time.time()) + spawn_interval
+                await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
+                retry_count = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"灵眼生成任务异常: {e}")
+                retry_count += 1
+                delay = min(60 * (2 ** retry_count), max_retry_delay)
+                logger.info(f"【修仙插件】灵眼任务将在 {delay} 秒后重试（第{retry_count}次）")
+                await asyncio.sleep(delay)
+
+    async def _schedule_bounty_check(self):
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(1800)
+                expired = await self.bounty_mgr.check_and_expire_bounties()
+                if expired > 0:
+                    logger.info(f"【修仙插件】处理了 {expired} 个过期悬赏任务")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"悬赏检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _schedule_tide_check(self):
+        """定时检查魔潮是否到期/达标并结算"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(300)
+                settled, msg = await self.calamity_mgr.check_and_expire()
+                if settled and msg:
+                    logger.info(f"【修仙插件】魔潮结算：{msg.splitlines()[0]}")
+                    await self._broadcast_world_boss_spawn(msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"魔潮检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _broadcast_spirit_eye_spawn(self, msg: str):
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("灵眼降临")
+            return
+        broadcast_msg = f"👁️ {msg}\n💡 使用 /灵眼信息 查看详情"
+        message_chain = MessageChain().message(broadcast_msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】灵眼广播发送失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】灵眼广播异常: {e}")
+
+    # ================= 指令注册区 =================
+
+    @filter.command(CMD_HELP, "显示帮助信息")
+    @require_whitelist
+    async def handle_help(self, event: AstrMessageEvent):
+        async for r in self.misc_handler.handle_help(event): yield r
+
+    @filter.command(CMD_START_XIUXIAN, "开始你的修仙之路")
+    @require_whitelist
+    async def handle_start_xiuxian(self, event: AstrMessageEvent, cultivation_type: str = ""):
+        async for r in self.player_handler.handle_start_xiuxian(event, cultivation_type): yield r
+
+    @filter.command(CMD_PLAYER_INFO, "查看你的角色信息")
+    @require_whitelist
+    async def handle_player_info(self, event: AstrMessageEvent):
+        async for r in self.player_handler.handle_player_info(event): yield r
+
+    @filter.command(CMD_REBIRTH, "弃道重修（7天一次）")
+    @require_whitelist
+    async def handle_rebirth(self, event: AstrMessageEvent, confirm: str = ""):
+        async for r in self.player_handler.handle_rebirth(event, confirm): yield r
+
+    @filter.command(CMD_START_CULTIVATION, "开始闭关修炼")
+    @require_whitelist
+    async def handle_start_cultivation(self, event: AstrMessageEvent):
+        async for r in self.player_handler.handle_start_cultivation(event): yield r
+
+    @filter.command(CMD_END_CULTIVATION, "结束闭关修炼")
+    @require_whitelist
+    async def handle_end_cultivation(self, event: AstrMessageEvent):
+        async for r in self.player_handler.handle_end_cultivation(event):
+            yield r
+
+    @filter.command(CMD_CHECK_IN, "每日签到领取灵石")
+    @require_whitelist
+    async def handle_check_in(self, event: AstrMessageEvent):
+        async for r in self.player_handler.handle_check_in(event):
+            yield r
+
+    @filter.command(CMD_SHOW_EQUIPMENT, "查看已装备的物品")
+    @require_whitelist
+    async def handle_show_equipment(self, event: AstrMessageEvent):
+        async for r in self.equipment_handler.handle_show_equipment(event): yield r
+
+    @filter.command(CMD_EQUIP_ITEM, "装备物品")
+    @require_whitelist
+    async def handle_equip_item(self, event: AstrMessageEvent, item_name: str = ""):
+        async for r in self.equipment_handler.handle_equip_item(event, item_name): yield r
+
+    @filter.command(CMD_UNEQUIP_ITEM, "卸下装备")
+    @require_whitelist
+    async def handle_unequip_item(self, event: AstrMessageEvent, slot_or_name: str = ""):
+        async for r in self.equipment_handler.handle_unequip_item(event, slot_or_name): yield r
+
+    @filter.command(CMD_BREAKTHROUGH_INFO, "查看突破信息")
+    @require_whitelist
+    async def handle_breakthrough_info(self, event: AstrMessageEvent):
+        async for r in self.breakthrough_handler.handle_breakthrough_info(event): yield r
+
+    @filter.command(CMD_BREAKTHROUGH, "尝试突破境界")
+    @require_whitelist
+    async def handle_breakthrough(self, event: AstrMessageEvent, pill_name: str = ""):
+        async for r in self.breakthrough_handler.handle_breakthrough(event, pill_name):
+            yield r
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if player:
+            tutorial_msg = await self.tutorial_mgr.check_and_advance(player, "breakthrough")
+            if tutorial_msg:
+                yield event.plain_result(tutorial_msg)
+
+    @filter.command(CMD_USE_PILL, "服用丹药")
+    @require_whitelist
+    async def handle_use_pill(self, event: AstrMessageEvent, pill_name: str = ""):
+        async for r in self.pill_handler.handle_use_pill(event, pill_name): yield r
+
+    @filter.command(CMD_SHOW_PILLS, "查看丹药背包")
+    @require_whitelist
+    async def handle_show_pills(self, event: AstrMessageEvent):
+        async for r in self.pill_handler.handle_show_pills(event): yield r
+
+    @filter.command(CMD_PILL_INFO, "查看丹药信息")
+    @require_whitelist
+    async def handle_pill_info(self, event: AstrMessageEvent, pill_name: str = ""):
+        async for r in self.pill_handler.handle_pill_info(event, pill_name): yield r
+
+    @filter.command(CMD_PILL_PAVILION, "查看丹阁丹药")
+    @require_whitelist
+    async def handle_pill_pavilion(self, event: AstrMessageEvent):
+        async for r in self.shop_handler.handle_pill_pavilion(event): yield r
+
+    @filter.command(CMD_WEAPON_PAVILION, "查看器阁武器")
+    @require_whitelist
+    async def handle_weapon_pavilion(self, event: AstrMessageEvent):
+        async for r in self.shop_handler.handle_weapon_pavilion(event): yield r
+
+    @filter.command(CMD_TREASURE_PAVILION, "查看百宝阁物品")
+    @require_whitelist
+    async def handle_treasure_pavilion(self, event: AstrMessageEvent):
+        async for r in self.shop_handler.handle_treasure_pavilion(event): yield r
+
+    @filter.command(CMD_ITEM_INFO, "查看物品详细效果")
+    @require_whitelist
+    async def handle_item_info(self, event: AstrMessageEvent, item_name: str = ""):
+        async for r in self.shop_handler.handle_item_info(event, item_name): yield r
+
+    @filter.command(CMD_BUY, "购买物品")
+    @require_whitelist
+    async def handle_buy(self, event: AstrMessageEvent, item_name: str = ""):
+        async for r in self.shop_handler.handle_buy(event, item_name): yield r
+
+    @filter.command(CMD_STORAGE_RING, "查看储物戒信息")
+    @require_whitelist
+    async def handle_storage_ring(self, event: AstrMessageEvent):
+        async for r in self.storage_ring_handler.handle_storage_ring(event): yield r
+
+    @filter.command(CMD_RETRIEVE_ITEM, "从储物戒取出物品")
+    @require_whitelist
+    async def handle_retrieve_item(self, event: AstrMessageEvent, args: str = ""):
+        async for r in self.storage_ring_handler.handle_retrieve_item(event, args): yield r
+
+    @filter.command(CMD_UPGRADE_RING, "升级储物戒")
+    @require_whitelist
+    async def handle_upgrade_ring(self, event: AstrMessageEvent, ring_name: str = ""):
+        async for r in self.storage_ring_handler.handle_upgrade_ring(event, ring_name): yield r
+
+    @filter.command(CMD_DISCARD_ITEM, "丢弃储物戒中的物品")
+    @require_whitelist
+    async def handle_discard_item(self, event: AstrMessageEvent, args: str = ""):
+        async for r in self.storage_ring_handler.handle_discard_item(event, args): yield r
+
+    @filter.command(CMD_GIFT_ITEM, "赠予物品给其他玩家")
+    @require_whitelist
+    async def handle_gift_item(self, event: AstrMessageEvent, args: str = ""):
+        async for r in self.storage_ring_handler.handle_gift_item(event, args): yield r
+
+    @filter.command(CMD_ACCEPT_GIFT, "接收赠予的物品")
+    @require_whitelist
+    async def handle_accept_gift(self, event: AstrMessageEvent):
+        async for r in self.storage_ring_handler.handle_accept_gift(event): yield r
+
+    @filter.command(CMD_REJECT_GIFT, "拒绝赠予的物品")
+    @require_whitelist
+    async def handle_reject_gift(self, event: AstrMessageEvent):
+        async for r in self.storage_ring_handler.handle_reject_gift(event): yield r
+
+    @filter.command(CMD_SEARCH_ITEM, "搜索储物戒物品")
+    @require_whitelist
+    async def handle_search_item(self, event: AstrMessageEvent, keyword: str = ""):
+        async for r in self.storage_ring_handler.handle_search_item(event, keyword): yield r
+
+    @filter.command(CMD_RETRIEVE_ALL, "批量取出物品")
+    @require_whitelist
+    async def handle_retrieve_all(self, event: AstrMessageEvent, category: str = ""):
+        async for r in self.storage_ring_handler.handle_retrieve_all(event, category): yield r
+
+    # ===== 宗门 =====
+    @filter.command(CMD_CREATE_SECT, "创建宗门")
+    @require_whitelist
+    async def handle_create_sect(self, event: AstrMessageEvent, name: str = ""):
+        if not name:
+            yield event.plain_result(f"请输入宗门名称，例如：/{CMD_CREATE_SECT} 逍遥门")
+            return
+        async for r in self.sect_handlers.handle_create_sect(event, name): yield r
+
+    @filter.command(CMD_JOIN_SECT, "加入宗门")
+    @require_whitelist
+    async def handle_join_sect(self, event: AstrMessageEvent, name: str = ""):
+        if not name:
+            yield event.plain_result(f"请输入要加入的宗门名称，例如：/{CMD_JOIN_SECT} 逍遥门")
+            return
+        async for r in self.sect_handlers.handle_join_sect(event, name): yield r
+
+    @filter.command(CMD_LEAVE_SECT, "退出当前宗门")
+    @require_whitelist
+    async def handle_leave_sect(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_leave_sect(event): yield r
+
+    @filter.command(CMD_MY_SECT, "查看我的宗门信息")
+    @require_whitelist
+    async def handle_my_sect(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_my_sect(event): yield r
+
+    @filter.command(CMD_SECT_TASK, "执行宗门任务")
+    @require_whitelist
+    async def handle_sect_task(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_sect_task(event): yield r
+
+    @filter.command(CMD_FINISH_SECT_TASK, "完成宗门任务")
+    @require_whitelist
+    async def handle_finish_sect_task(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_finish_sect_task(event): yield r
+
+    @filter.command(CMD_SECT_LIST, "查看宗门列表")
+    @require_whitelist
+    async def handle_sect_list(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_sect_list(event): yield r
+
+    @filter.command(CMD_SECT_DONATE, "宗门捐献")
+    @require_whitelist
+    async def handle_sect_donate(self, event: AstrMessageEvent, amount: str = "0"):
+        try: amount_int = int(amount)
+        except ValueError:
+            yield event.plain_result("请输入正确的数字！")
+            return
+        if amount_int <= 0:
+             yield event.plain_result(f"请输入捐献数量，例如：/{CMD_SECT_DONATE} 1000")
+             return
+        async for r in self.sect_handlers.handle_donate(event, amount_int): yield r
+
+    @filter.command(CMD_SECT_KICK, "踢出宗门成员")
+    @require_whitelist
+    async def handle_sect_kick(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.sect_handlers.handle_kick_member(event, target): yield r
+
+    @filter.command(CMD_SECT_TRANSFER, "宗主传位")
+    @require_whitelist
+    async def handle_sect_transfer(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.sect_handlers.handle_transfer(event, target): yield r
+
+    @filter.command(CMD_SECT_POSITION, "变更成员职位")
+    @require_whitelist
+    async def handle_sect_position(self, event: AstrMessageEvent, target: str = "", position: str = "-1"):
+        try: pos_int = int(position)
+        except ValueError:
+            yield event.plain_result("职位必须是数字！")
+            return
+        if pos_int < 0:
+            yield event.plain_result(f"请输入目标和职位ID(0-4)，例如：/{CMD_SECT_POSITION} @某人 1")
+            return
+        async for r in self.sect_handlers.handle_position_change(event, target, pos_int): yield r
+
+    # ===== 旧版Boss =====
+    @filter.command(CMD_BOSS_INFO, "查看世界Boss状态(旧)")
+    @require_whitelist
+    async def handle_boss_info(self, event: AstrMessageEvent):
+        async for r in self.boss_handlers.handle_boss_info(event): yield r
+    
+    @filter.command("世界boss", "查看世界Boss状态(旧)")
+    @require_whitelist
+    async def handle_boss_info_lower(self, event: AstrMessageEvent):
+        async for r in self.boss_handlers.handle_boss_info(event): yield r
+
+    @filter.command(CMD_BOSS_FIGHT, "挑战世界Boss(旧)")
+    @require_whitelist
+    async def handle_boss_fight(self, event: AstrMessageEvent):
+        user_id = event.get_sender_id()
+        success, msg, battle_result = await self.boss_handlers.handle_boss_fight(user_id)
+        yield event.plain_result(msg)
+        if success and battle_result and battle_result.get("winner") == user_id:
+            await self.db.ext.add_task_progress(user_id, "boss_damage", 1)
+            player = await self.db.get_player_by_id(user_id)
+            player_name = player.user_name if player and player.user_name else f"道友{str(user_id)[:6]}"
+            await self._broadcast_boss_defeat(player_name, battle_result)
+
+            # ===== 击杀结算海报（磨砂玻璃卡片，失败自动跳过）=====
+            try:
+                from .utils.image_generator import render_card, card_enabled
+                if card_enabled("CARD_COMBAT"):
+                    card_path = render_card(
+                        "combat",
+                        "⚔️ Boss讨伐胜利",
+                        f"击杀者：{player_name}",
+                        sections=[
+                            {"name": "战报", "rows": [
+                                ("战斗回合", f"{battle_result.get('rounds', 0)}"),
+                                ("获得奖励", f"{battle_result.get('reward', 0):,} 灵石"),
+                                ("剩余气血", f"{battle_result.get('player_final_hp', 0):,}"),
+                            ]},
+                            {"name": "天道贺词", "lines": [
+                                "魔首伏诛，四方宾服。",
+                                "此战之功，录入仙史！",
+                            ]},
+                        ],
+                        footer="模拟修仙 · 战斗结算",
+                    )
+                    if card_path:
+                        yield event.image_result(card_path)
+            except Exception:
+                pass
+
+    @filter.command(CMD_SPAWN_BOSS, "生成世界Boss(旧)")
+    @require_whitelist
+    async def handle_spawn_boss(self, event: AstrMessageEvent):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限生成Boss！")
+            return
+        success, msg, boss = await self.boss_handlers.handle_spawn_boss()
+        yield event.plain_result(msg)
+        if success and boss:
+            await self._broadcast_boss_spawn(boss)
+
+    # ===== 排行榜 =====
+    @filter.command(CMD_RANK_LEVEL, "境界排行")
+    @require_whitelist
+    async def handle_rank_level(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_level(event): yield r
+
+    @filter.command(CMD_RANK_POWER, "战力排行")
+    @require_whitelist
+    async def handle_rank_power(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_power(event): yield r
+
+    @filter.command(CMD_RANK_WEALTH, "财富排行")
+    @require_whitelist
+    async def handle_rank_wealth(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_wealth(event): yield r
+
+    @filter.command(CMD_RANK_SECT, "宗门排行")
+    @require_whitelist
+    async def handle_rank_sect(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_sect(event): yield r
+
+    @filter.command(CMD_RANK_DEPOSIT, "存款排行")
+    @require_whitelist
+    async def handle_rank_deposit(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_deposit(event): yield r
+
+    @filter.command(CMD_RANK_CONTRIBUTION, "贡献排行")
+    @require_whitelist
+    async def handle_rank_contribution(self, event: AstrMessageEvent):
+        async for r in self.ranking_handlers.handle_rank_sect_contribution(event): yield r
+
+    # ===== 战斗 =====
+    @filter.command(CMD_DUEL, "决斗")
+    @require_whitelist
+    async def handle_duel(self, event: AstrMessageEvent, target: str = ""):
+        user_id = event.get_sender_id()
+        async for r in self.combat_handlers.handle_duel(event, target):
+            yield r
+        # 只有获胜才计入 win_pvp 任务进度
+        last_result = getattr(self.combat_handlers, "last_duel_result", None)
+        if last_result and last_result.get("winner") == user_id:
+            await self.db.ext.add_task_progress(user_id, "win_pvp", 1)
+
+    @filter.command(CMD_SPAR, "切磋")
+    @require_whitelist
+    async def handle_spar(self, event: AstrMessageEvent, target: str = ""):
+        user_id = event.get_sender_id()
+        async for r in self.combat_handlers.handle_spar(event, target):
+            yield r
+        # 真正开打（非冷却被拒）才计入 spar 任务进度
+        if getattr(self.combat_handlers, "last_spar_fought", False):
+            self.combat_handlers.last_spar_fought = False
+            await self.db.ext.add_task_progress(user_id, "spar", 1)
+
+    # ===== 秘境 =====
+    @filter.command(CMD_RIFT_LIST, "秘境列表")
+    @require_whitelist
+    async def handle_rift_list(self, event: AstrMessageEvent):
+        async for r in self.rift_handlers.handle_rift_list(event): yield r
+
+    @filter.command(CMD_RIFT_EXPLORE, "探索秘境")
+    @require_whitelist
+    async def handle_rift_explore(self, event: AstrMessageEvent, rift_id: str = "0"):
+        try: rift_id_int = int(rift_id)
+        except ValueError:
+            yield event.plain_result("请输入正确的秘境ID！")
+            return
+        async for r in self.rift_handlers.handle_rift_explore(event, rift_id_int): yield r
+
+    @filter.command(CMD_RIFT_COMPLETE, "完成秘境探索")
+    @require_whitelist
+    async def handle_rift_complete(self, event: AstrMessageEvent):
+        user_id = event.get_sender_id()
+        success, msg, reward_data = await self.rift_mgr.finish_exploration(user_id)
+        if success and reward_data:
+            await self.db.ext.add_task_progress(user_id, "explore_rift", 1)
+            player = await self.db.get_player_by_id(user_id)
+            if player:
+                has_progress, bounty_msg = await self.bounty_mgr.add_bounty_progress(player, "rift", 1)
+                if has_progress: msg += bounty_msg
+
+                # 奇遇系统：秘境归来概率触发三选一事件（25%）
+                try:
+                    encounter_msg = await self.encounter_mgr.maybe_trigger(player, base_chance=25)
+                    if encounter_msg: msg += encounter_msg
+                except Exception as e:
+                    logger.warning(f"秘境奇遇触发异常: {e}")
+        yield event.plain_result(msg)
+
+    @filter.command(CMD_RIFT_EXIT, "退出秘境")
+    @require_whitelist
+    async def handle_rift_exit(self, event: AstrMessageEvent):
+        async for r in self.rift_handlers.handle_rift_exit(event): yield r
+
+    # ===== 历练 =====
+    @filter.command(CMD_ADVENTURE_START, "开始历练")
+    @require_whitelist
+    async def handle_adventure_start(self, event: AstrMessageEvent, route: str = ""):
+        async for r in self.adventure_handlers.handle_start_adventure(event, route): yield r
+
+    @filter.command(CMD_ADVENTURE_COMPLETE, "完成历练")
+    @require_whitelist
+    async def handle_adventure_complete(self, event: AstrMessageEvent):
+        user_id = event.get_sender_id()
+        success, msg, reward_data = await self.adventure_mgr.finish_adventure(user_id)
+        if success and reward_data:
+            await self.db.ext.add_task_progress(user_id, "adventure", 1)
+            player = await self.db.get_player_by_id(user_id)
+            if player:
+                bounty_tag = reward_data.get("bounty_tag", "adventure")
+                bounty_value = reward_data.get("bounty_progress", 1)
+                has_progress, bounty_msg = await self.bounty_mgr.add_bounty_progress(player, bounty_tag, bounty_value)
+                if has_progress: msg += bounty_msg
+                
+                tutorial_msg = await self.tutorial_mgr.check_and_advance(player, "adventure")
+                if tutorial_msg: msg += tutorial_msg
+
+            # 奇遇系统：历练归来概率触发三选一事件
+            try:
+                encounter_msg = await self.encounter_mgr.maybe_trigger(player)
+                if encounter_msg: msg += encounter_msg
+            except Exception as e:
+                logger.warning(f"奇遇触发异常: {e}")
+        yield event.plain_result(msg)
+
+    @filter.command(CMD_ADVENTURE_STATUS, "历练状态")
+    @require_whitelist
+    async def handle_adventure_status(self, event: AstrMessageEvent):
+        async for r in self.adventure_handlers.handle_adventure_status(event): yield r
+
+    @filter.command(CMD_ADVENTURE_INFO, "历练信息")
+    @require_whitelist
+    async def handle_adventure_info(self, event: AstrMessageEvent):
+        async for r in self.adventure_handlers.handle_adventure_info(event): yield r
+
+    # ===== 炼丹 =====
+    @filter.command(CMD_ALCHEMY_RECIPES, "丹药配方")
+    @require_whitelist
+    async def handle_alchemy_recipes(self, event: AstrMessageEvent):
+        async for r in self.alchemy_handlers.handle_recipes(event): yield r
+
+    @filter.command(CMD_ALCHEMY_CRAFT, "炼制丹药")
+    @require_whitelist
+    async def handle_alchemy_craft(self, event: AstrMessageEvent, pill_id: str = ""):
+        async for r in self.alchemy_handlers.handle_craft(event, pill_id):
+            yield r
+        # 任务要求"成功炼制"：失败/丹劫毁丹不计进度
+        if getattr(self.alchemy_handlers, "last_craft_success", False):
+            self.alchemy_handlers.last_craft_success = False
+            await self.db.ext.add_task_progress(event.get_sender_id(), "craft_pill", 1)
+
+    # ===== 传承 =====
+    @filter.command(CMD_IMPART_INFO, "传承信息")
+    @require_whitelist
+    async def handle_impart_info(self, event: AstrMessageEvent):
+        async for r in self.impart_handlers.handle_impart_info(event): yield r
+
+    # ===== 道号 =====
+    @filter.command(CMD_CHANGE_NICKNAME, "改道号")
+    @require_whitelist
+    async def handle_change_nickname(self, event: AstrMessageEvent, new_name: str = ""):
+        async for r in self.nickname_handler.handle_change_nickname(event, new_name): yield r
+
+    # ===== 银行 =====
+    @filter.command(CMD_BANK_INFO, "查看银行信息")
+    @require_whitelist
+    async def handle_bank_info(self, event: AstrMessageEvent):
+        async for r in self.bank_handlers.handle_bank_info(event): yield r
+
+    @filter.command(CMD_BANK_DEPOSIT, "存入灵石")
+    @require_whitelist
+    async def handle_bank_deposit(self, event: AstrMessageEvent, amount: str = "0"):
+        try: amount_int = int(amount)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.bank_handlers.handle_deposit(event, amount_int): yield r
+
+    @filter.command(CMD_BANK_WITHDRAW, "取出灵石")
+    @require_whitelist
+    async def handle_bank_withdraw(self, event: AstrMessageEvent, amount: str = "0"):
+        try: amount_int = int(amount)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.bank_handlers.handle_withdraw(event, amount_int): yield r
+
+    @filter.command(CMD_BANK_INTEREST, "领取利息")
+    @require_whitelist
+    async def handle_bank_interest(self, event: AstrMessageEvent):
+        async for r in self.bank_handlers.handle_claim_interest(event): yield r
+
+    @filter.command(CMD_BANK_LOAN, "申请贷款")
+    @require_whitelist
+    async def handle_bank_loan(self, event: AstrMessageEvent, amount: str = "0"):
+        try: amount_int = int(amount)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.bank_handlers.handle_loan(event, amount_int): yield r
+
+    @filter.command(CMD_BANK_REPAY, "偿还贷款")
+    @require_whitelist
+    async def handle_bank_repay(self, event: AstrMessageEvent):
+        async for r in self.bank_handlers.handle_repay(event): yield r
+
+    @filter.command(CMD_BANK_TRANSACTIONS, "银行流水")
+    @require_whitelist
+    async def handle_bank_transactions(self, event: AstrMessageEvent):
+        async for r in self.bank_handlers.handle_transactions(event): yield r
+
+    @filter.command(CMD_BANK_BREAKTHROUGH_LOAN, "申请突破贷款")
+    @require_whitelist
+    async def handle_bank_breakthrough_loan(self, event: AstrMessageEvent, amount: str = "0"):
+        try: amount_int = int(amount)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.bank_handlers.handle_breakthrough_loan(event, amount_int): yield r
+
+    # ===== 悬赏 =====
+    @filter.command(CMD_BOUNTY_LIST, "查看悬赏任务")
+    @require_whitelist
+    async def handle_bounty_list(self, event: AstrMessageEvent):
+        async for r in self.bounty_handlers.handle_bounty_list(event): yield r
+
+    @filter.command(CMD_BOUNTY_ACCEPT, "接取悬赏任务")
+    @require_whitelist
+    async def handle_bounty_accept(self, event: AstrMessageEvent, bounty_id: str = "0"):
+        try: bounty_id_int = int(bounty_id)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的悬赏编号！")
+            return
+        async for r in self.bounty_handlers.handle_accept_bounty(event, bounty_id_int): yield r
+
+    @filter.command(CMD_BOUNTY_STATUS, "查看悬赏状态")
+    @require_whitelist
+    async def handle_bounty_status(self, event: AstrMessageEvent):
+        async for r in self.bounty_handlers.handle_bounty_status(event): yield r
+
+    @filter.command(CMD_BOUNTY_COMPLETE, "完成悬赏任务")
+    @require_whitelist
+    async def handle_bounty_complete(self, event: AstrMessageEvent):
+        async for r in self.bounty_handlers.handle_complete_bounty(event): yield r
+
+    @filter.command(CMD_BOUNTY_ABANDON, "放弃悬赏任务")
+    @require_whitelist
+    async def handle_bounty_abandon(self, event: AstrMessageEvent):
+        async for r in self.bounty_handlers.handle_abandon_bounty(event): yield r
+
+    # ===== 传承PK =====
+    @filter.command(CMD_IMPART_CHALLENGE, "发起传承挑战")
+    @require_whitelist
+    async def handle_impart_challenge(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.impart_pk_handlers.handle_impart_challenge(event, target): yield r
+
+    @filter.command(CMD_IMPART_RANKING, "查看传承排行")
+    @require_whitelist
+    async def handle_impart_ranking(self, event: AstrMessageEvent):
+        async for r in self.impart_pk_handlers.handle_impart_ranking(event): yield r
+
+    # ===== 洞天福地 =====
+    @filter.command(CMD_BLESSED_LAND_INFO, "查看洞天信息")
+    @require_whitelist
+    async def handle_blessed_land_info(self, event: AstrMessageEvent):
+        async for r in self.blessed_land_handlers.handle_blessed_land_info(event): yield r
+
+    @filter.command(CMD_BLESSED_LAND_BUY, "购买洞天")
+    @require_whitelist
+    async def handle_blessed_land_buy(self, event: AstrMessageEvent, land_type: str = "0"):
+        try: land_int = int(land_type)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.blessed_land_handlers.handle_purchase(event, land_int): yield r
+
+    @filter.command(CMD_BLESSED_LAND_UPGRADE, "升级洞天")
+    @require_whitelist
+    async def handle_blessed_land_upgrade(self, event: AstrMessageEvent):
+        async for r in self.blessed_land_handlers.handle_upgrade(event): yield r
+
+    @filter.command(CMD_BLESSED_LAND_COLLECT, "收取洞天产出")
+    @require_whitelist
+    async def handle_blessed_land_collect(self, event: AstrMessageEvent):
+        async for r in self.blessed_land_handlers.handle_collect(event): yield r
+
+    @filter.command(CMD_BLESSED_LAND_ADVANCE, "进阶洞天")
+    @require_whitelist
+    async def handle_blessed_land_advance(self, event: AstrMessageEvent, target_type: str = "0"):
+        try: target_int = int(target_type)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.blessed_land_handlers.handle_advance(event, target_int): yield r
+
+    # ===== 灵田 =====
+    @filter.command(CMD_SPIRIT_FARM_INFO, "查看灵田")
+    @require_whitelist
+    async def handle_spirit_farm_info(self, event: AstrMessageEvent):
+        async for r in self.spirit_farm_handlers.handle_farm_info(event): yield r
+
+    @filter.command(CMD_SPIRIT_FARM_CREATE, "开垦灵田")
+    @require_whitelist
+    async def handle_spirit_farm_create(self, event: AstrMessageEvent):
+        async for r in self.spirit_farm_handlers.handle_create_farm(event): yield r
+
+    @filter.command(CMD_SPIRIT_FARM_PLANT, "种植灵草")
+    @require_whitelist
+    async def handle_spirit_farm_plant(self, event: AstrMessageEvent, herb_name: str = ""):
+        async for r in self.spirit_farm_handlers.handle_plant(event, herb_name): yield r
+
+    @filter.command(CMD_SPIRIT_FARM_HARVEST, "收获灵草")
+    @require_whitelist
+    async def handle_spirit_farm_harvest(self, event: AstrMessageEvent):
+        async for r in self.spirit_farm_handlers.handle_harvest(event):
+            yield r
+        # 真正收获成功（有成熟作物）才计任务进度
+        if getattr(self.spirit_farm_handlers, "last_harvest_ok", False):
+            self.spirit_farm_handlers.last_harvest_ok = False
+            await self.db.ext.add_task_progress(event.get_sender_id(), "harvest", 1)
+
+    @filter.command(CMD_SPIRIT_FARM_UPGRADE, "升级灵田")
+    @require_whitelist
+    async def handle_spirit_farm_upgrade(self, event: AstrMessageEvent):
+        async for r in self.spirit_farm_handlers.handle_upgrade_farm(event): yield r
+
+    # ===== 双修 =====
+    @filter.command(CMD_DUAL_CULT_REQUEST, "发起双修")
+    @require_whitelist
+    async def handle_dual_cult_request(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.dual_cult_handlers.handle_dual_request(event, target): yield r
+
+    @filter.command(CMD_DUAL_CULT_ACCEPT, "接受双修")
+    @require_whitelist
+    async def handle_dual_cult_accept(self, event: AstrMessageEvent):
+        async for r in self.dual_cult_handlers.handle_accept(event): yield r
+
+    @filter.command(CMD_DUAL_CULT_REJECT, "拒绝双修")
+    @require_whitelist
+    async def handle_dual_cult_reject(self, event: AstrMessageEvent):
+        async for r in self.dual_cult_handlers.handle_reject(event): yield r
+
+    # ===== 灵眼 =====
+    @filter.command(CMD_SPIRIT_EYE_INFO, "查看灵眼")
+    @require_whitelist
+    async def handle_spirit_eye_info(self, event: AstrMessageEvent):
+        async for r in self.spirit_eye_handlers.handle_spirit_eye_info(event): yield r
+
+    @filter.command(CMD_SPIRIT_EYE_CLAIM, "抢占灵眼")
+    @require_whitelist
+    async def handle_spirit_eye_claim(self, event: AstrMessageEvent, eye_id: str = "0"):
+        try: eye_id_int = int(eye_id)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的数字！")
+            return
+        async for r in self.spirit_eye_handlers.handle_claim(event, eye_id_int): yield r
+
+    @filter.command(CMD_SPIRIT_EYE_COLLECT, "收取灵眼产出")
+    @require_whitelist
+    async def handle_spirit_eye_collect(self, event: AstrMessageEvent):
+        async for r in self.spirit_eye_handlers.handle_collect(event): yield r
+
+    @filter.command(CMD_SPIRIT_EYE_RELEASE, "释放灵眼")
+    @require_whitelist
+    async def handle_spirit_eye_release(self, event: AstrMessageEvent):
+        async for r in self.spirit_eye_handlers.handle_release(event): yield r
+
+    # ===== v6.1 日常任务 =====
+    @filter.command("任务榜", "查看日常任务")
+    @require_whitelist
+    async def handle_task_board(self, event: AstrMessageEvent):
+        async for r in self.daily_task_handlers.handle_task_board(event): yield r
+
+    @filter.command("接取任务", "接取日常任务")
+    @require_whitelist
+    async def handle_accept_task(self, event: AstrMessageEvent, level: str = ""):
+        async for r in self.daily_task_handlers.handle_accept_task(event, level): yield r
+
+    @filter.command("领取任务奖励", "领取日常任务奖励")
+    @require_whitelist
+    async def handle_claim_reward(self, event: AstrMessageEvent):
+        async for r in self.daily_task_handlers.handle_claim_reward(event): yield r
+
+    # ===== v6.1 动态世界Boss =====
+    @filter.command("挑战世界Boss", "参与全服世界Boss讨伐")
+    @require_whitelist
+    async def handle_challenge_world_boss(self, event: AstrMessageEvent):
+        user_id = event.get_sender_id()
+        async for r in self.world_boss_handlers.handle_challenge(event): yield r
+        # 挑战成功（真正打出伤害）计入 boss_damage 任务进度
+        if getattr(self.world_boss_mgr, "last_challenge_ok", False):
+            self.world_boss_mgr.last_challenge_ok = False
+            await self.db.ext.add_task_progress(user_id, "boss_damage", 1)
+        # 击杀结算全服广播（排名奖励公示）
+        settle_msg = getattr(self.world_boss_mgr, "last_settle_msg", None)
+        if settle_msg:
+            self.world_boss_mgr.last_settle_msg = None
+            await self._broadcast_world_boss_spawn(settle_msg)
+
+    @filter.command("世界Boss状态", "查看动态世界Boss信息")
+    @require_whitelist
+    async def handle_query_world_boss(self, event: AstrMessageEvent):
+        async for r in self.world_boss_handlers.handle_query(event): yield r
+            
+    @filter.command("生成世界Boss", "手动召唤世界Boss(管理员)")
+    @require_whitelist
+    async def handle_spawn_world_boss(self, event: AstrMessageEvent):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限！")
+            return
+        success, msg = await self.world_boss_mgr.spawn_boss()
+        yield event.plain_result(msg)
+
+    # ===== v6.1 洞府掠夺 =====
+    @filter.command("开启护府", "使用护府令保护洞天")
+    @require_whitelist
+    async def handle_use_shield(self, event: AstrMessageEvent):
+        async for r in self.robbery_handlers.handle_use_shield(event): yield r
+
+    @filter.command("潜入洞府", "潜入他人洞府偷窃")
+    @require_whitelist
+    async def handle_rob(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.robbery_handlers.handle_rob(event, target): yield r
+
+    # ===== v6.1 飞升转生 =====
+    @filter.command("飞升", "达到最高境界后飞升转生（可附加装备名封印为传家宝）")
+    @require_whitelist
+    async def handle_reincarnate(self, event: AstrMessageEvent, heirloom_name: str = ""):
+        async for r in self.reinc_handlers.handle_reincarnate(event, heirloom_name):
+            yield r
+
+    @filter.command("解封传家宝", "达到筑基期后解封转生前的装备")
+    @require_whitelist
+    async def handle_unseal_heirloom(self, event: AstrMessageEvent):
+        async for r in self.reinc_handlers.handle_unseal(event):
+            yield r
+
+    @filter.command("仙缘商店", "查看转生永久加成")
+    @require_whitelist
+    async def handle_fate_shop(self, event: AstrMessageEvent):
+        async for r in self.reinc_handlers.handle_fate_shop(event): yield r
+
+    # ===== 新增：仙缘兑换 =====
+    @filter.command("仙缘兑换", "购买仙缘商店的永久加成")
+    @require_whitelist
+    async def handle_fate_exchange(self, event: AstrMessageEvent, item_id: str = "0"):
+        async for r in self.reinc_handlers.handle_fate_exchange(event, item_id):
+            yield r
+
+    # ===== v6.1 真·一键日常 =====
+    @filter.command("一键日常", "自动完成签到/收菜等挂机操作")
+    @require_whitelist
+    async def handle_daily_helper(self, event: AstrMessageEvent):
+        user_id = event.get_sender_id()
+        player = await self.db.get_player_by_id(user_id)
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途，请先发送「我要修仙」。")
+            return
+
+        # 检查是否处于忙碌状态
+        user_cd = await self.db.ext.get_user_cd(user_id)
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            status_name = UserStatus.get_name(user_cd.type)
+            yield event.plain_result(f"❌ 道友当前正「{status_name}」，无法分心打理日常。")
+            return
+
+        details = []
+        has_any_action = False
+
+        # 1. 签到
+        today = datetime.now().strftime("%Y-%m-%d")
+        if player.last_check_in_date != today:
+            check_in_gold_min = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MIN", 50)
+            check_in_gold_max = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MAX", 500)
+            check_in_gold = random.randint(check_in_gold_min, check_in_gold_max)
+            player.gold += check_in_gold
+            player.last_check_in_date = today
+            details.append(f"✅ 签到成功，获得 {check_in_gold} 灵石")
+            
+            # ===== 节日判定 =====
+            festival = self.player_handler._get_today_festival()
+            if festival:
+                player.gold += festival["gold"]
+                player.experience += festival["exp"]
+                item_name = festival.get("item")
+                item_count = festival.get("item_count", 1)
+                if item_name:
+                    await self.storage_ring_mgr.store_item(player, item_name, item_count, silent=True)
+                
+                details.append(f"🎊 今天是【{festival['name']}】，额外获得 {festival['gold']} 灵石、{festival['exp']} 修为及恩赐物品！")
+            # ======================
+            
+            await self.db.ext.add_task_progress(user_id, "check_in", 1)
+            has_any_action = True
+            # 签到改动立即落库，防止后续子系统未触发 update_player 时被结尾覆盖丢失
+            await self.db.update_player(player)
+
+        # 2. 银行利息
+        try:
+            bank_data = await self.db.ext.get_bank_account(user_id)
+            if bank_data and bank_data["balance"] > 0:
+                success, msg = await self.bank_mgr.claim_interest(player)
+                if success:
+                    details.append(f"🏦 银行利息已领取")
+                    has_any_action = True
+        except Exception as e: logger.warning(f"一键日常-银行利息异常: {e}")
+
+        # 3. 洞天福地
+        try:
+            success, msg = await self.blessed_land_mgr.collect_income(player)
+            if success:
+                details.append(f"🏔️ 洞天产出已收取")
+                has_any_action = True
+        except Exception as e: logger.warning(f"一键日常-洞天异常: {e}")
+
+        # 4. 灵田
+        try:
+            success, msg = await self.spirit_farm_mgr.harvest(player)
+            if success:
+                details.append(f"🌾 灵田已收获")
+                has_any_action = True
+        except Exception as e: logger.warning(f"一键日常-灵田异常: {e}")
+
+        # 5. 灵眼
+        try:
+            success, msg = await self.spirit_eye_mgr.collect_spirit_eye(player)
+            if success:
+                details.append(f"👁️ 灵眼产出已收取")
+                has_any_action = True
+        except Exception as e: logger.warning(f"一键日常-灵眼异常: {e}")
+
+        if not has_any_action:
+            yield event.plain_result("✨ 你今日的日常打理得井井有条，目前没有可以一键收取的东西。")
+            return
+
+        # 仅用于展示最新数值；各子系统已各自持久化，这里不再回写避免用陈旧对象覆盖
+        player = await self.db.get_player_by_id(user_id)
+
+        reply_msg = "🪄 【一键日常】托管完成！\n"
+        reply_msg += "━━━━━━━━━━━━━━━\n"
+        reply_msg += "\n".join(details)
+        reply_msg += f"\n━━━━━━━━━━━━━━━\n"
+        reply_msg += f"💰 当前持有灵石：{player.gold:,}\n"
+        reply_msg += f"📈 当前修为：{player.experience:,}"
+        
+        yield event.plain_result(reply_msg)
+
+    # ===== v6.1 解卡 =====
+    @filter.command("解卡", "强制重置卡死状态")
+    @require_whitelist
+    async def handle_force_unlock(self, event: AstrMessageEvent):
+        async for r in self.misc_handler.handle_force_unlock(event): yield r
+
+    # ===== v6.2 赌石与黑市 =====
+    @filter.command("切原石", "花费灵石赌石")
+    @require_whitelist
+    async def handle_cut_stone(self, event: AstrMessageEvent, count: str = "1"):
+        async for r in self.gamble_handlers.handle_cut_stone(event, count): yield r
+
+    @filter.command("黑市", "查看今日黑市")
+    @require_whitelist
+    async def handle_market(self, event: AstrMessageEvent):
+        async for r in self.gamble_handlers.handle_market(event): yield r
+
+    @filter.command("黑市购买", "从黑市购买商品")
+    @require_whitelist
+    async def handle_buy_market(self, event: AstrMessageEvent, index: str = "0"):
+        async for r in self.gamble_handlers.handle_buy_market(event, index): yield r
+
+    # ===== v6.3 炼器与洗练 =====
+    @filter.command("强化", "消耗强化石提升炼器等级")
+    @require_whitelist
+    async def handle_enhance(self, event: AstrMessageEvent):
+        async for r in self.forge_handlers.handle_enhance(event): yield r
+
+    @filter.command("洗练", "消耗洗练石重置装备词条")
+    @require_whitelist
+    async def handle_wash(self, event: AstrMessageEvent):
+        async for r in self.forge_handlers.handle_wash(event): yield r
+
+    # ===== v6.4 天魔入侵 =====
+    @filter.command("开启天魔入侵", "管理员开启活动")
+    @require_whitelist
+    async def handle_demon_start(self, event: AstrMessageEvent, hours: str = "24"):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限！")
+            return
+        async for r in self.demon_handlers.handle_start(event, hours): yield r
+
+    @filter.command("查验天魔", "查验某人是否为天魔")
+    @require_whitelist
+    async def handle_demon_catch(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.demon_handlers.handle_catch(event, target): yield r
+
+    @filter.command("天魔状态", "查看当前活动状态")
+    @require_whitelist
+    async def handle_demon_status(self, event: AstrMessageEvent):
+        async for r in self.demon_handlers.handle_status(event): yield r
+
+    # ===== v6.5 灵兽系统 =====
+    @filter.command("我的灵兽", "查看当前携带的灵兽")
+    @require_whitelist
+    async def handle_my_pet(self, event: AstrMessageEvent):
+        async for r in self.pet_handlers.handle_my_pet(event): yield r
+
+    @filter.command("孵化灵兽", "契约一只新灵兽")
+    @require_whitelist
+    async def handle_adopt_pet(self, event: AstrMessageEvent, pet_name: str = ""):
+        async for r in self.pet_handlers.handle_adopt(event, pet_name): yield r
+
+    @filter.command("喂养灵兽", "消耗资源提升灵兽等级")
+    @require_whitelist
+    async def handle_feed_pet(self, event: AstrMessageEvent):
+        async for r in self.pet_handlers.handle_feed(event): yield r
+
+    # ===== v6.5.1 新增：放生与吞噬 =====
+    @filter.command("放生灵兽", "清空当前灵兽，以便契约新的")
+    @require_whitelist
+    async def handle_release_pet(self, event: AstrMessageEvent):
+        async for r in self.pet_handlers.handle_release(event): yield r
+
+    @filter.command("吞噬灵兽", "吞噬当前灵兽，返还部分资源")
+    @require_whitelist
+    async def handle_devour_pet(self, event: AstrMessageEvent):
+        async for r in self.pet_handlers.handle_devour(event): yield r
+
+    # ===== v6.6 宗门大比 =====
+    @filter.command("开启宗门大比", "管理员开启活动")
+    @require_whitelist
+    async def handle_start_sect_battle(self, event: AstrMessageEvent):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限！")
+            return
+        success, msg = await self.sect_mgr.start_sect_battle()
+        yield event.plain_result(msg)
+
+    @filter.command("结束宗门大比", "管理员结束活动")
+    @require_whitelist
+    async def handle_end_sect_battle(self, event: AstrMessageEvent):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限！")
+            return
+        success, msg = await self.sect_mgr.end_sect_battle()
+        yield event.plain_result(msg)
+
+    @filter.command("大比切磋", "受天道压制的宗门PVP")
+    @require_whitelist
+    async def handle_sect_battle(self, event: AstrMessageEvent, target: str = ""):
+        async for r in self.sect_handlers.handle_sect_battle(event, target): yield r
+
+    # ===== v6.7 交易坊市 =====
+    @filter.command("坊市", "查看玩家交易坊市")
+    @require_whitelist
+    async def handle_market_list(self, event: AstrMessageEvent):
+        async for r in self.auction_handlers.handle_list(event): yield r
+
+    @filter.command("坊市上架", "上架物品到坊市")
+    @require_whitelist
+    async def handle_market_sell(self, event: AstrMessageEvent, args: str = ""):
+        async for r in self.auction_handlers.handle_list_item(event, args): yield r
+
+    @filter.command("坊市购买", "购买坊市物品")
+    @require_whitelist
+    async def handle_market_buy(self, event: AstrMessageEvent, auction_id: str = "0"):
+        async for r in self.auction_handlers.handle_buy(event, auction_id): yield r
+
+    @filter.command("坊市下架", "下架坊市物品")
+    @require_whitelist
+    async def handle_market_cancel(self, event: AstrMessageEvent, auction_id: str = "0"):
+        async for r in self.auction_handlers.handle_cancel(event, auction_id): yield r
+
+    # ===== v6.8 灵田扩展：施肥与杂交 =====
+    @filter.command("施肥", "消耗灵石恢复灵田肥力")
+    @require_whitelist
+    async def handle_fertilize(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途，请先发送「我要修仙」。")
+            return
+        success, msg = await self.spirit_farm_mgr.fertilize(player)
+        yield event.plain_result(msg)
+
+    @filter.command("杂交", "将两种灵草杂交出新品种")
+    @require_whitelist
+    async def handle_hybridize(self, event: AstrMessageEvent, herb_a: str = "", herb_b: str = ""):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途，请先发送「我要修仙」。")
+            return
+        success, msg = await self.spirit_farm_mgr.hybridize(player, herb_a, herb_b)
+        yield event.plain_result(msg)
+
+    # ===== v6.8 储物戒空间附魔 =====
+    @filter.command("储物戒附魔", "消耗空间石永久扩充储物戒容量")
+    @require_whitelist
+    async def handle_ring_enchant(self, event: AstrMessageEvent, stones: str = "1"):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途，请先发送「我要修仙」。")
+            return
+        try:
+            stone_count = int(stones)
+        except ValueError:
+            yield event.plain_result("❌ 请输入有效的空间石数量，例如：/储物戒附魔 2")
+            return
+        success, msg = await self.storage_ring_mgr.enchant_ring(player, stone_count)
+        yield event.plain_result(msg)
+
+    # ===== v6.8 押镖与劫道 =====
+    @filter.command("押镖", "接一趟灵石镖（期间可被劫镖）")
+    @require_whitelist
+    async def handle_start_escort(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途，请先发送「我要修仙」。")
+            return
+        user_cd = await self.db.ext.get_user_cd(player.user_id)
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            from .models_extended import UserStatus as _US
+            yield event.plain_result(f"❌ 你当前正{_US.get_name(user_cd.type)}，无法押镖！")
+            return
+        success, msg, _ = await self.escort_mgr.start_escort(player)
+        if success:
+            player_name = player.user_name or str(player.user_id)[:8]
+            await self._broadcast_world_boss_spawn(
+                f"🛡️ 修士【{player_name}】接下了一趟灵石镖，正行走于官道之上...\n"
+                f"💡 可消耗【迷神香】发送 /劫镖 @此人 截取镖银！"
+            )
+        yield event.plain_result(msg)
+
+    @filter.command("完成押镖", "押镖时间结束后结算镖银")
+    @require_whitelist
+    async def handle_finish_escort(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.escort_mgr.finish_escort(player)
+        yield event.plain_result(msg)
+
+    @filter.command("放弃押镖", "扔下镖车跑路（无收益）")
+    @require_whitelist
+    async def handle_quit_escort(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.escort_mgr.quit_escort(player)
+        yield event.plain_result(msg)
+
+    @filter.command("劫镖", "消耗迷神香截取他人镖银（强制PVP）")
+    @require_whitelist
+    async def handle_rob_escort(self, event: AstrMessageEvent, target: str = ""):
+        from astrbot.api.all import At
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        target_id = None
+        if hasattr(event, "message_obj") and event.message_obj:
+            for comp in event.message_obj.message:
+                if isinstance(comp, At):
+                    target_id = str(comp.qq)
+                    break
+        if not target_id and target.strip().lstrip("@").isdigit():
+            target_id = target.strip().lstrip("@")
+        if not target_id:
+            yield event.plain_result("❌ 请使用 @某人 指定你要劫镖的目标。")
+            return
+        success, msg = await self.escort_mgr.rob_escort(player, target_id)
+        yield event.plain_result(msg)
+
+    # ===== v6.8 奇遇选择 =====
+    @filter.command("奇遇选择", "对当前奇遇事件做出抉择")
+    @require_whitelist
+    async def handle_encounter_choice(self, event: AstrMessageEvent, choice: str = "0"):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        try:
+            choice_int = int(choice)
+        except ValueError:
+            yield event.plain_result("❌ 请输入选项编号，例如：/奇遇选择 1")
+            return
+        success, msg = await self.encounter_mgr.resolve_choice(player, choice_int)
+        yield event.plain_result(msg)
+
+    # ===== v6.10 功德因果 =====
+    @filter.command("行善", "捐献灵石积累功德（每日一次）")
+    @require_whitelist
+    async def handle_do_good(self, event: AstrMessageEvent):
+        import time as _time
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        today = _time.strftime("%Y-%m-%d")
+        key = f"dogood_{player.user_id}"
+        last = await self.db.ext.get_system_config(key)
+        if last == today:
+            yield event.plain_result("❌ 你今日已经行过善了，明日再来。")
+            return
+        cost = 2000
+        if player.gold < cost:
+            yield event.plain_result(f"❌ 行善需要捐献 {cost:,} 灵石（为贫苦散修购置丹药）。")
+            return
+        player.gold -= cost
+        player.karma = (getattr(player, "karma", 0) or 0) + 1
+        await self.db.update_player(player)
+        await self.db.ext.set_system_config(key, today)
+        yield event.plain_result(
+            "🪷 行善积德！\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"你捐献 {cost:,} 灵石济困扶危。\n"
+            f"功德 +1（当前功德 {player.karma}）\n"
+            "✨ 功德可提升奇遇概率与突破成功率\n"
+            "🌑 而偷窃、劫镖会积累业力，反向影响突破"
+        )
+
+    # ===== v6.10 丹炉系统 =====
+    @filter.command("升级丹炉", "消耗灵石升级丹炉（每级炼丹成功率+3%）")
+    @require_whitelist
+    async def handle_upgrade_furnace(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.alchemy_mgr.upgrade_furnace(player)
+        yield event.plain_result(msg)
+
+    # ===== v6.10 洞天装修 =====
+    @filter.command("洞天装修", "购买家具布置洞天")
+    @require_whitelist
+    async def handle_buy_furniture(self, event: AstrMessageEvent, name: str = ""):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.blessed_land_mgr.buy_furniture(player, name.strip())
+        yield event.plain_result(msg)
+
+    # ===== v6.10 宗门建筑 =====
+    @filter.command("宗门建筑", "查看宗门建筑")
+    @require_whitelist
+    async def handle_sect_buildings(self, event: AstrMessageEvent):
+        success, msg = await self.sect_mgr.show_buildings(event.get_sender_id())
+        yield event.plain_result(msg)
+
+    @filter.command("升级建筑", "升级宗门建筑（宗主/长老，消耗宗门资金）")
+    @require_whitelist
+    async def handle_upgrade_building(self, event: AstrMessageEvent, name: str = ""):
+        success, msg = await self.sect_mgr.upgrade_building(event.get_sender_id(), name.strip())
+        yield event.plain_result(msg)
+
+    # ===== v6.10 生活职业 =====
+    @filter.command("选择生活职业", "选择专精：炼器师/符箓师/阵法师")
+    @require_whitelist
+    async def handle_choose_life_skill(self, event: AstrMessageEvent, skill: str = ""):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.life_skill_mgr.choose_skill(player, skill.strip())
+        yield event.plain_result(msg)
+
+    @filter.command("制符", "符箓师每日免费绘制一张引雷符")
+    @require_whitelist
+    async def handle_draw_talisman(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.life_skill_mgr.daily_talisman(player)
+        yield event.plain_result(msg)
+
+    # ===== v6.10 魔潮天灾 =====
+    @filter.command("开启魔潮", "管理员开启全服天灾事件")
+    @require_whitelist
+    async def handle_start_tide(self, event: AstrMessageEvent, hours: str = "12"):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有权限！")
+            return
+        try:
+            h = max(1, min(48, int(hours)))
+        except ValueError:
+            h = 12
+        success, msg = await self.calamity_mgr.start_tide(h)
+        if success:
+            await self._broadcast_world_boss_spawn(msg)
+        yield event.plain_result(msg)
+
+    @filter.command("魔潮状态", "查看魔潮抵御进度")
+    @require_whitelist
+    async def handle_tide_status(self, event: AstrMessageEvent):
+        yield event.plain_result(await self.calamity_mgr.get_status())
+
+    @filter.command("抵御魔潮", "捐献灵石抵御魔潮")
+    @require_whitelist
+    async def handle_resist_tide(self, event: AstrMessageEvent, amount: str = "0"):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        try:
+            amt = int(amount)
+        except ValueError:
+            yield event.plain_result("❌ 请输入正确的灵石数量，例如：/抵御魔潮 5000")
+            return
+        success, msg = await self.calamity_mgr.resist(player, amt)
+        if "成功抵御" in msg:
+            await self._broadcast_world_boss_spawn(msg)
+        yield event.plain_result(msg)
+
+    # ===== v6.11 管理员工具 =====
+    # ===== v6.14 季节系统 =====
+    @filter.command("季节", "查看当前灵田季节与加成")
+    @require_whitelist
+    async def handle_season_info(self, event: AstrMessageEvent):
+        from .managers.spirit_farm_manager import SEASON_EFFECTS, get_current_season_index
+        season = SEASON_EFFECTS[get_current_season_index()]
+        idx = get_current_season_index()
+        order = ["春", "夏", "秋", "冬"]
+        lines = [
+            f"{season['icon']} 当前季节：【{season['name']}】",
+            "━━━━━━━━━━━━━━━",
+            season["desc"],
+            "━━━━━━━━━━━━━━━",
+            "四季轮转表：",
+            f"  🌱 春·生发：生长+33%，产量+10%",
+            f"  ☀️ 夏·炎灼：阳性灵草（火焰花/血灵草）生长+33%",
+            f"  🍂 秋·丰收：全灵草产量+25%",
+            f"  ❄️ 冬·蛰藏：生长放缓50%，冰心草不受影响",
+            "━━━━━━━━━━━━━━━",
+            f"季节按现实时间每约一周自动轮转（当前：{order[idx]}季）",
+            "💡 发送 /种植 <灵草名> 把握季节加成",
+        ]
+        yield event.plain_result("\n".join(lines))
+
+    # ===== v6.13 化身托管 =====
+    @filter.command("激活化身", "消耗化身傀儡，30天内闭关收益+20%")
+    @require_whitelist
+    async def handle_activate_avatar(self, event: AstrMessageEvent):
+        import json as _json
+        import time as _time
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+
+        try:
+            bonus = _json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            bonus = {}
+        avatar_until = int(bonus.get("avatar_until", 0))
+        if avatar_until > int(_time.time()):
+            days = (avatar_until - int(_time.time())) // 86400
+            yield event.plain_result(f"❌ 你的化身仍在行功中（剩余约 {days} 天），无需重复激活。")
+            return
+
+        if not self.storage_ring_mgr.has_item(player, "化身傀儡", 1):
+            yield event.plain_result(
+                "❌ 你的储物戒中没有【化身傀儡】。\n"
+                "💡 化身傀儡为天阶稀有物品，可留意百宝阁刷新。"
+            )
+            return
+
+        success, msg = await self.storage_ring_mgr.retrieve_item(player, "化身傀儡", 1)
+        if not success:
+            yield event.plain_result(f"❌ 消耗化身傀儡失败：{msg}")
+            return
+
+        # retrieve 已同步物品数据到 player；保留其他加成，写入 avatar_until
+        try:
+            bonus = _json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            bonus = {}
+        bonus["avatar_until"] = int(_time.time()) + 30 * 86400
+        player.permanent_bonus = _json.dumps(bonus, ensure_ascii=False)
+        await self.db.update_player(player)
+
+        yield event.plain_result(
+            "🤖 化身激活成功！\n"
+            "━━━━━━━━━━━━━━━\n"
+            "你以秘法唤醒化身傀儡，它将替你昼夜行功。\n"
+            "⏳ 有效期：30 天\n"
+            "📈 效果：闭关收益 +20%（与其他加成叠加）\n"
+            "消耗：化身傀儡 x1"
+        )
+
+    @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
+    @require_whitelist
+    async def handle_admin_tool(self, event: AstrMessageEvent, sub: str = "", arg1: str = "", arg2: str = ""):
+        if not self._check_boss_admin(event):
+            yield event.plain_result("❌ 你没有管理员权限！")
+            return
+
+        if sub == "查玩家":
+            target = None
+            if arg1.isdigit():
+                target = await self.db.get_player_by_id(arg1)
+            else:
+                target = await self.db.get_player_by_name(arg1)
+            if not target:
+                yield event.plain_result(f"❌ 未找到玩家【{arg1}】。")
+                return
+            user_cd = await self.db.ext.get_user_cd(target.user_id)
+            loan = await self.db.ext.get_active_loan(target.user_id)
+            status = UserStatus.get_name(user_cd.type) if user_cd else "空闲"
+            yield event.plain_result(
+                f"🔍 玩家数据\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"ID：{target.user_id}\n"
+                f"道号：{target.user_name or '无'}\n"
+                f"职业/境界：{target.cultivation_type} / {target.get_level(self.config_manager)}\n"
+                f"修为：{target.experience:,}\n"
+                f"灵石：{target.gold:,}\n"
+                f"功德/业力：{getattr(target, 'karma', 0):+d}\n"
+                f"生活职业：{getattr(target, 'life_skill', '') or '无'}\n"
+                f"状态：{status} / {target.state}\n"
+                f"转生次数：{target.reincarnation_count}\n"
+                f"贷款：{('本金 ' + format(loan['principal'], ',') + ' 灵石') if loan else '无'}"
+            )
+            return
+
+        elif sub == "发灵石":
+            if not arg1.isdigit() or not arg2.lstrip('-').isdigit():
+                yield event.plain_result("用法：/仙界管理 发灵石 <玩家ID> <数量>")
+                return
+            amount = int(arg2)
+            target = await self.db.get_player_by_id(arg1)
+            if not target:
+                yield event.plain_result(f"❌ 未找到玩家 {arg1}。")
+                return
+            await self.db.add_player_gold(arg1, amount)
+            sign = "+" if amount >= 0 else ""
+            yield event.plain_result(f"✅ 已向玩家 {arg1}（{target.user_name or '无名'}）{sign}{amount:,} 灵石。")
+            return
+
+        elif sub == "重置状态":
+            target = await self.db.get_player_by_id(arg1)
+            if not target:
+                yield event.plain_result(f"❌ 未找到玩家 {arg1}。")
+                return
+            await self.db.ext.set_user_busy(arg1, UserStatus.IDLE, 0, extra_data={})
+            await self.db.update_player_fields(arg1, state="空闲", cultivation_start_time=0)
+            yield event.plain_result(f"✅ 已重置玩家 {arg1}（{target.user_name or '无名'}）的卡死状态。")
+            return
+
+        elif sub == "公告":
+            text = f"{arg1} {arg2}".strip()
+            if not text:
+                yield event.plain_result("用法：/仙界管理 公告 <文本>")
+                return
+            await self._broadcast_world_boss_spawn(f"📜【仙界公告】\n{text}")
+            yield event.plain_result("✅ 公告已广播。")
+            return
+
+        yield event.plain_result(
+            "🛠️ 仙界管理工具\n"
+            "━━━━━━━━━━━━━━━\n"
+            "/仙界管理 查玩家 <ID或道号>\n"
+            "/仙界管理 发灵石 <ID> <数量(可负)>\n"
+            "/仙界管理 重置状态 <ID>\n"
+            "/仙界管理 公告 <文本>"
+        )

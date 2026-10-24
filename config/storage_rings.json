@@ -1,0 +1,74 @@
+{
+    "基础储物戒": {
+        "name": "基础储物戒",
+        "type": "storage_ring",
+        "rank": "凡品",
+        "description": "修士入门必备的储物法器，空间狭小但足够存放常用物品。",
+        "capacity": 20,
+        "required_level_index": 0,
+        "price": 0
+    },
+    "灵玉储物戒": {
+        "name": "灵玉储物戒",
+        "type": "storage_ring",
+        "rank": "凡品",
+        "description": "以灵玉打造的储物戒，空间比基础储物戒更加宽敞。",
+        "capacity": 30,
+        "required_level_index": 3,
+        "price": 1000
+    },
+    "玄铁储物戒": {
+        "name": "玄铁储物戒",
+        "type": "storage_ring",
+        "rank": "珍品",
+        "description": "以玄铁为材料炼制，空间稳定且容量可观。",
+        "capacity": 50,
+        "required_level_index": 6,
+        "price": 5000
+    },
+    "星辰储物戒": {
+        "name": "星辰储物戒",
+        "type": "storage_ring",
+        "rank": "珍品",
+        "description": "蕴含星辰之力的储物法器，内部空间如同一片小型星空。",
+        "capacity": 80,
+        "required_level_index": 10,
+        "price": 15000
+    },
+    "乾坤储物戒": {
+        "name": "乾坤储物戒",
+        "type": "storage_ring",
+        "rank": "圣品",
+        "description": "高阶储物法器，内含小型乾坤，空间广阔。",
+        "capacity": 120,
+        "required_level_index": 15,
+        "price": 50000
+    },
+    "须弥储物戒": {
+        "name": "须弥储物戒",
+        "type": "storage_ring",
+        "rank": "圣品",
+        "description": "传说中的须弥芥子之术炼制，芥子纳须弥，空间极为广大。",
+        "capacity": 200,
+        "required_level_index": 20,
+        "price": 200000
+    },
+    "混元储物戒": {
+        "name": "混元储物戒",
+        "type": "storage_ring",
+        "rank": "帝品",
+        "description": "以混元之力开辟的独立空间，几乎无穷无尽。",
+        "capacity": 500,
+        "required_level_index": 27,
+        "price": 1000000
+    },
+    "太虚储物戒": {
+        "name": "太虚储物戒",
+        "type": "storage_ring",
+        "rank": "神品",
+        "description": "通往太虚的法器，内部便是一方小世界，万物可纳。",
+        "capacity": 999,
+        "required_level_index": 33,
+        "price": 9999999
+    }
+}
