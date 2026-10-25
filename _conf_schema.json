@@ -1,0 +1,356 @@
+{
+  "IMAGE_CARDS": {
+    "description": "图片卡片设置",
+    "type": "object",
+    "items": {
+      "ENABLED": {
+        "description": "总开关",
+        "type": "bool",
+        "default": true,
+        "hint": "关闭后所有界面只发文本，不再生成磨砂玻璃图片卡片。"
+      },
+      "CARD_INFO": {
+        "description": "我的信息卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/我的信息 追加图片卡片。"
+      },
+      "CARD_CHECKIN": {
+        "description": "签到卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/签到 追加图片卡片。"
+      },
+      "CARD_BAG": {
+        "description": "储物戒卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/储物戒 追加图片卡片。"
+      },
+      "CARD_PET": {
+        "description": "灵兽卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/我的灵兽 追加图片卡片。"
+      },
+      "CARD_BOSS": {
+        "description": "世界Boss状态卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/世界Boss状态 追加图片卡片。"
+      },
+      "CARD_FARM": {
+        "description": "灵田卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/我的灵田 追加图片卡片。"
+      },
+      "CARD_COMBAT": {
+        "description": "战斗结算海报",
+        "type": "bool",
+        "default": true,
+        "hint": "Boss击杀结算追加图片海报。"
+      },
+      "CARD_SHOP": {
+        "description": "商店货架卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/丹阁 /器阁 /百宝阁 追加图片卡片。"
+      },
+      "CARD_MARKET": {
+        "description": "坊市列表卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/坊市 追加图片卡片。"
+      },
+      "CARD_EQUIP": {
+        "description": "我的装备卡片",
+        "type": "bool",
+        "default": true,
+        "hint": "/我的装备 追加图片卡片。"
+      }
+    }
+  },
+  "ACCESS_CONTROL": {
+    "description": "访问控制",
+    "type": "object",
+    "items": {
+      "WHITELIST_GROUPS": {
+        "description": "白名单群号列表",
+        "type": "list",
+        "default": [],
+        "hint": "请添加允许使用此插件的QQ群号。留空则表示所有群聊都可用。"
+      },
+      "SHOP_MANAGERS": {
+        "description": "商店管理员名单",
+        "type": "list",
+        "default": [],
+        "hint": "可以手动刷新商店的用户ID（字符串）。为空则不允许任何人手动刷新商店。"
+      },
+      "BOSS_ADMINS": {
+        "description": "Boss管理员名单",
+        "type": "list",
+        "default": [],
+        "hint": "可以手动生成Boss的用户ID（字符串）。为空则不允许任何人手动生成Boss。"
+      }
+    }
+  },
+  "VALUES": {
+    "description": "核心数值配置",
+    "type": "object",
+    "items": {
+      "INITIAL_GOLD": {
+        "description": "初始灵石",
+        "type": "int",
+        "default": 100,
+        "hint": "新玩家创建角色时获得的初始灵石数量。"
+      },
+      "BASE_EXP_PER_MINUTE": {
+        "description": "闭关基础修为（每分钟）",
+        "type": "int",
+        "default": 100,
+        "hint": "闭关修炼时，每分钟获得的基础修为值（会受灵根倍率影响）。"
+      },
+      "CHECK_IN_GOLD_MIN": {
+        "description": "签到灵石奖励（最小值）",
+        "type": "int",
+        "default": 50,
+        "hint": "每日签到获得的最少灵石数量。"
+      },
+      "CHECK_IN_GOLD_MAX": {
+        "description": "签到灵石奖励（最大值）",
+        "type": "int",
+        "default": 500,
+        "hint": "每日签到获得的最多灵石数量。"
+      },
+      "BREAKTHROUGH_DEATH_PROBABILITY": {
+        "description": "突破失败死亡概率范围",
+        "type": "list",
+        "default": [0.01, 0.1],
+        "hint": "突破失败时的死亡概率范围。第一个值为最小概率（1%），第二个值为最大概率（10%）。每次突破失败会在此范围内随机一个死亡概率。"
+      },
+      "PAVILION_REFRESH_HOURS": {
+        "description": "阁楼刷新时间（小时）",
+        "type": "int",
+        "default": 1,
+        "hint": "丹阁、器阁、百宝阁自动刷新的间隔时间（小时）。设置为0则不自动刷新。"
+      },
+      "PAVILION_PILL_COUNT": {
+        "description": "丹阁展示数量",
+        "type": "int",
+        "default": 20,
+        "hint": "丹阁展示的丹药数量。"
+      },
+      "PAVILION_WEAPON_COUNT": {
+        "description": "器阁展示数量",
+        "type": "int",
+        "default": 20,
+        "hint": "器阁展示的武器数量。"
+      },
+      "PAVILION_TREASURE_COUNT": {
+        "description": "百宝阁展示数量",
+        "type": "int",
+        "default": 25,
+        "hint": "百宝阁展示的物品数量。"
+      },
+      "SHOP_DISCOUNT_MIN": {
+        "description": "折扣最小值",
+        "type": "float",
+        "default": 0.6,
+        "hint": "物品折扣的最小值（0.8表示8折）。"
+      },
+      "SHOP_DISCOUNT_MAX": {
+        "description": "折扣最大值",
+        "type": "float",
+        "default": 1.4,
+        "hint": "物品折扣的最大值（1.2表示1.2倍价格）。"
+      },
+      "SHOP_STOCK_DIVISOR": {
+        "description": "库存计算基数",
+        "type": "int",
+        "default": 100,
+        "hint": "库存=物品权重/基数。基数越大，库存越少。"
+      }
+    }
+  },
+  "SPIRIT_ROOT_SPEEDS": {
+    "description": "灵根修炼速度倍率",
+    "type": "object",
+    "items": {
+      "PSEUDO_ROOT_SPEED": {
+        "description": "伪灵根（废灵根）",
+        "type": "float",
+        "default": 0.5,
+        "hint": "资质最差，修炼极其缓慢，万中无一的倒霉蛋。"
+      },
+      "QUAD_ROOT_SPEED": {
+        "description": "四灵根",
+        "type": "float",
+        "default": 0.6,
+        "hint": "拥有四种灵根，资质平庸，难以有成。"
+      },
+      "TRI_ROOT_SPEED": {
+        "description": "三灵根",
+        "type": "float",
+        "default": 0.75,
+        "hint": "拥有三种灵根，资质一般。"
+      },
+      "DUAL_ROOT_SPEED": {
+        "description": "双灵根",
+        "type": "float",
+        "default": 0.9,
+        "hint": "拥有两种灵根，较为常见。"
+      },
+      "WUXING_ROOT_SPEED": {
+        "description": "五行单灵根",
+        "type": "float",
+        "default": 1.0,
+        "hint": "金、木、水、火、土单一灵根，修炼速度正常。"
+      },
+      "THUNDER_ROOT_SPEED": {
+        "description": "雷灵根",
+        "type": "float",
+        "default": 1.3,
+        "hint": "天地雷霆之力，变异灵根，稀有。"
+      },
+      "ICE_ROOT_SPEED": {
+        "description": "冰灵根",
+        "type": "float",
+        "default": 1.25,
+        "hint": "极寒冰封之力，变异灵根，稀有。"
+      },
+      "WIND_ROOT_SPEED": {
+        "description": "风灵根",
+        "type": "float",
+        "default": 1.25,
+        "hint": "疾风迅雷之力，变异灵根，稀有。"
+      },
+      "DARK_ROOT_SPEED": {
+        "description": "暗灵根",
+        "type": "float",
+        "default": 1.3,
+        "hint": "幽暗深邃之力，变异灵根，稀有。"
+      },
+      "LIGHT_ROOT_SPEED": {
+        "description": "光灵根",
+        "type": "float",
+        "default": 1.3,
+        "hint": "神圣光明之力，变异灵根，稀有。"
+      },
+      "HEAVENLY_ROOT_SPEED": {
+        "description": "天灵根",
+        "type": "float",
+        "default": 1.5,
+        "hint": "天选之子，单一属性的极致，极其稀有。"
+      },
+      "YIN_YANG_ROOT_SPEED": {
+        "description": "阴阳灵根",
+        "type": "float",
+        "default": 1.8,
+        "hint": "阴阳调和，造化玄机，传说级灵根。"
+      },
+      "FUSION_ROOT_SPEED": {
+        "description": "融合灵根",
+        "type": "float",
+        "default": 1.8,
+        "hint": "五行融合，万法归一，传说级灵根。"
+      },
+      "CHAOS_ROOT_SPEED": {
+        "description": "混沌灵根",
+        "type": "float",
+        "default": 2.0,
+        "hint": "混沌初开，包罗万象，神话级灵根。"
+      },
+      "INNATE_BODY_SPEED": {
+        "description": "先天道体",
+        "type": "float",
+        "default": 2.5,
+        "hint": "天生道体，与天地同寿，禁忌级体质。"
+      },
+      "DIVINE_BODY_SPEED": {
+        "description": "神圣体质",
+        "type": "float",
+        "default": 2.3,
+        "hint": "神之后裔，天赋异禀，禁忌级体质。"
+      }
+    }
+  },
+  "SPIRIT_ROOT_WEIGHTS": {
+    "description": "灵根抽取权重配置",
+    "type": "object",
+    "items": {
+      "PSEUDO_ROOT_WEIGHT": {
+        "description": "伪灵根权重",
+        "type": "int",
+        "default": 1,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "QUAD_ROOT_WEIGHT": {
+        "description": "四灵根权重",
+        "type": "int",
+        "default": 10,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "TRI_ROOT_WEIGHT": {
+        "description": "三灵根权重",
+        "type": "int",
+        "default": 30,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "DUAL_ROOT_WEIGHT": {
+        "description": "双灵根权重",
+        "type": "int",
+        "default": 100,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "WUXING_ROOT_WEIGHT": {
+        "description": "五行单灵根权重",
+        "type": "int",
+        "default": 200,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "VARIANT_ROOT_WEIGHT": {
+        "description": "变异灵根权重（雷/冰/风/暗/光）",
+        "type": "int",
+        "default": 20,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "HEAVENLY_ROOT_WEIGHT": {
+        "description": "天灵根权重",
+        "type": "int",
+        "default": 5,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "LEGENDARY_ROOT_WEIGHT": {
+        "description": "传说级灵根权重（阴阳/融合）",
+        "type": "int",
+        "default": 2,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "MYTHIC_ROOT_WEIGHT": {
+        "description": "神话级灵根权重（混沌）",
+        "type": "int",
+        "default": 1,
+        "hint": "权重越高，抽到的概率越大。"
+      },
+      "DIVINE_BODY_WEIGHT": {
+        "description": "禁忌级体质权重（先天道体/神圣体质）",
+        "type": "int",
+        "default": 1,
+        "hint": "权重越高，抽到的概率越大。建议设置为极低值。"
+      }
+    }
+  },
+  "FILES": {
+    "description": "文件路径配置",
+    "type": "object",
+    "items": {
+      "DATABASE_FILE": {
+        "description": "数据库文件名",
+        "type": "string",
+        "default": "xiuxian_data_lite.db",
+        "hint": "存储玩家数据的SQLite数据库文件名，数据库将存储在 data/plugin_data/{插件名}/ 目录下。"
+      }
+    }
+  }
+}
