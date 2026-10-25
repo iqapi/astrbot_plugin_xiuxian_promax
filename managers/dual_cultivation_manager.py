@@ -90,6 +90,17 @@ class DualCultivationManager:
         """发起双修请求"""
         if initiator.user_id == target_id:
             return False, "❌ 不能与自己双修。"
+
+        # 仙灵道侣互斥：已结缘仙灵者不可与真人双修（防收益叠加）
+        try:
+            async with self.db.conn.execute(
+                "SELECT npc_id FROM npc_partners WHERE user_id = ?", (initiator.user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                return False, f"❌ 你已与仙灵【{row[0]}】结缘，尘缘已定，不可再与真人双修。\n💡 可 /仙灵解除 后再寻人间道侣。"
+        except Exception:
+            pass
         
         # 检查发起者状态（状态互斥）
         user_cd = await self.db.ext.get_user_cd(initiator.user_id)
@@ -140,6 +151,20 @@ class DualCultivationManager:
     
     async def accept_request(self, acceptor: Player) -> Tuple[bool, str]:
         """接受双修请求"""
+        # 仙灵道侣互斥：接受方结缘仙灵则请求作废
+        try:
+            async with self.db.conn.execute(
+                "SELECT npc_id FROM npc_partners WHERE user_id = ?", (acceptor.user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                pending = await self._get_pending_request(acceptor.user_id)
+                if pending:
+                    await self._delete_request(pending["id"])
+                return False, f"❌ 你已与仙灵【{row[0]}】结缘，双修请求已自动婉拒。"
+        except Exception:
+            pass
+
         request = await self._get_pending_request(acceptor.user_id)
         if not request:
             return False, "❌ 没有待处理的双修请求。"

@@ -75,7 +75,12 @@ class GambleManager:
             {"name": "地阶·洗髓丹", "price": 1000, "desc": "永久加属性。", "fake": False},
             {"name": "神秘的葫芦", "price": 5000, "desc": "不知道装了什么。", "fake": True},
             {"name": "天阶·诛仙剑", "price": 50000, "desc": "绝世神兵。", "fake": False},
-            {"name": "劣质回气散", "price": 200, "desc": "闻起来有点刺鼻。", "fake": True}
+            {"name": "劣质回气散", "price": 200, "desc": "闻起来有点刺鼻。", "fake": True},
+            {"name": "引雷符", "price": 1500, "desc": "雷纹隐现，炼丹保命必备。", "fake": False},
+            {"name": "空间石", "price": 4200, "desc": "触手冰凉，蕴着空间之力。", "fake": False},
+            {"name": "化身傀儡", "price": 180000, "desc": "眉心有一道灵光缓缓流转。", "fake": False},
+            {"name": "护府令", "price": 30000, "desc": "真正的护府大阵符令。", "fake": False},
+            {"name": "来路不明的傀儡", "price": 20000, "desc": "看起来像化身傀儡……真的吗？", "fake": True}
         ]
         items = rng.sample(pool, 3)
         
@@ -98,7 +103,12 @@ class GambleManager:
             {"name": "地阶·洗髓丹", "price": 1000, "desc": "永久加属性。", "fake": False},
             {"name": "神秘的葫芦", "price": 5000, "desc": "不知道装了什么。", "fake": True},
             {"name": "天阶·诛仙剑", "price": 50000, "desc": "绝世神兵。", "fake": False},
-            {"name": "劣质回气散", "price": 200, "desc": "闻起来有点刺鼻。", "fake": True}
+            {"name": "劣质回气散", "price": 200, "desc": "闻起来有点刺鼻。", "fake": True},
+            {"name": "引雷符", "price": 1500, "desc": "雷纹隐现，炼丹保命必备。", "fake": False},
+            {"name": "空间石", "price": 4200, "desc": "触手冰凉，蕴着空间之力。", "fake": False},
+            {"name": "化身傀儡", "price": 180000, "desc": "眉心有一道灵光缓缓流转。", "fake": False},
+            {"name": "护府令", "price": 30000, "desc": "真正的护府大阵符令。", "fake": False},
+            {"name": "来路不明的傀儡", "price": 20000, "desc": "看起来像化身傀儡……真的吗？", "fake": True}
         ]
         items = rng.sample(pool, 3)
 

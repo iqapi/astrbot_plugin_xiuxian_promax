@@ -234,6 +234,16 @@ class BreakthroughManager:
                 success_msg += f"\n\n{loan_msg}"
             success_msg += cost_note
 
+            # 师徒联动：弟子突破，师父得师德（v6.16）
+            try:
+                from ..managers.social_manager import SocialManager
+                social = SocialManager(self.db)
+                _, mentor_msg = await social.on_disciple_breakthrough(player.user_id)
+                if mentor_msg:
+                    success_msg += mentor_msg
+            except Exception:
+                pass
+
             return True, success_msg, False
 
         else:

@@ -155,10 +155,30 @@ class RiftManager:
         if not rift:
             return False, "❌ 秘境不存在！使用 /秘境列表 查看可用秘境"
         
-        # 4. 检查境界要求
+        # 4. 检查境界要求（含差距与可进入秘境清单）
         if player.level_index < rift.required_level:
             level_name = self._get_level_name(rift.required_level)
-            return False, f"❌ 探索【{rift.rift_name}】需要达到【{level_name}】！"
+            all_rifts = await self.db.ext.get_all_rifts()
+            enterable = [
+                r for r in (all_rifts or [])
+                if player.level_index >= r.required_level
+            ]
+            if enterable:
+                alt_text = "\n".join(
+                    f"  · 【{r.rift_name}】(ID:{r.rift_id} · 需境界{r.required_level})"
+                    for r in enterable[:6]
+                )
+            else:
+                alt_text = "  · 暂无（先提升境界吧）"
+            return False, (
+                f"❌ 境界不足，无法进入！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"【{rift.rift_name}】需要达到【{level_name}】（境界等级 {rift.required_level}）\n"
+                f"你当前境界等级：{player.level_index}（还差 {rift.required_level - player.level_index} 级）\n"
+                f"💡 通过 /闭关 /历练 提升修为后 /突破 提高境界\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"✅ 你当前可进入的秘境：\n{alt_text}"
+            )
         
         # 5. 设置探索状态，存储秘境ID
         scheduled_time = int(time.time()) + self.explore_duration

@@ -136,6 +136,9 @@ class Player:
     karma: int = 0  # 功德/业力（正为功德，负为业力）
     life_skill: str = ""  # 生活职业：炼器师/符箓师/阵法师
 
+    # v6.16 师徒系统
+    virtue_points: int = 0  # 师德点（徒弟突破时获得，可兑换奖励）
+
     def get_level(self, config_manager: "ConfigManager") -> str:
         """获取境界名称"""
         level_data = config_manager.get_level_data(self.cultivation_type)

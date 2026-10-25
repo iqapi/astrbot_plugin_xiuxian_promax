@@ -21,6 +21,7 @@ class AlchemyManager:
     def __init__(self, db: DataBase, config_manager: "ConfigManager" = None, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
         self.config_manager = config_manager
+        self._social = None  # 懒加载 SocialManager（仙灵加成）
         self.storage_ring_manager = storage_ring_manager
         self.config = config_manager.alchemy_config if config_manager else {}
         
@@ -124,33 +125,87 @@ class AlchemyManager:
             f"花费：{cost:,} 灵石"
         )
 
-    async def get_available_recipes(self, user_id: str) -> Tuple[bool, str]:
-        """获取可用的丹药配方"""
-        player = await self.db.get_player_by_id(user_id)
-        if not player:
-            return False, "❌ 你还未踏入修仙之路！"
-        
-        available_recipes = [r for r in self.recipes.values() if player.level_index >= r.get("level_required", 0)]
-        if not available_recipes:
-            return False, "❌ 你当前境界无法炼制任何丹药！"
+    # ===== 火候小游戏（v6.16）：投料后 3 分钟内选火候，影响成功率与极品概率 =====
+    FIRE_STATE_PREFIX = "firecontrol_"
+    FIRE_OPTIONS = {
+        "1": {"label": "猛火急攻", "rate_bonus": -8, "perfect_bonus": 8,
+              "desc": "孤注一掷！成功率-8%，但极品概率大增"},
+        "2": {"label": "文火慢煨", "rate_bonus": 6, "perfect_bonus": -6,
+              "desc": "稳中求进！成功率+6%，难出极品"},
+        "3": {"label": "控火守中", "rate_bonus": 0, "perfect_bonus": 0,
+              "desc": "不偏不倚，一切如常"},
+    }
 
-        furnace_level = self.get_furnace_level(player)
-        furnace_names = ["凡铁炉", "青石炉", "紫金炉", "灵纹炉", "八卦炉", "五品玄天炉"]
+    async def start_fire_control(self, user_id: str, pill_id: int, recipe_name: str) -> Tuple[bool, str]:
+        """投料后进入火候选择（3分钟内 /火候 <1-3>）"""
+        import json as _json
+        state = {
+            "pill_id": pill_id,
+            "recipe": recipe_name,
+            "expire": int(time.time()) + 180,
+        }
+        await self.db.ext.set_system_config(
+            self.FIRE_STATE_PREFIX + user_id, _json.dumps(state, ensure_ascii=False)
+        )
+        opts = "\n".join(
+            f"  [{k}] {v['label']} —— {v['desc']}" for k, v in self.FIRE_OPTIONS.items()
+        )
+        return True, (
+            f"🔥 药材入炉，丹火升腾！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"正在炼制【{recipe_name}】，请选择火候：\n"
+            f"{opts}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💡 3分钟内发送 /火候 <编号> 掌控丹炉（超时按控火守中处理）"
+        )
 
-        msg = f"🔥 丹药配方（当前丹炉：【{furnace_names[furnace_level]}】成功率+{furnace_level * 3}%）\n━━━━━━━━━━━━━━━\n\n"
-        for recipe in available_recipes:
-            materials_str = ", ".join([f"{k}×{v}" for k, v in recipe["materials"].items()])
-            msg += f"【{recipe['name']}】(ID:{recipe['id']})\n"
-            msg += f"  需求境界：Lv.{recipe['level_required']}\n"
-            msg += f"  材料：{materials_str}\n"
-            msg += f"  成功率：{recipe['success_rate']}%\n"
-            msg += f"  效果：{recipe['desc']}\n\n"
-        
-        msg += "使用 /炼丹 <丹药ID> 开始炼制"
-        return True, msg
-    
+    async def pop_fire_state(self, user_id: str) -> Tuple[Optional[int], Optional[str]]:
+        """取出火候状态（一次性），返回 (pill_id, choice)。无状态返回 (None, None)"""
+        import json as _json
+        raw = await self.db.ext.get_system_config(self.FIRE_STATE_PREFIX + user_id)
+        if not raw:
+            return None, None
+        await self.db.ext.set_system_config(self.FIRE_STATE_PREFIX + user_id, "")  # 一次性消费
+        try:
+            state = _json.loads(raw)
+        except Exception:
+            return None, None
+        if int(time.time()) > int(state.get("expire", 0)):
+            return state.get("pill_id"), "3"  # 超时视为守中
+        return state.get("pill_id"), state.get("choice", "3")
+
+    async def set_fire_choice(self, user_id: str, choice: str) -> Tuple[bool, str]:
+        """玩家选择火候（写回状态）"""
+        import json as _json
+        raw = await self.db.ext.get_system_config(self.FIRE_STATE_PREFIX + user_id)
+        if not raw:
+            return False, "❌ 你当前没有正在炼制的丹药。先发送 /炼丹 <ID>。"
+        try:
+            state = _json.loads(raw)
+        except Exception:
+            return False, "❌ 火候数据异常，请重新 /炼丹。"
+        if choice not in self.FIRE_OPTIONS:
+            return False, "❌ 请输入 1-3 的编号选择火候。"
+        if int(time.time()) > int(state.get("expire", 0)):
+            await self.db.ext.set_system_config(self.FIRE_STATE_PREFIX + user_id, "")
+            return False, "⌛ 炉火已熄（超时），请重新 /炼丹。"
+        state["choice"] = choice
+        await self.db.ext.set_system_config(
+            self.FIRE_STATE_PREFIX + user_id, _json.dumps(state, ensure_ascii=False)
+        )
+        opt = self.FIRE_OPTIONS[choice]
+        return True, f"🔥 你以「{opt['label']}」掌控丹炉！（{opt['desc']}）\n💡 现在发送 /炼丹 <同一ID> 开炉成丹！"
+
     async def craft_pill(self, user_id: str, pill_id: int) -> Tuple[bool, str, Optional[Dict]]:
-        """炼制丹药（加入事务防并发）"""
+        """炼制丹药（加入事务防并发；含火候加成与极品判定）"""
+        # 取出火候选择（3分钟内 /火候 选的档位）
+        fire_pill_id, fire_choice = await self.pop_fire_state(user_id)
+        fire_cfg = self.FIRE_OPTIONS.get(fire_choice or "3", self.FIRE_OPTIONS["3"])
+        fire_matched = (fire_pill_id is not None and int(fire_pill_id) == int(pill_id))
+        if not fire_matched:
+            fire_cfg = self.FIRE_OPTIONS["3"]  # 未选火候或不匹配，按守中处理
+
+        await self.db.conn.execute("BEGIN IMMEDIATE")
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
             # 事务内重新获取玩家对象，确保数据是最新的
@@ -218,7 +273,18 @@ class AlchemyManager:
                         sect_bonus = int(json.loads(getattr(sect, "buildings", "{}") or "{}").get("炼丹房", 0)) * 2
             except Exception:
                 sect_bonus = 0
-            final_success_rate = min(95, success_rate + level_bonus + furnace_bonus + sect_bonus)
+            # 仙灵道侣加成（青璃：炼丹+5%起）
+            comp_bonus_pct = 0
+            try:
+                if self._social is None:
+                    from .social_manager import SocialManager
+                    self._social = SocialManager(self.db)
+                comp_bonus_pct = int(await self._social.companion_bonus_async(user_id, "alchemy") * 100)
+            except Exception:
+                comp_bonus_pct = 0
+            final_success_rate = min(95, max(5, success_rate + level_bonus + furnace_bonus + sect_bonus + comp_bonus_pct + fire_cfg["rate_bonus"]))
+            # 极品判定：火候影响极品概率，极品丹效果x1.5
+            perfect = (random.randint(1, 100) <= max(2, 10 + fire_cfg["perfect_bonus"])) if is_success else False
             
             is_success = random.randint(1, 100) <= final_success_rate
             
@@ -251,11 +317,13 @@ class AlchemyManager:
                 # ============================================================
 
                 if not pill_ruined:
-                    # 炼制成功 - 存入丹药背包
+                    # 炼制成功 - 存入丹药背包（极品丹产出双份，等效强化收益）
                     pill_name = recipe["name"]
                     inventory = player.get_pills_inventory()
-                    inventory[pill_name] = inventory.get(pill_name, 0) + 1
+                    inventory[pill_name] = inventory.get(pill_name, 0) + (2 if perfect else 1)
                     player.set_pills_inventory(inventory)
+                    if perfect:
+                        pill_name = recipe["name"] + "（极品）"
                 else:
                     pill_name = recipe["name"]
 
@@ -286,15 +354,19 @@ class AlchemyManager:
                     await self.db.conn.commit()
                     return True, msg, result_data
 
+                perfect_note = ""
+                if perfect:
+                    perfect_note = "\n🌟 天时地利！此丹竟是【极品】！额外多得一枚同款丹药"
                 msg = f"""
 🎉 炼丹成功！
 ━━━━━━━━━━━━━━━
 
-你成功炼制了【{pill_name}】！
+你成功炼制了【{pill_name}】！{perfect_note}
 丹药已存入丹药背包
 
 消耗：{cost_str}
 成功率：{final_success_rate}%
+火候：{fire_cfg['label']}
 {tribulation_msg}
 
 💡 使用 /服用丹药 {pill_name} 可服用此丹药
@@ -305,7 +377,8 @@ class AlchemyManager:
                     "success": True,
                     "pill_name": pill_name,
                     "cost": required_gold,
-                    "materials_consumed": consumed_materials
+                    "materials_consumed": consumed_materials,
+                    "perfect": perfect
                 }
             else:
                 # 炼制失败 - 扣除材料

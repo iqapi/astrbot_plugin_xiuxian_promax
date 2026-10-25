@@ -64,10 +64,12 @@ class ShopHandler:
             return
         refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("丹阁", items, refresh_hours, last_refresh)
-        yield event.plain_result(display)
+        # 卡片成功只发图，失败/关闭降级为文本
         card = await self._pavilion_card("丹阁", items)
         if card:
             yield event.image_result(card)
+        else:
+            yield event.plain_result(display)
 
     async def handle_weapon_pavilion(self, event: AstrMessageEvent):
         """处理器阁命令 - 展示武器列表"""
@@ -79,10 +81,11 @@ class ShopHandler:
             return
         refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("器阁", items, refresh_hours, last_refresh)
-        yield event.plain_result(display)
         card = await self._pavilion_card("器阁", items)
         if card:
             yield event.image_result(card)
+        else:
+            yield event.plain_result(display)
 
     async def handle_treasure_pavilion(self, event: AstrMessageEvent):
         """处理百宝阁命令 - 展示所有物品"""
@@ -94,16 +97,16 @@ class ShopHandler:
             return
         refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("百宝阁", items, refresh_hours, last_refresh)
-        yield event.plain_result(display)
         card = await self._pavilion_card("百宝阁", items)
         if card:
             yield event.image_result(card)
+        else:
+            yield event.plain_result(display)
 
     async def _pavilion_card(self, pavilion_name: str, items: list):
         """阁楼列表的磨砂玻璃卡片（关闭或失败时不产出任何消息）"""
-        from astrbot.api.event import AstrMessageEvent  # noqa: F401
         try:
-            from ..utils.image_generator import render_card, card_enabled
+            from ..utils.image_generator import render_card_async, card_enabled
             if not card_enabled("CARD_SHOP"):
                 return None
             lines = []
@@ -120,7 +123,7 @@ class ShopHandler:
                 lines.append(f"{item['name']}{elem_tag} - {price_tag} · 库存{stock}")
             if not lines:
                 return None
-            card_path = render_card(
+            card_path = await render_card_async(
                 "shop",
                 f"{pavilion_name} · 今日货架",
                 f"共 {len(lines)} 种在售",
@@ -170,11 +173,15 @@ class ShopHandler:
         if quantity == 1:
             try:
                 raw_msg = event.get_message_str().strip()
+                raw_msg = raw_msg.lstrip('/').strip()  # 兼容 /购买 斜杠前缀，防止物品名带上命令前缀
                 if raw_msg.startswith("购买"):
                     raw_msg = raw_msg[len("购买"):].strip()
                 raw_msg = raw_msg.replace("　", " ")
                 raw_msg = raw_msg.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
-                item_part, quantity = parse_qty(raw_msg)
+                parsed_name, parsed_qty = parse_qty(raw_msg)
+                # 仅当重新解析得到有效物品名时才采用（防御性，避免前缀残留污染名称）
+                if parsed_name and not parsed_name.startswith("/"):
+                    item_part, quantity = parsed_name, parsed_qty
             except Exception:
                 pass
 
@@ -182,7 +189,12 @@ class ShopHandler:
 
         pavilion_id, target_item = await self._find_item_in_pavilions(item_name)
         if not target_item:
-            yield event.plain_result(f"没有找到【{item_name}】，请检查物品名称或等待刷新。")
+            yield event.plain_result(
+                f"没有找到【{item_name}】。\n"
+                "💡 物品名需与货架完全一致，且该物品当前在售（每 1 小时刷新）：\n"
+                "  · 丹药 → /丹阁    武器 → /器阁    材料/符箓等 → /百宝阁\n"
+                "💡 也可先发 /物品信息 <名称> 查询物品详情与获取途径"
+            )
             return
 
         stock = target_item.get('stock', 0)
@@ -202,6 +214,56 @@ class ShopHandler:
         item_type = target_item['type']
         result_lines = []
 
+        # ===== 品阶→境界门槛（与事务内判断共用一张表）=====
+        RANK_REQ_LEVEL = {
+            "玄阶": 3, "地阶": 9, "天阶": 18,
+            "灵品": 3, "地品": 9, "天品": 18, "皇品": 24,
+            "帝品": 30, "道品": 36, "仙品": 42, "混元先天": 48,
+        }
+
+        def _norm_type(t: str) -> str:
+            if t in ['weapon', '武器', '法器']:
+                return 'weapon'
+            if t in ['armor', '防具']:
+                return 'armor'
+            if t in ['main_technique', 'technique', '心法', '功法']:
+                return 'technique'
+            if t in ['pill', 'exp_pill', 'utility_pill', '丹药']:
+                return 'legacy_pill'
+            if t in ['material', '材料', '符箓', '杂物']:
+                return 'material'
+            return t
+
+        norm_type = _norm_type(item_type)
+
+        # ===== 门槛前置检查（事务前，无任何扣除，附当前可买清单）=====
+        if norm_type in ['weapon', 'armor', 'technique']:
+            rank = target_item.get('rank', '黄阶')
+            req_level = RANK_REQ_LEVEL.get(rank, 0)
+            if player.level_index < req_level:
+                # 收集同一阁楼中玩家当前买得起的同类物品
+                _, shelf_items = await self.db.get_shop_data(pavilion_id)
+                affordable = []
+                for it in (shelf_items or []):
+                    if it.get('stock', 0) <= 0:
+                        continue
+                    if _norm_type(it.get('type', '')) != norm_type:
+                        continue
+                    it_req = RANK_REQ_LEVEL.get(it.get('rank', ''), 0)
+                    if player.level_index >= it_req:
+                        affordable.append(f"【{it['name']}】({it.get('rank', '')} · {it['price']:,}灵石)")
+                affordable_text = "\n".join(f"  · {a}" for a in affordable[:8]) if affordable else "  · 暂无（等货架刷新或先提升境界）"
+                yield event.plain_result(
+                    f"❌ 境界不足，无法购买！\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"【{target_item['name']}】为 {rank} 品阶，需要达到境界等级 {req_level}\n"
+                    f"你当前境界等级：{player.level_index}（还差 {req_level - player.level_index} 级）\n"
+                    f"💡 通过 /闭关 /历练 /探索秘境 提升修为后 /突破 提高境界\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"✅ 你当前可购买的同类物品：\n{affordable_text}"
+                )
+                return
+
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
             player = await self.db.get_player_by_id(event.get_sender_id())
@@ -220,25 +282,13 @@ class ShopHandler:
                 return
 
             # ===== 核心修复1：极其健壮的类型兼容映射 =====
-            if item_type in ['weapon', '武器', '法器']:
-                item_type = 'weapon'
-            elif item_type in ['armor', '防具']:
-                item_type = 'armor'
-            elif item_type in ['main_technique', 'technique', '心法', '功法']:
-                item_type = 'technique'
-            elif item_type in ['pill', 'exp_pill', 'utility_pill', '丹药']:
-                item_type = 'legacy_pill'
-            elif item_type in ['material', '材料', '符箓', '杂物']:
-                item_type = 'material'
+            item_type = norm_type  # 已在事务前归一化
 
-            # ===== 核心修复2：硬性境界门槛判断 =====
+            # ===== 门槛防线（前置检查已拦截，此处仅事务内兜底）=====
             if item_type in ['weapon', 'armor', 'technique']:
                 rank = target_item.get('rank', '黄阶')
-                req_level = 0
-                if rank == '玄阶': req_level = 3
-                elif rank == '地阶': req_level = 9
-                elif rank == '天阶': req_level = 18
-                
+                req_level = RANK_REQ_LEVEL.get(rank, 0)
+
                 if player.level_index < req_level:
                     await self.db.conn.rollback()
                     yield event.plain_result(f"❌ 你的境界不足以驾驭此等神物！购买【{rank}】物品需要达到境界等级 {req_level}。")

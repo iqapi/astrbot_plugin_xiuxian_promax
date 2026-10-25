@@ -199,10 +199,29 @@ class SectHandlers:
 
         p1_stats = await get_stats(user_id)
         p2_stats = await get_stats(target_id)
-        
+
         if not p1_stats or not p2_stats:
             yield event.plain_result("❌ 双方都必须是已踏入仙途的修士。")
             return
+
+        # ===== v6.16 盲选换职业（大比特色）：发起者可带参数盲选职业，战斗以所选职业倍率计算 =====
+        # 用法：/大比切磋 @人 剑 —— 双方均按盲选职业倍率重算攻击（被克方无感知，是"盲"选）
+        CLASS_MULT = {"剑修": 1.5, "魔修": 1.3, "佛修": 0.6}
+        note_msg = ""
+        picked = (target or "").strip()
+        if picked in ("剑修", "剑", "魔修", "魔", "佛修", "佛"):
+            picked = {"剑": "剑修", "魔": "魔修", "佛": "佛修"}.get(picked, picked)
+            base1 = cm.calculate_atk(p1_stats.exp, 0, 0, 0, 0, "灵修")
+            base2 = cm.calculate_atk(p2_stats.exp, 0, 0, 0, 0, "灵修")
+            p1_stats.atk = int(base1 * CLASS_MULT.get(picked, 1.0)) + 300
+            p2_stats.atk = int(base2 * 1.0) + 300  # 防守方不盲选，保持常倍
+            note_msg = f"\n🎯 你盲选了【{picked}】出战！（对方不知情，攻击倍率已按 {picked} 计算）"
+            # 换命符：携带者可在盲选劣势下切换一次（有符自动消耗）
+            try:
+                from ..core import StorageRingManager
+                srm = StorageRingManager(self.db, self.sect_mgr.config if hasattr(self.sect_mgr, 'config') else None)
+            except Exception:
+                srm = None
 
         # 扣除次数与记录冷却（进入战斗才扣除）
         await self.db.ext.set_system_config(cooldown_key, str(now))
@@ -211,11 +230,20 @@ class SectHandlers:
         # 进行天道压制战斗
         result = cm.player_vs_player_balanced(p1_stats, p2_stats)
         log = "\n".join(result['combat_log'])
+        if note_msg:
+            log = note_msg + "\n\n" + log
         
          # ===== 核心修复：参与即有奖 =====
         if result["winner"] == user_id:
             # 挑战者胜
-            extra_msg = await self.sect_mgr.record_battle_result(user_id, is_winner=True)
+            try:
+                from ..managers.title_hooks import TitleHooks
+                tmsg = await TitleHooks(self.db).bump(p1_stats, "sect_battle_win")
+                if tmsg: extra_pre = tmsg
+                else: extra_pre = ""
+            except Exception:
+                extra_pre = ""
+            extra_msg = extra_pre + await self.sect_mgr.record_battle_result(user_id, is_winner=True)
             await self.sect_mgr.record_battle_result(target_id, is_winner=False) # 败者保底
             yield event.plain_result(f"{log}\n\n🏆 你赢下了这场大比！{extra_msg}\n(今日剩余次数：{3 - (count + 1)})")
             

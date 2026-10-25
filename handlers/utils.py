@@ -31,6 +31,15 @@ BUSY_STATE_ALLOWED_COMMANDS = [
     
     # 关闭状态（必须允许）
     CMD_END_CULTIVATION, "出关", "解卡",
+
+    # 押镖专属（押镖中必须能结算/放弃自己的镖）
+    "完成押镖", "放弃押镖", "押镖",
+
+    # 社交回应（双修请求到达时对方可能正忙，必须能回应）
+    "接受双修", "拒绝双修",
+
+    # 全服事件查询（魔潮肆虐时也该能看进度）
+    "魔潮状态", "抵御魔潮",
 ]
 
 def player_required(func: Callable[..., Coroutine[any, any, AsyncGenerator[any, None]]]):

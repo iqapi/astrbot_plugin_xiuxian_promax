@@ -32,18 +32,27 @@ class NicknameHandler:
         
         # 验证道号长度
         if len(new_name) < 2 or len(new_name) > 12:
-            yield event.plain_result("❌ 道号长度必须在2-12个字符之间。")
+            yield event.plain_result(
+                f"❌ 道号长度必须在2-12个字符之间（当前 {len(new_name)} 字）。\n"
+                f"示例：/改道号 云兮"
+            )
             return
-        
+
         # 验证道号内容（禁止特殊字符）
         if not re.match(r'^[\u4e00-\u9fa5a-zA-Z0-9_]+$', new_name):
-            yield event.plain_result("❌ 道号只能包含中文、英文、数字和下划线。")
+            yield event.plain_result(
+                "❌ 道号只能包含中文、英文、数字和下划线，不能有空格或特殊符号。\n"
+                "示例：/改道号 云兮"
+            )
             return
-        
+
         # 检查道号是否已被使用
         existing = await self.db.get_player_by_name(new_name)
         if existing and existing.user_id != player.user_id:
-            yield event.plain_result(f"❌ 道号『{new_name}』已被其他修士使用。")
+            yield event.plain_result(
+                f"❌ 道号『{new_name}』已被其他修士使用。\n"
+                f"💡 换一个试试，或加个前后缀区分（如：{new_name}真君）"
+            )
             return
         
         old_name = player.user_name if player.user_name else "无"

@@ -103,7 +103,23 @@ class CombatHandlers:
         
         # 获取功法/装备/词条特效
         effects = self.equipment_mgr.get_combat_effects(player)
-        
+
+        # ===== v6.17 称号加成（最高品阶生效）=====
+        title_magic = 0
+        title_def_bonus = 0
+        try:
+            from ..managers.title_manager import TitleManager
+            tm = TitleManager(self.db)
+            tstats = tm.get_active_bonus(player)
+            if tstats:
+                final_atk += int(tstats.get("atk", 0))
+                title_magic = int(tstats.get("magic", 0))
+                title_def_bonus = int(tstats.get("phys_def", 0)) + int(tstats.get("magic_def", 0))
+                effects["crit_rate"] = effects.get("crit_rate", 0) + int(tstats.get("crit", 0))
+                effects["lifesteal"] = effects.get("lifesteal", 0) + int(tstats.get("lifesteal", 0))
+        except Exception:
+            pass
+
         # 获取灵兽特效并注入
         from ..managers.pet_manager import PetManager
         pet_mgr = PetManager(self.db)
@@ -118,6 +134,9 @@ class CombatHandlers:
                 
         # 防御力受丹药倍率加成
         final_defense = int(equip_bonus["defense"] * max(pill_multipliers.get("physical_defense", 1.0), pill_multipliers.get("magic_defense", 1.0)))
+        # 称号防御/法伤加成
+        final_defense += title_def_bonus
+        final_atk += title_magic
         
         player.hp = hp
         player.mp = mp
@@ -149,8 +168,14 @@ class CombatHandlers:
         """决斗 (受丹药/装备/灵兽加成，战后恢复满血)"""
         user_id = event.get_sender_id()
         target_id = await self._get_target_id(event, target)
-        if not target_id or user_id == target_id:
-            yield event.plain_result("❌ 目标无效或不能和自己决斗")
+        if not target_id:
+            yield event.plain_result(
+                "❌ 未识别到对手！请 @对方 或输入对方QQ号。\n"
+                "用法：/决斗 @道友\n（同一目标5分钟内只能决斗一次）"
+            )
+            return
+        if user_id == target_id:
+            yield event.plain_result("❌ 不能和自己决斗，左手打右手是不行的。")
             return
 
         # 决斗冷却检查（5分钟）
@@ -166,7 +191,7 @@ class CombatHandlers:
         p1_stats = await self._prepare_combat_stats(user_id)
         p2_stats = await self._prepare_combat_stats(target_id)
         if not p1_stats or not p2_stats:
-            yield event.plain_result("❌ 双方都需要踏入修仙之路")
+            yield event.plain_result("❌ 双方都需要踏入修仙之路（对方可能还没创建角色），请先发送 /我要修仙。")
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=2)
@@ -185,8 +210,14 @@ class CombatHandlers:
         """切磋 (受丹药/装备/灵兽加成，战后恢复满血)"""
         user_id = event.get_sender_id()
         target_id = await self._get_target_id(event, target)
-        if not target_id or user_id == target_id:
-            yield event.plain_result("❌ 目标无效或不能和自己切磋")
+        if not target_id:
+            yield event.plain_result(
+                "❌ 未识别到对手！请 @对方 或输入对方QQ号。\n"
+                "用法：/切磋 @道友\n（切磋冷却1分钟）"
+            )
+            return
+        if user_id == target_id:
+            yield event.plain_result("❌ 不能和自己切磋。")
             return
 
         # 切磋冷却检查（1分钟）
@@ -202,8 +233,8 @@ class CombatHandlers:
         p1_stats = await self._prepare_combat_stats(user_id)
         p2_stats = await self._prepare_combat_stats(target_id)
         if not p1_stats or not p2_stats:
-             yield event.plain_result("❌ 双方都需要踏入修仙之路")
-             return
+            yield event.plain_result("❌ 双方都需要踏入修仙之路（对方可能还没创建角色），请先发送 /我要修仙。")
+            return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=1)
         self.last_spar_fought = True  # 真正开打了，供任务进度判定

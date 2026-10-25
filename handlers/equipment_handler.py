@@ -85,12 +85,12 @@ class EquipmentHandler:
                 equipment_lines.append(f"📈 修为倍率 +{exp_multiplier:.1%}\n")
 
         equipment_lines.append("=" * 28)
+        text_msg = "".join(equipment_lines)
 
-        yield event.plain_result("".join(equipment_lines))
-
-        # ===== 装备卡片（磨砂玻璃，开关关闭或失败自动跳过）=====
+        # ===== 装备卡片：成功只发图，失败/关闭降级为纯文本 =====
+        sent = False
         try:
-            from ..utils.image_generator import render_card, card_enabled
+            from ..utils.image_generator import render_card_async, card_enabled
             if card_enabled("CARD_EQUIP"):
                 element_of = lambda n: (self.config_manager.get_item_element(n) if n else "")
                 equip_rows = [
@@ -102,7 +102,7 @@ class EquipmentHandler:
                     equip_rows.append(("五行属性",
                         element_of(player.main_technique) or element_of(player.weapon)))
                 tech_lines = [f"{i}. {t}" for i, t in enumerate(techniques_list, 1)] or ["未装备"]
-                card_path = render_card(
+                card_path = await render_card_async(
                     "combat",
                     f"{display_name} 的装备",
                     f"功法 {len(techniques_list)}/3",
@@ -119,8 +119,11 @@ class EquipmentHandler:
                 )
                 if card_path:
                     yield event.image_result(card_path)
+                    sent = True
         except Exception:
             pass
+        if not sent:
+            yield event.plain_result(text_msg)
 
     @player_required
     async def handle_equip_item(self, player: Player, event: AstrMessageEvent, item_name: str):
@@ -220,6 +223,14 @@ class EquipmentHandler:
 
         slot_or_name = slot_or_name.strip()
 
+        # 支持直接输入具体装备名：自动映射到对应槽位
+        if player.weapon and slot_or_name == player.weapon:
+            slot_or_name = "武器"
+        elif player.armor and slot_or_name == player.armor:
+            slot_or_name = "防具"
+        elif player.main_technique and slot_or_name == player.main_technique:
+            slot_or_name = "心法"
+
         # 获取卸下前的装备名称，用于存入储物戒
         unequipped_item_name = None
         if slot_or_name in ["武器", "weapon"]:
@@ -248,7 +259,18 @@ class EquipmentHandler:
                     storage_msg = f"\n已存入储物戒"
                 else:
                     storage_msg = f"\n⚠️ 存入储物戒失败：{store_msg}"
-            
+
             yield event.plain_result(f"✅ {message}{storage_msg}")
         else:
-            yield event.plain_result(f"❌ {message}")
+            # 失败时列出当前可卸下的装备，便于玩家对照
+            available = []
+            if player.weapon:
+                available.append(f"武器【{player.weapon}】(/卸下 武器 或 /卸下 {player.weapon})")
+            if player.armor:
+                available.append(f"防具【{player.armor}】(/卸下 防具)")
+            if player.main_technique:
+                available.append(f"心法【{player.main_technique}】(/卸下 心法)")
+            for tech in player.get_techniques_list():
+                available.append(f"功法【{tech}】(/卸下 {tech})")
+            listing = "\n".join(available) if available else "你当前没有穿戴任何装备"
+            yield event.plain_result(f"❌ {message}\n\n当前可卸下：\n{listing}")

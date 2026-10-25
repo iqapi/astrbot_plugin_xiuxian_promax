@@ -263,7 +263,22 @@ class StorageRingManager:
         required_level = ring_config.get("required_level_index", 0)
         if player.level_index < required_level:
             level_name = self._format_required_level(required_level)
-            return False, f"境界不足！【{new_ring_name}】（{ring_config.get('rank', '')}）需要达到【{level_name}】以上"
+            # 列出当前可更换的储物戒
+            better = []
+            for name, cfg in (self.config_manager.storage_rings_data or {}).items():
+                c_req = cfg.get("required_level_index", 0)
+                c_cap = cfg.get("capacity", 20)
+                if player.level_index >= c_req and c_cap > self.get_ring_capacity(player.storage_ring):
+                    better.append(f"【{name}】({cfg.get('rank', '')} · {c_cap}格)")
+            better_text = "\n".join(f"  · {b}" for b in better[:6]) if better else "  · 暂无（先提升境界）"
+            return False, (
+                f"❌ 境界不足，无法更换！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"【{new_ring_name}】（{ring_config.get('rank', '')}）需要达到【{level_name}】（境界等级 {required_level}）\n"
+                f"你当前境界等级：{player.level_index}（还差 {required_level - player.level_index} 级）\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"✅ 你当前可更换的储物戒：\n{better_text}"
+            )
 
         current_capacity = self.get_ring_capacity(player.storage_ring)
         new_capacity = ring_config.get("capacity", 20)

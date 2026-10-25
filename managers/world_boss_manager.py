@@ -77,7 +77,18 @@ class WorldBossManager:
     async def challenge_boss(self, player: Player) -> Tuple[bool, str]:
         """挑战世界Boss"""
         now = int(time.time())
-        
+
+        # 0. 境界门槛：境界3（炼气四层）以上才能参与，防小号白嫖全服奖励
+        MIN_BOSS_LEVEL = 3
+        if player.level_index < MIN_BOSS_LEVEL:
+            return False, (
+                f"❌ 境界不足，无法参与讨伐！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"挑战世界Boss需要达到境界等级 {MIN_BOSS_LEVEL}\n"
+                f"你当前境界等级：{player.level_index}（还差 {MIN_BOSS_LEVEL - player.level_index} 级）\n"
+                f"💡 通过 /闭关 /历练 提升修为后 /突破 提高境界"
+            )
+
         # 1. 检查Boss状态
         async with self.db.conn.execute("SELECT * FROM world_boss WHERE status = 1") as cursor:
             row = await cursor.fetchone()

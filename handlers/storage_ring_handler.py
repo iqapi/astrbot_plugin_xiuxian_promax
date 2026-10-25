@@ -84,37 +84,39 @@ class StorageRingHandler:
         lines.append(f"搜索：{CMD_SEARCH_ITEM} 关键词\n")
         lines.append(f"升级：{CMD_UPGRADE_RING} 储物戒名")
 
-        yield event.plain_result("".join(lines))
+        text_msg = "".join(lines)
 
-        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        # ===== 图片卡片：成功只发图，失败/关闭降级为纯文本 =====
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_BAG"):
-                return
-            enchant = ring_info.get("enchant", 0)
-            rows = []
-            for item_name, count in list(items.items())[:14]:
-                rows.append((item_name[:12], f"x{count}"))
-            if not rows:
-                rows.append(("空空如也", "—"))
-            card_path = render_card(
-                "bag",
-                f"{display_name} 的储物戒",
-                f"【{ring_info['name']}】({ring_info['rank']})",
-                sections=[
-                    {"name": "容量", "rows": [
-                        ("容量", f"{ring_info['used']}/{ring_info['capacity']}"),
-                        ("空间附魔", f"+{enchant}" if enchant else "无"),
-                        ("剩余空间", f"{ring_info['available']}"),
-                    ]},
-                    {"name": "物品清单", "rows": rows},
-                ],
-                footer=f"共 {len(items)} 种物品 · /取出 物品名 [数量]",
-            )
+            from ..utils.image_generator import render_card_async, card_enabled
+            card_path = None
+            if card_enabled("CARD_BAG"):
+                enchant = ring_info.get("enchant", 0)
+                rows = []
+                for item_name, count in list(items.items())[:14]:
+                    rows.append((item_name[:12], f"x{count}"))
+                if not rows:
+                    rows.append(("空空如也", "—"))
+                card_path = await render_card_async(
+                    "bag",
+                    f"{display_name} 的储物戒",
+                    f"【{ring_info['name']}】({ring_info['rank']})",
+                    sections=[
+                        {"name": "容量", "rows": [
+                            ("容量", f"{ring_info['used']}/{ring_info['capacity']}"),
+                            ("空间附魔", f"+{enchant}" if enchant else "无"),
+                            ("剩余空间", f"{ring_info['available']}"),
+                        ]},
+                        {"name": "物品清单", "rows": rows},
+                    ],
+                    footer=f"共 {len(items)} 种物品 · /取出 物品名 [数量]",
+                )
             if card_path:
                 yield event.image_result(card_path)
+            else:
+                yield event.plain_result(text_msg)
         except Exception:
-            pass
+            yield event.plain_result(text_msg)
 
     @player_required
     async def handle_store_item(self, player: Player, event: AstrMessageEvent, args: str):

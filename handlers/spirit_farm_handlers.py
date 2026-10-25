@@ -20,49 +20,50 @@ class SpiritFarmHandlers:
     async def handle_farm_info(self, player: Player, event: AstrMessageEvent):
         """查看灵田信息"""
         info = await self.mgr.get_farm_info(player.user_id)
-        yield event.plain_result(info)
 
-        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        # ===== 图片卡片：成功只发图，失败/关闭降级为纯文本 =====
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_FARM"):
-                return
-            from ..managers.spirit_farm_manager import FARM_LEVELS, SPIRIT_HERBS
-            import time as _time
-            farm = await self.mgr.get_user_farm(player.user_id)
-            if not farm:
-                return
-            level_config = FARM_LEVELS.get(farm["level"], FARM_LEVELS[1])
-            now = int(_time.time())
-            rows = []
-            for i, crop in enumerate(farm["crops"][:8], 1):
-                remaining = max(0, crop["mature_time"] - now)
-                if remaining > 0:
-                    status = f"还需{remaining // 3600}时{(remaining % 3600) // 60}分"
-                else:
-                    status = "✅已成熟"
-                rows.append((f"{i}. {crop['name']}", status))
-            if not rows:
-                rows.append(("（空地）", "可种植"))
-            card_path = render_card(
-                "spirit",
-                f"我的灵田 Lv.{farm['level']}",
-                f"{player.user_name or '道友'} 的灵草园",
-                sections=[
-                    {"name": "灵田", "rows": [
-                        ("种植格数", f"{len(farm['crops'])}/{level_config['slots']}"),
-                        ("土壤肥力", f"{farm.get('fertility', 100)}/100"),
-                    ] + ([] if not hasattr(self.mgr, "get_current_season") else [
-                        ("当前季节", f"{self.mgr.get_current_season()['icon']} {self.mgr.get_current_season()['name']}"),
-                    ])},
-                    {"name": "种植中", "rows": rows},
-                ],
-                footer="/种植 <灵草名> · /收获 · /施肥 恢复肥力",
-            )
+            from ..utils.image_generator import render_card_async, card_enabled
+            card_path = None
+            if card_enabled("CARD_FARM"):
+                from ..managers.spirit_farm_manager import FARM_LEVELS
+                import time as _time
+                farm = await self.mgr.get_user_farm(player.user_id)
+                if farm:
+                    level_config = FARM_LEVELS.get(farm["level"], FARM_LEVELS[1])
+                    now = int(_time.time())
+                    rows = []
+                    for i, crop in enumerate(farm["crops"][:8], 1):
+                        remaining = max(0, crop["mature_time"] - now)
+                        if remaining > 0:
+                            status = f"还需{remaining // 3600}时{(remaining % 3600) // 60}分"
+                        else:
+                            status = "✅已成熟"
+                        rows.append((f"{i}. {crop['name']}", status))
+                    if not rows:
+                        rows.append(("（空地）", "可种植"))
+                    season_rows = []
+                    if hasattr(self.mgr, "get_current_season"):
+                        season_rows.append(("当前季节", f"{self.mgr.get_current_season()['icon']} {self.mgr.get_current_season()['name']}"))
+                    card_path = await render_card_async(
+                        "spirit",
+                        f"我的灵田 Lv.{farm['level']}",
+                        f"{player.user_name or '道友'} 的灵草园",
+                        sections=[
+                            {"name": "灵田", "rows": [
+                                ("种植格数", f"{len(farm['crops'])}/{level_config['slots']}"),
+                                ("土壤肥力", f"{farm.get('fertility', 100)}/100"),
+                            ] + season_rows},
+                            {"name": "种植中", "rows": rows},
+                        ],
+                        footer="/种植 <灵草名> · /收获 · /施肥 恢复肥力",
+                    )
             if card_path:
                 yield event.image_result(card_path)
+            else:
+                yield event.plain_result(info)
         except Exception:
-            pass
+            yield event.plain_result(info)
     
     @player_required
     async def handle_create_farm(self, player: Player, event: AstrMessageEvent):

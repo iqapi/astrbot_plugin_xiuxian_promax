@@ -275,5 +275,71 @@ class RankingManager:
             position_name = POSITION_MAP.get(member.sect_position, "成员")
             msg += f"{idx}. {name} ({position_name})\n"
             msg += f"   贡献度：{member.sect_contribution:,}\n\n"
-        
+
+        return True, msg
+
+    # ===== v6.16 排行扩展 =====
+
+    async def get_karma_ranking(self, limit: int = 10) -> Tuple[bool, str]:
+        """功德榜 / 业力榜（二合一：正数功德榜，负数业力榜）"""
+        all_players = await self.db.get_all_players()
+        if not all_players:
+            return False, "❌ 暂无数据！"
+
+        goods = sorted([p for p in all_players if ((p.karma or 0) > 0)], key=lambda p: (p.karma or 0), reverse=True)[:limit]
+        evils = sorted([p for p in all_players if ((p.karma or 0) < 0)], key=lambda p: (p.karma or 0))[:limit]
+
+        msg = "📊 功德·业力榜\n━━━━━━━━━━━━━━━\n"
+        msg += "【善】功德榜：\n"
+        if goods:
+            for idx, p in enumerate(goods, 1):
+                msg += f"{idx}. {_safe_name(p, p.user_id)} 功德 {p.karma:+d}\n"
+        else:
+            msg += "  暂无行善之人……\n"
+        msg += "【恶】业力榜：\n"
+        if evils:
+            for idx, p in enumerate(evils, 1):
+                msg += f"{idx}. {_safe_name(p, p.user_id)} 业力 {p.karma}\n"
+        else:
+            msg += "  天下太平，无作恶之徒。\n"
+        msg += "━━━━━━━━━━━━━━━\n💡 功德提升奇遇与突破，业力反之。/行善 可积德"
+        return True, msg
+
+    async def get_luck_ranking(self, limit: int = 10) -> Tuple[bool, str]:
+        """气运榜：功德+转生+境界的综合气运值"""
+        all_players = await self.db.get_all_players()
+        if not all_players:
+            return False, "❌ 暂无数据！"
+
+        scored = []
+        for p in all_players:
+            luck = max(0, (p.karma or 0)) * 3 + (p.reincarnation_count or 0) * 20 + p.level_index
+            if luck > 0:
+                scored.append((p, luck))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top = scored[:limit]
+        if not top:
+            return False, "❌ 暂无数据！"
+
+        msg = "🍀 气运榜（气运之子）\n━━━━━━━━━━━━━━━\n"
+        medals = ["🥇", "🥈", "🥉"]
+        for idx, (p, luck) in enumerate(top, 1):
+            medal = medals[idx - 1] if idx <= 3 else f"{idx}."
+            msg += f"{medal} {_safe_name(p, p.user_id)} 气运 {luck}（境界{p.level_index}·转生{p.reincarnation_count}·功德{max(0, p.karma or 0)}）\n"
+        msg += "━━━━━━━━━━━━━━━\n💡 气运 = 功德×3 + 转生×20 + 境界。多行善、多历练！"
+        return True, msg
+
+    async def get_virtue_ranking(self, limit: int = 10) -> Tuple[bool, str]:
+        """师德榜：传道者的荣耀"""
+        all_players = await self.db.get_all_players()
+        if not all_players:
+            return False, "❌ 暂无数据！"
+        teachers = sorted([p for p in all_players if (getattr(p, "virtue_points", 0) or 0) > 0],
+                          key=lambda p: (p.virtue_points or 0), reverse=True)[:limit]
+        if not teachers:
+            return False, "🎓 师德榜暂无数据。\n💡 收徒并助弟子突破可累积师德（/拜师 了解详情）"
+        msg = "🎓 师德榜（传道真人）\n━━━━━━━━━━━━━━━\n"
+        for idx, p in enumerate(teachers, 1):
+            msg += f"{idx}. {_safe_name(p, p.user_id)} 师德 {p.virtue_points or 0}\n"
+        msg += "━━━━━━━━━━━━━━━\n💡 师德可在 /师德兑换 换取稀有奖励"
         return True, msg

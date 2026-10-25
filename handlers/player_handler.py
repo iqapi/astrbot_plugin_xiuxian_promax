@@ -36,10 +36,11 @@ __all__ = ["PlayerHandler"]
 class PlayerHandler:
     """玩家基础信息处理器 - 支持七大职业（灵/体/魔/剑/鬼/佛/御兽，含单字别名）"""
 
-    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager, social_mgr=None):
         self.db = db
         self.config = config
         self.config_manager = config_manager
+        self.social_mgr_ref = social_mgr  # SocialManager（仙灵加成），main.py 注入
         self.cultivation_manager = CultivationManager(config, config_manager)
         self.pill_manager = PillManager(self.db, self.config_manager)
         self.storage_ring_mgr = StorageRingManager(db, config_manager)
@@ -288,61 +289,63 @@ class PlayerHandler:
             )
         
         reply_msg += "━━━━━━━━━━━━━━━"
-        yield event.plain_result(reply_msg)
 
-        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        # ===== 图片卡片：成功只发图，失败/关闭降级为纯文本 =====
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_INFO"):
-                return
-            if player.cultivation_type == "体修":
-                energy_row = ("气血", f"{player.blood_qi}/{total_attrs.get('max_blood_qi', 0)}")
-            else:
-                energy_row = ("灵气", f"{player.spiritual_qi}/{total_attrs.get('max_spiritual_qi', 0)}")
+            from ..utils.image_generator import render_card_async, card_enabled
+            card_path = None
+            if card_enabled("CARD_INFO"):
+                if player.cultivation_type == "体修":
+                    energy_row = ("气血", f"{player.blood_qi}/{total_attrs.get('max_blood_qi', 0)}")
+                else:
+                    energy_row = ("灵气", f"{player.spiritual_qi}/{total_attrs.get('max_spiritual_qi', 0)}")
 
-            card_path = render_card(
-                "info",
-                full_name,
-                f"ID: {player.user_id} · {player.get_level(self.config_manager)}",
-                sections=[
-                    {"name": "基础", "rows": [
-                        ("职业", player.cultivation_type),
-                        ("境界", player.get_level(self.config_manager)),
-                        ("修为", f"{int(player.experience):,}/{int(required_exp):,}"),
-                        ("灵石", f"{player.gold:,}"),
-                        ("战力", f"{combat_power:,}"),
-                        ("灵根", player.spiritual_root),
-                        ("功德/业力", f"{getattr(player, 'karma', 0) or 0:+d}"),
-                        ("生活职业", getattr(player, "life_skill", "") or "无"),
-                        ("五行属性",
-                         (self.config_manager.get_item_element(player.main_technique)
-                          or self.config_manager.get_item_element(player.weapon)
-                          or "无")),
-                        ("化身", self._avatar_status(player)),
-                    ]},
-                    {"name": "属性", "rows": [
-                        energy_row,
-                        ("物伤/法伤", f"{total_attrs['physical_damage']}/{total_attrs['magic_damage']}"),
-                        ("物防/法防", f"{total_attrs['physical_defense']}/{total_attrs['magic_defense']}"),
-                        ("精神力", f"{total_attrs['mental_power']}"),
-                        ("状态", player.state),
-                        ("寿命", f"{player.lifespan}"),
-                    ]},
-                    {"name": "装备与宗门", "rows": [
-                        ("法器", weapon_name),
-                        ("防具", armor_name),
-                        ("主修心法", technique_name),
-                        ("宗门", sect_name),
-                        ("职位", position_name),
-                    ]},
-                ],
-                footer="模拟修仙 · 发送 /修仙帮助 查看全部指令",
-            )
+                card_path = await render_card_async(
+                    "info",
+                    full_name,
+                    f"ID: {player.user_id} · {player.get_level(self.config_manager)}",
+                    sections=[
+                        {"name": "基础", "rows": [
+                            ("职业", player.cultivation_type),
+                            ("境界", player.get_level(self.config_manager)),
+                            ("修为", f"{int(player.experience):,}/{int(required_exp):,}"),
+                            ("灵石", f"{player.gold:,}"),
+                            ("战力", f"{combat_power:,}"),
+                            ("灵根", player.spiritual_root),
+                            ("功德/业力", f"{getattr(player, 'karma', 0) or 0:+d}"),
+                            ("生活职业", getattr(player, "life_skill", "") or "无"),
+                            ("五行属性",
+                             (self.config_manager.get_item_element(player.main_technique)
+                              or self.config_manager.get_item_element(player.weapon)
+                              or "无")),
+                            ("化身", self._avatar_status(player)),
+                        ]},
+                        {"name": "属性", "rows": [
+                            energy_row,
+                            ("物伤/法伤", f"{total_attrs['physical_damage']}/{total_attrs['magic_damage']}"),
+                            ("物防/法防", f"{total_attrs['physical_defense']}/{total_attrs['magic_defense']}"),
+                            ("精神力", f"{total_attrs['mental_power']}"),
+                            ("状态", player.state),
+                            ("寿命", f"{player.lifespan}"),
+                        ]},
+                        {"name": "装备与宗门", "rows": [
+                            ("法器", weapon_name),
+                            ("防具", armor_name),
+                            ("主修心法", technique_name),
+                            ("宗门", sect_name),
+                            ("职位", position_name),
+                        ]},
+                    ],
+                    footer="模拟修仙 · 发送 /修仙帮助 查看全部指令",
+                )
             if card_path:
                 yield event.image_result(card_path)
+            else:
+                yield event.plain_result(reply_msg)
         except Exception as e:
             from astrbot.api import logger
             logger.warning(f"我的信息卡片生成失败（已降级为文本）: {e}")
+            yield event.plain_result(reply_msg)
 
     @player_required
     async def handle_start_cultivation(self, player: Player, event: AstrMessageEvent):
@@ -448,6 +451,15 @@ class PlayerHandler:
         except Exception:
             pass
 
+        # 仙灵道侣加成（玄霜：闭关+5%起）
+        try:
+            comp_bonus = await self.social_mgr_ref.companion_bonus_async(player.user_id, "cultivate")
+            if comp_bonus > 0:
+                gained_exp = int(gained_exp * (1 + comp_bonus))
+                tide_note += f"\n💞 仙灵相伴：修炼收益+{int(comp_bonus * 100)}%"
+        except Exception:
+            pass
+
         # 化身傀儡：激活期间化身代为行功，闭关收益+20%
         try:
             import json as _json2
@@ -525,6 +537,11 @@ class PlayerHandler:
 
         await self.db.update_player(player)
         await self.db.ext.add_task_progress(player.user_id, "check_in", 1)
+        # 称号：累计签到
+        try:
+            self._last_checkin_title = await self.title_hooks.bump(player, "checkin_count") if getattr(self, "title_hooks", None) else ""
+        except Exception:
+            self._last_checkin_title = ""
 
         reply_msg = (
             "✅ 签到成功！\n"
@@ -535,33 +552,34 @@ class PlayerHandler:
             "明日再来，莫要忘记哦~"
         )
         reply_msg += festival_msg
-        yield event.plain_result(reply_msg)
 
-        # ===== 签到图片卡片（节日自动切换背景）=====
+        # ===== 签到卡片：成功只发图，失败/关闭降级为纯文本（节日自动切换背景）=====
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_CHECKIN"):
-                return
-            card_path = render_card(
-                "festival" if festival else "login",
-                f"签到成功 · {player.user_name or '道友'}",
-                today,
-                sections=[
-                    {"name": "本次收益", "rows": [
-                        ("签到灵石", f"+{check_in_gold}"),
-                        ("当前灵石", f"{player.gold:,}"),
-                        ("当前修为", f"{player.experience:,}"),
-                    ] + (
-                        [("节日福利", f"+{festival['gold']:,} 灵石 +{festival['exp']:,} 修为")]
-                        if festival else []
-                    )},
-                ],
-                footer="每日签到 · 节日有大礼 · 明日再来",
-            )
+            from ..utils.image_generator import render_card_async, card_enabled
+            card_path = None
+            if card_enabled("CARD_CHECKIN"):
+                card_path = await render_card_async(
+                    "festival" if festival else "login",
+                    f"签到成功 · {player.user_name or '道友'}",
+                    today,
+                    sections=[
+                        {"name": "本次收益", "rows": [
+                            ("签到灵石", f"+{check_in_gold}"),
+                            ("当前灵石", f"{player.gold:,}"),
+                            ("当前修为", f"{player.experience:,}"),
+                        ] + (
+                            [("节日福利", f"+{festival['gold']:,} 灵石 +{festival['exp']:,} 修为")]
+                            if festival else []
+                        )},
+                    ],
+                    footer="每日签到 · 节日有大礼 · 明日再来",
+                )
             if card_path:
                 yield event.image_result(card_path)
+            else:
+                yield event.plain_result(reply_msg)
         except Exception:
-            pass
+            yield event.plain_result(reply_msg)
 
     @player_required
     async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):

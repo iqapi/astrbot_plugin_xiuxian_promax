@@ -109,6 +109,62 @@
       "item_table": "mystic",
       "description": "封印上古禁地残余煞气，仅限身经百战者参与。",
       "weight": 15
+    },
+    {
+      "id": 307,
+      "name": "镖行信约",
+      "difficulty": "normal",
+      "category": "押镖",
+      "progress_tags": ["escort"],
+      "min_target": 1,
+      "max_target": 2,
+      "time_limit": 5400,
+      "reward": { "stone": 420, "exp": 3600 },
+      "item_table": "supply",
+      "description": "替镖局押送灵石镖，考验胆识与实力（完成 /押镖 即可推进）。",
+      "weight": 22
+    },
+    {
+      "id": 308,
+      "name": "丹房当值",
+      "difficulty": "normal",
+      "category": "炼丹",
+      "progress_tags": ["craft"],
+      "min_target": 2,
+      "max_target": 4,
+      "time_limit": 5400,
+      "reward": { "stone": 380, "exp": 3400 },
+      "item_table": "gather",
+      "description": "为丹阁炼制丹药，成功炼制即计入进度。",
+      "weight": 20
+    },
+    {
+      "id": 309,
+      "name": "试炼修行",
+      "difficulty": "hard",
+      "category": "切磋",
+      "progress_tags": ["spar", "pvp"],
+      "min_target": 3,
+      "max_target": 6,
+      "time_limit": 7200,
+      "reward": { "stone": 560, "exp": 5000 },
+      "item_table": "hunt",
+      "description": "以武会友，与同道切磋砥砺剑意。",
+      "weight": 18
+    },
+    {
+      "id": 310,
+      "name": "剿灭魔潮",
+      "difficulty": "elite",
+      "category": "天灾",
+      "progress_tags": ["tide", "boss_damage"],
+      "min_target": 1,
+      "max_target": 3,
+      "time_limit": 9000,
+      "reward": { "stone": 1100, "exp": 9000 },
+      "item_table": "mystic",
+      "description": "魔潮来袭，参与抵御或讨伐世界Boss守护苍生。",
+      "weight": 12
     }
   ],
   "item_tables": {

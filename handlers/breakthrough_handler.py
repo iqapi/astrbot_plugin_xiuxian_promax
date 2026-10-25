@@ -148,11 +148,24 @@ class BreakthroughHandler:
             pill_data = self.config_manager.pills_data.get(pill_name)
 
             if not pill_data:
-                yield event.plain_result(f"❌ 未找到破境丹：{pill_name}")
+                # 列出适用于当前突破的破境丹，便于玩家对照
+                suitable = [
+                    name for name, d in self.config_manager.pills_data.items()
+                    if d.get("subtype") == "breakthrough" and d.get("target_level_index") == player.level_index + 1
+                ]
+                hint = "、".join(suitable) if suitable else "暂无（可直接空手突破）"
+                yield event.plain_result(
+                    f"❌ 未找到丹药：{pill_name}\n"
+                    f"💡 适用于你本次突破的破境丹：{hint}\n"
+                    f"💡 也可发送 /丹药背包 查看身上已有的丹药"
+                )
                 return
 
             if pill_data.get("subtype") != "breakthrough":
-                yield event.plain_result(f"❌ {pill_name} 不是破境丹")
+                yield event.plain_result(
+                    f"❌ 【{pill_name}】不是破境丹（它是：{pill_data.get('subtype', '其他')}类丹药）。\n"
+                    f"💡 请从 /丹药背包 中选择 subtype 为突破丹的丹药"
+                )
                 return
 
             # 检查是否适用于当前突破

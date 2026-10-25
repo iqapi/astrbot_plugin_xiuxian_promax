@@ -125,16 +125,21 @@ class EquipmentManager:
             if item: equipped.append(item)
         return equipped
 
+    # 品阶→境界门槛（兼容 items.json 与 weapons.json 两套品阶体系）
+    RANK_REQ_LEVEL = {
+        "玄阶": 3, "地阶": 9, "天阶": 18,
+        "灵品": 3, "地品": 9, "天品": 18, "皇品": 24,
+        "帝品": 30, "道品": 36, "仙品": 42, "混元先天": 48,
+    }
+
     def check_equipment_level_requirement(self, player: Player, item: Item) -> tuple[bool, str]:
         """检查玩家是否满足装备的境界要求（修复天阶装备0级可穿戴漏洞）"""
         req_level = item.required_level_index
-        
-        # 如果配置里写的是 0，就根据品阶动态推断出一个保底等级要求
-        if req_level == 0:
-            if item.rank == '玄阶': req_level = 3
-            elif item.rank == '地阶': req_level = 9
-            elif item.rank == '天阶': req_level = 18
-            
+
+        # 如果配置里显式写了等级要求则优先；否则按品阶推断
+        if req_level <= 0:
+            req_level = self.RANK_REQ_LEVEL.get(item.rank, 0)
+
         if player.level_index < req_level:
             required_level_name = self._format_required_level(req_level)
             return False, f"境界不足！装备【{item.name}】（{item.rank}）需要达到【{required_level_name}】以上"

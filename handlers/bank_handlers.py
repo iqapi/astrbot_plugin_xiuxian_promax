@@ -140,6 +140,7 @@ class BankHandlers:
             "loan": "📥 贷款",
             "repay": "📤 还款",
             "overdue_penalty": "⚠️ 逾期",
+            "bank_kill": "💀 追杀",
         }
         
         for trans in transactions:

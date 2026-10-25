@@ -103,7 +103,15 @@ class PillManager:
             level_name = f"境界{required_level}"
             if 0 <= required_level < len(level_data):
                 level_name = level_data[required_level]["level_name"]
-            return False, f"境界不足！使用【{pill_name}】需要达到【{level_name}】"
+            return False, (
+                f"❌ 境界不足，无法服用！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"【{pill_name}】需要达到【{level_name}】（境界等级 {required_level}）\n"
+                f"你当前境界等级：{player.level_index}（还差 {required_level - player.level_index} 级）\n"
+                f"💡 丹药不会过期，先提升境界再来服用\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💡 通过 /闭关 /历练 提升修为后 /突破 提高境界"
+            )
 
         effect_type = pill_data.get("effect_type", "instant")
         subtype = pill_data.get("subtype", "")

@@ -27,31 +27,32 @@ class PetHandlers:
             f"━━━━━━━━━━━━━━━\n"
             f"💡 发送 `/喂养灵兽` 提升等级"
         )
-        yield event.plain_result(msg)
 
-        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        # ===== 图片卡片：成功只发图，失败/关闭降级为纯文本 =====
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_PET"):
-                return
-            card_path = render_card(
-                "pet",
-                f"灵兽 · {pet['pet_name']}",
-                pet_info.get("desc", ""),
-                sections=[
-                    {"name": "状态", "rows": [
-                        ("等级", f"Lv.{pet['level']}"),
-                        ("经验", f"{pet['exp']}/{pet['level'] * 500}"),
-                        ("协战概率", f"{int((0.2 + pet['level'] * 0.01) * 100)}%"),
-                        ("类型", pet.get("pet_type", "未知")),
-                    ]},
-                ],
-                footer="/喂养灵兽 提升等级 · 协战等级越高触发越频繁",
-            )
+            from ..utils.image_generator import render_card_async, card_enabled
+            card_path = None
+            if card_enabled("CARD_PET"):
+                card_path = await render_card_async(
+                    "pet",
+                    f"灵兽 · {pet['pet_name']}",
+                    pet_info.get("desc", ""),
+                    sections=[
+                        {"name": "状态", "rows": [
+                            ("等级", f"Lv.{pet['level']}"),
+                            ("经验", f"{pet['exp']}/{pet['level'] * 500}"),
+                            ("协战概率", f"{int((0.2 + pet['level'] * 0.01) * 100)}%"),
+                            ("类型", pet.get("pet_type", "未知")),
+                        ]},
+                    ],
+                    footer="/喂养灵兽 提升等级 · 协战等级越高触发越频繁",
+                )
             if card_path:
                 yield event.image_result(card_path)
+            else:
+                yield event.plain_result(msg)
         except Exception:
-            pass
+            yield event.plain_result(msg)
 
     @player_required
     async def handle_adopt(self, player: Player, event: AstrMessageEvent, pet_name: str = ""):

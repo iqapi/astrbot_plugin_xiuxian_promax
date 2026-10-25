@@ -46,4 +46,5 @@ class AlchemyHandlers:
         success, msg, result_data = await self.alchemy_mgr.craft_pill(user_id, pill_id_int)
         # 记录本次是否真正炼成（丹劫毁丹/失败不算），供任务进度判定
         self.last_craft_success = bool(result_data and result_data.get("success"))
+        self.last_perfect = bool(result_data and result_data.get("perfect"))
         yield event.plain_result(msg)

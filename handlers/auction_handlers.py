@@ -15,11 +15,11 @@ class AuctionHandlers:
     async def handle_list(self, event: AstrMessageEvent):
         """查看坊市"""
         msg = await self.auction_mgr.get_market_list()
-        yield event.plain_result(msg)
 
-        # ===== 坊市卡片（磨砂玻璃，开关关闭或生成失败则不发）=====
+        # ===== 坊市卡片：成功只发图，失败/关闭降级为文本 =====
+        sent = False
         try:
-            from ..utils.image_generator import render_card, card_enabled
+            from ..utils.image_generator import render_card_async, card_enabled
             if card_enabled("CARD_MARKET"):
                 items = await self.auction_mgr.get_market_items(10)
                 if items:
@@ -27,7 +27,7 @@ class AuctionHandlers:
                     for it in items:
                         name = it['item_name'] if len(it['item_name']) <= 14 else it['item_name'][:14] + "…"
                         lines.append(f"[{it['id']}] {name} x{it['count']} · {it['price'] * it['count']:,}灵石")
-                    card_path = render_card(
+                    card_path = await render_card_async(
                         "shop",
                         "🏪 玩家交易坊市",
                         f"在售 {len(items)} 件 · 交易税 5%",
@@ -36,8 +36,11 @@ class AuctionHandlers:
                     )
                     if card_path:
                         yield event.image_result(card_path)
+                        sent = True
         except Exception:
             pass
+        if not sent:
+            yield event.plain_result(msg)
 
     @player_required
     async def handle_list_item(self, player: Player, event: AstrMessageEvent, args: str = ""):
@@ -62,11 +65,15 @@ class AuctionHandlers:
             count = int(parts[1])
             price = int(parts[2])
         except ValueError:
-            yield event.plain_result("❌ 数量和单价必须是纯数字！")
+            yield event.plain_result(
+                "❌ 数量和单价必须是纯数字！\n"
+                "正确格式：/坊市上架 <物品名> <数量> <单价>\n"
+                "示例：/坊市上架 玄铁 5 1000"
+            )
             return
 
         if count <= 0 or price <= 0:
-            yield event.plain_result("❌ 数量和单价必须大于 0。")
+            yield event.plain_result("❌ 数量和单价必须大于 0。\n示例：/坊市上架 玄铁 5 1000")
             return
 
         success, msg = await self.auction_mgr.list_item(player, item_name, count, price)
@@ -78,7 +85,10 @@ class AuctionHandlers:
         try:
             aid = int(auction_id)
         except ValueError:
-            yield event.plain_result("❌ 请输入正确的商品编号！例如：/坊市购买 1")
+            yield event.plain_result(
+                "❌ 请输入正确的商品编号！例如：/坊市购买 1\n"
+                "💡 先发送 /坊市 查看在售商品与编号。"
+            )
             return
             
         if aid <= 0:
@@ -94,7 +104,10 @@ class AuctionHandlers:
         try:
             aid = int(auction_id)
         except ValueError:
-            yield event.plain_result("❌ 请输入正确的商品编号！例如：/坊市下架 1")
+            yield event.plain_result(
+                "❌ 请输入正确的商品编号！例如：/坊市下架 1\n"
+                "💡 编号可在 /坊市 列表中查看。"
+            )
             return
             
         if aid <= 0:

@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 28  # v28: 功德/生活职业/洞天装修/宗门建筑
+LATEST_DB_VERSION = 29  # v29: NPC道侣（仙灵结缘）
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -26,13 +26,33 @@ async def _add_column_if_missing(conn: aiosqlite.Connection, table: str, column:
 
 
 async def _ensure_latest_columns(conn: aiosqlite.Connection):
-    """终极兜底：无论哪条建库路径（全新建表/旧库升级/已是最新），确保 v27-v28 新增列全部存在。
-    修复「全新安装走 _create_all_tables_v2 直接建表但建表 SQL 未含新列」的问题。"""
+    """终极兜底：无论哪条建库路径（全新建表/旧库升级/已是最新），确保 v27-v29 新增列/表全部存在。"""
     await _add_column_if_missing(conn, "players", "karma", "INTEGER NOT NULL DEFAULT 0")
     await _add_column_if_missing(conn, "players", "life_skill", "TEXT NOT NULL DEFAULT ''")
     await _add_column_if_missing(conn, "spirit_farms", "fertility", "INTEGER NOT NULL DEFAULT 100")
     await _add_column_if_missing(conn, "blessed_lands", "furniture", "TEXT NOT NULL DEFAULT '[]'")
     await _add_column_if_missing(conn, "sects", "buildings", "TEXT NOT NULL DEFAULT '{}'")
+    await _add_column_if_missing(conn, "players", "virtue_points", "INTEGER NOT NULL DEFAULT 0")
+    # v29 表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS npc_partners (
+            user_id TEXT PRIMARY KEY,
+            npc_id TEXT NOT NULL,
+            bond INTEGER NOT NULL DEFAULT 0,
+            daily_time INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS master_relations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            master_id TEXT NOT NULL,
+            disciple_id TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            graduated INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_master_relations_master ON master_relations(master_id)")
     await conn.commit()
 
 class MigrationManager:
@@ -939,3 +959,30 @@ async def _migrate_to_v28(conn: aiosqlite.Connection, config_manager: ConfigMana
     await _add_column_if_missing(conn, "sects", "buildings", "TEXT NOT NULL DEFAULT '{}'")
     await conn.commit()
     logger.info("v28迁移完成")
+
+@migration(29)
+async def _migrate_to_v29(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v29 - NPC道侣（仙灵结缘）+ 师徒系统"""
+    logger.info("开始迁移到v29：NPC道侣/师徒系统")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS npc_partners (
+            user_id TEXT PRIMARY KEY,
+            npc_id TEXT NOT NULL,
+            bond INTEGER NOT NULL DEFAULT 0,
+            daily_time INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS master_relations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            master_id TEXT NOT NULL,
+            disciple_id TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            graduated INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_master_relations_master ON master_relations(master_id)")
+    await _add_column_if_missing(conn, "players", "virtue_points", "INTEGER NOT NULL DEFAULT 0")
+    await conn.commit()
+    logger.info("v29迁移完成")

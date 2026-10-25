@@ -37,34 +37,36 @@ class WorldBossHandlers:
             f"━━━━━━━━━━━━━━━",
             f"💡 发送 /挑战世界Boss 参与讨伐（单次伤害上限3%）"
         ]
-        yield event.plain_result("\n".join(msg))
 
-        # ===== 图片卡片（磨砂玻璃质感，失败自动降级为纯文本）=====
+        # ===== 图片卡片：成功只发图，失败/关闭降级为纯文本 =====
+        sent = False
         try:
-            from ..utils.image_generator import render_card, card_enabled
-            if not card_enabled("CARD_BOSS"):
-                return
-            remaining = max(0, boss['expire_time'] - int(time.time()))
-            card_path = render_card(
-                "boss",
-                f"世界Boss · {boss['boss_name']}",
-                "天道警示 · 全服共讨",
-                sections=[
-                    {"name": "Boss状态", "rows": [
-                        ("血量", f"{boss['current_hp']:,} / {boss['max_hp']:,}"),
-                        ("血量百分比", f"{hp_percent:.1f}%"),
-                        ("攻击力", f"{boss['atk']:,}"),
-                        ("剩余时间", f"{remaining // 3600}小时{(remaining % 3600) // 60}分"),
-                    ]},
-                    {"name": "讨伐规则", "lines": [
-                        "· 每日可挑战 3 次，每次间隔 5 分钟",
-                        "· 单次伤害保底 0.5%，上限 3%",
-                        "· 尾刀斩杀者获唯一称号【灭世魔神】",
-                    ]},
-                ],
-                footer="/挑战世界Boss 参与讨伐",
-            )
-            if card_path:
-                yield event.image_result(card_path)
+            from ..utils.image_generator import render_card_async, card_enabled
+            if card_enabled("CARD_BOSS"):
+                remaining = max(0, boss['expire_time'] - int(time.time()))
+                card_path = await render_card_async(
+                    "boss",
+                    f"世界Boss · {boss['boss_name']}",
+                    "天道警示 · 全服共讨",
+                    sections=[
+                        {"name": "Boss状态", "rows": [
+                            ("血量", f"{boss['current_hp']:,} / {boss['max_hp']:,}"),
+                            ("血量百分比", f"{hp_percent:.1f}%"),
+                            ("攻击力", f"{boss['atk']:,}"),
+                            ("剩余时间", f"{remaining // 3600}小时{(remaining % 3600) // 60}分"),
+                        ]},
+                        {"name": "讨伐规则", "lines": [
+                            "· 每日可挑战 3 次，每次间隔 5 分钟",
+                            "· 单次伤害保底 0.5%，上限 3%",
+                            "· 尾刀斩杀者获唯一称号【灭世魔神】",
+                        ]},
+                    ],
+                    footer="/挑战世界Boss 参与讨伐",
+                )
+                if card_path:
+                    yield event.image_result(card_path)
+                    sent = True
         except Exception:
             pass
+        if not sent:
+            yield event.plain_result("\n".join(msg))

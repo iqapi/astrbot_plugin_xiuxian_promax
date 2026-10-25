@@ -93,6 +93,7 @@ class AdventureManager:
     def __init__(self, db: DataBase, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
         self.storage_ring_manager = storage_ring_manager
+        self._social = None  # 懒加载 SocialManager（避免循环导入）
         self._route_cooldowns: Dict[str, Dict[str, int]] = {}
         self.routes: Dict[str, dict] = {}
         self.route_alias_index: Dict[str, str] = {}
@@ -257,6 +258,16 @@ class AdventureManager:
             dropped_items, item_msg = await self._handle_drops(player, route, event, external_transaction=True)
 
             # 修改玩家属性
+            comp_bonus = 0.0
+            try:
+                if self._social is None:
+                    from .social_manager import SocialManager
+                    self._social = SocialManager(self.db)
+                comp_bonus = await self._social.companion_bonus_async(user_id, "adventure")
+            except Exception:
+                comp_bonus = 0.0
+            if comp_bonus > 0:
+                rewards["exp"] = int(rewards["exp"] * (1 + comp_bonus))
             player.experience += rewards["exp"]
             player.gold += rewards["gold"]
             
@@ -388,6 +399,13 @@ class AdventureManager:
         final_exp = max(0, int(exp_total * event.get("exp_mult", 1.0)))
         final_gold = max(0, int(gold_total * event.get("gold_mult", 1.0)))
         return {"exp": final_exp, "gold": final_gold}
+
+    async def _companion_adventure_bonus(self, user_id: str) -> float:
+        """仙灵道侣历练加成（白芷：修为+8%起）"""
+        try:
+            return await self._social.companion_bonus_async(user_id, "adventure")
+        except Exception:
+            return 0.0
 
     async def _handle_drops(self, player: Player, route: dict, event: dict, external_transaction: bool = False) -> Tuple[List[Tuple[str, int]], str]:
         dropped_items: List[Tuple[str, int]] = []

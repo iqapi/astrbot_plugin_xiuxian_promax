@@ -208,7 +208,8 @@ class DataBase:
                 fate_points = ?,
                 permanent_bonus = ?,
                 karma = ?,
-                life_skill = ?
+                life_skill = ?,
+                virtue_points = ?
             WHERE user_id = ?
             """,
             (
@@ -264,6 +265,7 @@ class DataBase:
                 player.permanent_bonus,
                 getattr(player, "karma", 0),
                 getattr(player, "life_skill", ""),
+                getattr(player, "virtue_points", 0),
                 player.user_id
             )
         )

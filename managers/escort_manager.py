@@ -28,6 +28,17 @@ class EscortManager:
         self.db = db
         self.combat_mgr = combat_mgr
         self.storage_ring_mgr = storage_ring_mgr
+        self._social = None
+
+    async def _companion_bonus(self, user_id: str, perk_type: str) -> float:
+        """仙灵道侣加成（惰性加载 SocialManager）"""
+        try:
+            if self._social is None:
+                from .social_manager import SocialManager
+                self._social = SocialManager(self.db)
+            return await self._social.companion_bonus_async(user_id, perk_type)
+        except Exception:
+            return 0.0
 
     async def start_escort(self, player: Player) -> Tuple[bool, str, Dict]:
         """接镖：进入押镖状态，期间奖励随时间增长，但可被劫"""
@@ -43,8 +54,11 @@ class EscortManager:
         if user_cd.type != UserStatus.IDLE:
             return False, f"❌ 你当前正{UserStatus.get_name(user_cd.type)}，无法押镖！", {}
 
-        # 镖银与修为按境界浮动（v6.12 上调收益，匹配被劫风险）
+        # 镖银与修为按境界浮动（v6.12 上调收益，匹配被劫风险）；绯烟（押镖仙灵）加镖银
         base = 4000 + player.level_index * 1500
+        escort_bonus = await self._companion_bonus(user_id, "escort")
+        if escort_bonus > 0:
+            base = int(base * (1 + escort_bonus))
         escort_gold = base + random.randint(-500, 1500)
         escort_exp = base // 2 + random.randint(0, 600)
 

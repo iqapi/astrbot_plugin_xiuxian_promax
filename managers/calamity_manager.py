@@ -194,3 +194,92 @@ class CalamityManager:
             f"魔气彻底侵蚀灵脉，全服修炼效率 -20% 将持续 24 小时……\n"
             f"（最终进度：{progress:,}/{target:,}）"
         )
+
+    # ===== v6.16 魔潮自动化 =====
+
+    async def auto_check(self) -> Tuple[bool, str]:
+        """定时任务入口：到期结算 + 按日期自动开启魔潮（周六晚 20-23 点自动小魔潮，月初自动大魔潮）
+        返回 (是否产生了需要广播的消息, 消息)"""
+        import time as _time
+        # 1. 到期结算优先
+        settled, msg = await self.check_and_expire()
+        if settled:
+            return True, msg
+
+        # 2. 魔潮进行中或余波未散则不自动开
+        if await self.is_tide_active() or await self.is_aftermath():
+            return False, ""
+
+        # 3. 自动开启判定（今日是否该开）
+        local = _time.localtime()
+        now = _time.time()
+        key_today = f"tide_auto_{_time.strftime('%Y%m%d')}"
+        already = await self._get(key_today)
+        if already:
+            return False, ""
+
+        is_first_of_month = local.tm_mday == 1
+        is_saturday = local.tm_wday == 5
+        hour_ok = local.tm_hour >= 20
+
+        if not ((is_first_of_month or is_saturday) and hour_ok):
+            return False, ""
+
+        # 标记今日已自动处理（无论成败，防重复尝试）
+        await self.db.ext.set_system_config(key_today, "1")
+
+        players = await self.db.get_all_players()
+        if len(players) < 3:
+            return False, ""
+
+        hours = 8 if is_first_of_month else 5
+        ok, msg = await self.start_tide(hours)
+        if ok:
+            scale = "大魔潮（月初·8小时）" if is_first_of_month else "魔潮（周六·5小时）"
+            msg = f"🌑【天道自动警示】{scale}降临！\n" + msg
+            return True, msg
+        return False, ""
+
+    async def get_calendar(self) -> str:
+        """仙界日历：未来事件预告"""
+        import time as _time
+        local = _time.localtime()
+        season_idx = get_season_index_pub()
+        seasons = ["🌱 春·生发", "☀️ 夏·炎灼", "🍂 秋·丰收", "❄️ 冬·蛰藏"]
+        wday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        # 下一个周六
+        days_to_sat = (5 - local.tm_wday) % 7 or 7
+        # 下个月初
+        if local.tm_mday == 1:
+            days_to_month = 0
+        elif local.tm_mon == 12:
+            import calendar as _cal
+            days_to_month = _cal.monthrange(local.tm_year, 12)[1] - local.tm_mday + 1
+        else:
+            import calendar as _cal
+            days_to_month = _cal.monthrange(local.tm_year, local.tm_mon)[1] - local.tm_mday + 1
+
+        tide_active = await self.is_tide_active()
+        aftermath = await self.is_aftermath()
+
+        lines = [
+            "📅 仙界日历",
+            "━━━━━━━━━━━━━━━",
+            f"今日：{wday_names[local.tm_wday]} · {local.tm_mon}月{local.tm_mday}日",
+            f"当前季节：{seasons[season_idx]}（每约一周轮转）",
+            f"魔潮状态：{'🌑 肆虐中！/抵御魔潮 参与抵御' if tide_active else ('🌫 余波未散，修炼-20%' if aftermath else '🌤 风平浪静')}",
+            "━━━━━━━━━━━━━━━",
+            "【事件预告】",
+            f"  · 周六 20:00：周六魔潮（{'还有 ' + str(days_to_sat) + ' 天' if not tide_active else '进行中'}）",
+            f"  · 每月 1 日 20:00：月初大魔潮（8小时，还有 {days_to_month} 天）",
+            "  · 世界Boss：按全服周期自动降临（关注广播）",
+            "  · 灵眼：每 2 小时出现一处",
+            "━━━━━━━━━━━━━━━",
+            "💡 魔潮来袭前囤好灵石，抵御成功者获 24 小时天道庇佑！",
+        ]
+        return "\n".join(lines)
+
+
+def get_season_index_pub() -> int:
+    """供日历使用的季节索引（避免循环导入 spirit_farm_manager）"""
+    return (time.localtime().tm_yday // 7) % 4

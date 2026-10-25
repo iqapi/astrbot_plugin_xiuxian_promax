@@ -101,7 +101,13 @@ class SectManager:
         """升级宗门建筑（宗主/长老操作，消耗宗门资金）"""
         cfg = SECT_BUILDINGS.get(name)
         if not cfg:
-            return False, f"❌ 未知建筑。可升级：{'、'.join(SECT_BUILDINGS.keys())}"
+            listing = "\n".join(
+                f"  · {n}（{c['desc']}，满级{c['max_level']}级）" for n, c in SECT_BUILDINGS.items()
+            )
+            return False, (
+                f"❌ 未知建筑【{name}】。\n可升级的建筑：\n{listing}\n"
+                "💡 用法：/升级建筑 <建筑名>"
+            )
 
         operator = await self.db.get_player_by_id(operator_id)
         if not operator or operator.sect_id == 0:
