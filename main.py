@@ -33,7 +33,7 @@ from .models_extended import UserStatus
 
 
 def require_whitelist(func):
-    """装饰器：检查群聊白名单权限 + 强制指令前缀（/ 或 #）"""
+    """装饰器：检查群聊白名单权限"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
         if not self._check_access(event):
