@@ -2,6 +2,7 @@
 
 import time
 import re
+from typing import Tuple
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig, logger
 from ..data import DataBase
@@ -53,6 +54,49 @@ class ShopHandler:
         if not current_items or self.shop_manager.should_refresh_shop(last_refresh_time, refresh_hours):
             new_items = self.shop_manager.generate_pavilion_items(item_getter, count)
             await self.db.update_shop_data(pavilion_id, int(time.time()), new_items)
+
+    async def auto_restock(self) -> Tuple[int, str]:
+        """v6.17 自动上货（定时任务调用）：
+        1) 到刷新周期照常换货；2) 未到周期但货架售罄率≥80% 时提前补货（不变更刷新周期锚点）
+        返回 (补货阁数, 描述)"""
+        import time as _time
+        restocked = 0
+        details = []
+        jobs = [
+            ("pill_pavilion", "丹阁", self.shop_manager.get_pills_for_display, self.config.get("PAVILION_PILL_COUNT", 20)),
+            ("weapon_pavilion", "器阁", self.shop_manager.get_weapons_for_display, self.config.get("PAVILION_WEAPON_COUNT", 20)),
+            ("treasure_pavilion", "百宝阁", self.shop_manager.get_all_items_for_display, self.config.get("PAVILION_TREASURE_COUNT", 25)),
+        ]
+        for pavilion_id, name, getter, cnt in jobs:
+            try:
+                last_refresh, items = await self.db.get_shop_data(pavilion_id)
+                refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+                due = self.shop_manager.should_refresh_shop(last_refresh, refresh_hours)
+                if not items:
+                    # 空货架（从未初始化）：立即上货
+                    new_items = self.shop_manager.generate_pavilion_items(getter, cnt)
+                    await self.db.update_shop_data(pavilion_id, int(_time.time()), new_items)
+                    restocked += 1
+                    details.append(name)
+                    continue
+                if due:
+                    new_items = self.shop_manager.generate_pavilion_items(getter, cnt)
+                    await self.db.update_shop_data(pavilion_id, int(_time.time()), new_items)
+                    restocked += 1
+                    details.append(name)
+                    continue
+                # 售罄检测：有货商品占比 < 20% 则补货
+                total = len(items)
+                on_sale = sum(1 for it in items if it.get('stock', 0) > 0)
+                if total > 0 and on_sale / total < 0.2:
+                    new_items = self.shop_manager.generate_pavilion_items(getter, cnt)
+                    await self.db.update_shop_data(pavilion_id, last_refresh, new_items)  # 保持刷新锚点不变
+                    restocked += 1
+                    details.append(f"{name}(售罄补货)")
+            except Exception as e:
+                from astrbot.api import logger
+                logger.warning(f"自动上货 {name} 异常: {e}")
+        return restocked, "、".join(details) if details else ""
 
     async def handle_pill_pavilion(self, event: AstrMessageEvent):
         """处理丹阁命令 - 展示丹药列表"""

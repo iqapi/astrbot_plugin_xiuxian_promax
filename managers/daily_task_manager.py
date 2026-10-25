@@ -41,6 +41,56 @@ class DailyTaskManager:
     def __init__(self, db: DataBase):
         self.db = db
 
+    # ===== v6.17 每日随机任务池：每人当日可接任务不同 =====
+    def _daily_seed(self, user_id: str) -> int:
+        """每人每日独立种子（日期+用户ID）"""
+        import hashlib
+        day = time.strftime("%Y%m%d")
+        return int(hashlib.md5(f"{day}_{user_id}".encode()).hexdigest()[:8], 16)
+
+    def get_daily_pool(self, user_id: str, level: str, picks: int = 3):
+        """该玩家今日该品阶可接的随机任务（每日固定，不会因查看变化）"""
+        import random as _random
+        pool = self.TASK_POOL.get(level, [])
+        if not pool:
+            return []
+        rng = _random.Random(self._daily_seed(user_id) + hash(level) % 10000)
+        idx = rng.sample(range(len(pool)), min(picks, len(pool)))
+        return [(i, pool[i]) for i in idx]
+
+    async def show_board(self, player: Player) -> str:
+        """任务榜 v2：今日可接任务（随机池）+ 已接任务进度"""
+        active_tasks = await self.db.ext.get_user_active_tasks(player.user_id)
+
+        msg = ["📋 天道任务榜", "━━━━━━━━━━━━━━━"]
+
+        # 已接任务
+        if active_tasks:
+            msg.append("【进行中】")
+            for t in active_tasks:
+                status_str = "✅ 已完成待领取" if t["status"] == 2 else f"进度：{t['current_progress']}/{t['target_count']}"
+                msg.append(f"[{t['task_level']}阶] {t['title']} - {status_str}")
+        else:
+            msg.append("【进行中】暂无。")
+
+        # 今日可接（每品阶随机 3 个）
+        msg.append("")
+        msg.append("【今日可接】（每人每日随机，明早刷新）")
+        for level in self.LEVEL_LIMITS:
+            active_count = sum(1 for t in active_tasks if t["task_level"] == level)
+            max_limit = self.LEVEL_LIMITS[level]["max"]
+            if active_count >= max_limit:
+                msg.append(f"  [{level}阶] 今日该品阶名额已满（{max_limit}）")
+                continue
+            pool = self.get_daily_pool(player.user_id, level)
+            if pool:
+                names = " / ".join(t["title"] for _, t in pool)
+                msg.append(f"  [{level}阶] {names}")
+        msg.append("")
+        msg.append("💡 /接取任务 <黄/玄/地/天> 从今日随机任务中抽一个接取")
+        msg.append("💡 /领取任务奖励 结算已完成任务")
+        return "\n".join(msg)
+
     def _scale_reward(self, player: Player, level: str) -> dict:
         """根据玩家境界动态缩放奖励，并附加防膨胀材料"""
         config = self.LEVEL_LIMITS[level]
@@ -58,23 +108,11 @@ class DailyTaskManager:
         return {"exp": exp, "gold": gold, "materials": materials}
 
     async def get_task_board(self, player: Player) -> str:
-        """查看今日任务面板"""
-        active_tasks = await self.db.ext.get_user_active_tasks(player.user_id)
-        
-        msg = ["📋 天道任务榜（当前进行中）", "━━━━━━━━━━━━━━━"]
-        if not active_tasks:
-            msg.append("你当前没有接取任何任务。")
-        else:
-            for t in active_tasks:
-                status_str = "✅ 已完成待领取" if t["status"] == 2 else f"进度：{t['current_progress']}/{t['target_count']}"
-                msg.append(f"[{t['task_level']}阶] {t['title']} - {status_str}")
-                
-        msg.append("\n💡 使用 /接取任务 <黄/玄/地/天> 获取新任务")
-        msg.append("💡 使用 /领取任务奖励 结算已完成的日常")
-        return "\n".join(msg)
+        """查看今日任务面板（v6.17 代理到新版任务榜）"""
+        return await self.show_board(player)
 
     async def generate_task(self, player: Player, level: str) -> Tuple[bool, str]:
-        """接取一个随机任务"""
+        """接取任务（v6.17：从今日随机池抽取，每人任务不同）"""
         if level not in self.LEVEL_LIMITS:
             return False, "❌ 无效的任务品阶，请选择 黄/玄/地/天。"
 
@@ -82,12 +120,19 @@ class DailyTaskManager:
         active_tasks = await self.db.ext.get_user_active_tasks(player.user_id)
         current_level_count = sum(1 for t in active_tasks if t["task_level"] == level)
         max_limit = self.LEVEL_LIMITS[level]["max"]
-        
+
         if current_level_count >= max_limit:
             return False, f"❌ 你今日的【{level}阶】任务接取次数已用尽（上限 {max_limit} 次）。"
 
-        # 随机抽取模板
-        template = random.choice(self.TASK_POOL[level])
+        # 从今日随机池中抽取（去掉已在进行中的同名任务）
+        daily_pool = self.get_daily_pool(player.user_id, level)
+        doing_titles = {t["title"] for t in active_tasks}
+        candidates = [(i, tpl) for i, tpl in daily_pool if tpl["title"] not in doing_titles]
+        if not candidates:
+            return False, f"❌ 今日【{level}阶】的随机任务你都已接取/在进行中，明日再来。"
+
+        import random as _random
+        idx, template = _random.choice(candidates)
         
         # 动态计算奖励
         rewards = self._scale_reward(player, level)

@@ -317,6 +317,9 @@ ATK：{boss.atk}
 奖励：{boss.stone_reward}灵石
 
 使用 /挑战Boss 来挑战！
+
+💡 提示：全服共斗的新版世界Boss请使用
+   /世界Boss状态 /挑战世界Boss
         """.strip()
         
         return True, msg, boss

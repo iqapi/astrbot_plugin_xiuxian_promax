@@ -3,16 +3,21 @@
     {
       "key": "scout",
       "name": "巡山问道",
-      "aliases": ["短途", "巡山", "巡山问道", "巡逻"],
-      "description": "巡视宗门附近的山麓，收集灵药与情报，风险最低，适合试探与凑进度。",
+      "aliases": [
+        "短途",
+        "巡山",
+        "巡山问道",
+        "scout"
+      ],
+      "description": "巡视宗门附近的山麓，收集灵药与情报，风险最低。",
       "risk": "低",
       "duration": 1800,
       "min_level": 0,
       "fatigue_cooldown": 300,
       "base_exp_per_min": 45,
       "base_gold_per_min": 10,
-      "level_bonus_exp": 12,
-      "level_bonus_gold": 3,
+      "level_bonus_exp": 11,
+      "level_bonus_gold": 2,
       "completion_bonus": {
         "exp": 300,
         "gold": 120
@@ -27,18 +32,178 @@
       "bounty_progress": 1
     },
     {
+      "key": "herb_valley",
+      "name": "灵谷采药",
+      "aliases": [
+        "采药",
+        "灵谷",
+        "灵谷采药",
+        "herb_valley"
+      ],
+      "description": "在灵谷间穿行采集灵草，是每位新晋修士的第一课。",
+      "risk": "低",
+      "duration": 1500,
+      "min_level": 0,
+      "fatigue_cooldown": 240,
+      "base_exp_per_min": 42,
+      "base_gold_per_min": 9,
+      "level_bonus_exp": 10,
+      "level_bonus_gold": 2,
+      "completion_bonus": {
+        "exp": 260,
+        "gold": 100
+      },
+      "event_weights": {
+        "safe": 65,
+        "standard": 28,
+        "risky": 7
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
+      "key": "stream_walk",
+      "name": "溪涧寻源",
+      "aliases": [
+        "溪涧",
+        "寻源",
+        "溪涧寻源",
+        "stream_walk"
+      ],
+      "description": "沿灵溪溯源而上，寻找水灵之气凝聚之地。",
+      "risk": "低",
+      "duration": 2100,
+      "min_level": 1,
+      "fatigue_cooldown": 300,
+      "base_exp_per_min": 48,
+      "base_gold_per_min": 11,
+      "level_bonus_exp": 12,
+      "level_bonus_gold": 2,
+      "completion_bonus": {
+        "exp": 320,
+        "gold": 130
+      },
+      "event_weights": {
+        "safe": 60,
+        "standard": 30,
+        "risky": 10
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
+      "key": "village_patrol",
+      "name": "村落护行",
+      "aliases": [
+        "护村",
+        "村落",
+        "村落护行",
+        "village_patrol"
+      ],
+      "description": "护送行脚商人与村民往返，赚取些许香油钱。",
+      "risk": "低",
+      "duration": 2400,
+      "min_level": 2,
+      "fatigue_cooldown": 360,
+      "base_exp_per_min": 50,
+      "base_gold_per_min": 13,
+      "level_bonus_exp": 12,
+      "level_bonus_gold": 2,
+      "completion_bonus": {
+        "exp": 380,
+        "gold": 150
+      },
+      "event_weights": {
+        "safe": 62,
+        "standard": 28,
+        "risky": 10
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
+      "key": "old_forest",
+      "name": "古林探幽",
+      "aliases": [
+        "古林",
+        "探幽",
+        "古林探幽",
+        "old_forest"
+      ],
+      "description": "外围古木参天，偶有灵禽出没，需谨慎前行。",
+      "risk": "低",
+      "duration": 2700,
+      "min_level": 3,
+      "fatigue_cooldown": 420,
+      "base_exp_per_min": 52,
+      "base_gold_per_min": 14,
+      "level_bonus_exp": 13,
+      "level_bonus_gold": 2,
+      "completion_bonus": {
+        "exp": 420,
+        "gold": 170
+      },
+      "event_weights": {
+        "safe": 55,
+        "standard": 32,
+        "risky": 13
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
+      "key": "mist_hill",
+      "name": "雾岭探路",
+      "aliases": [
+        "雾岭",
+        "雾岭探路",
+        "mist_hill"
+      ],
+      "description": "雾气弥漫的山岭，视野受限但灵气充沛。",
+      "risk": "中",
+      "duration": 2400,
+      "min_level": 4,
+      "fatigue_cooldown": 360,
+      "base_exp_per_min": 55,
+      "base_gold_per_min": 15,
+      "level_bonus_exp": 13,
+      "level_bonus_gold": 3,
+      "completion_bonus": {
+        "exp": 430,
+        "gold": 180
+      },
+      "event_weights": {
+        "safe": 50,
+        "standard": 34,
+        "risky": 16
+      },
+      "drop_tier": "low",
+      "bounty_tag": "adventure_scout",
+      "bounty_progress": 1
+    },
+    {
       "key": "journey",
       "name": "云游四方",
-      "aliases": ["中途", "游历", "云游"],
+      "aliases": [
+        "中途",
+        "游历",
+        "云游",
+        "云游四方",
+        "journey"
+      ],
       "description": "穿梭各地延绵山川，结识奇人异士，收益稳定且偶有奇遇。",
       "risk": "中",
       "duration": 3600,
-      "min_level": 3,
+      "min_level": 5,
       "fatigue_cooldown": 600,
       "base_exp_per_min": 55,
       "base_gold_per_min": 14,
-      "level_bonus_exp": 18,
-      "level_bonus_gold": 5,
+      "level_bonus_exp": 13,
+      "level_bonus_gold": 2,
       "completion_bonus": {
         "exp": 500,
         "gold": 180
@@ -53,27 +218,213 @@
       "bounty_progress": 1
     },
     {
-      "key": "hunt",
-      "name": "猎魔肃清",
-      "aliases": ["猎魔", "肃清", "长途"],
-      "description": "深入妖兽巢穴围猎，收益显著但常伴激烈战斗，完成可大幅推进猎杀悬赏。",
-      "risk": "高",
-      "duration": 5400,
-      "min_level": 7,
-      "fatigue_cooldown": 900,
-      "base_exp_per_min": 65,
-      "base_gold_per_min": 18,
-      "level_bonus_exp": 24,
-      "level_bonus_gold": 7,
+      "key": "ruin_edge",
+      "name": "遗迹外围",
+      "aliases": [
+        "遗迹",
+        "外围",
+        "遗迹外围",
+        "ruin_edge"
+      ],
+      "description": "上古遗迹的外围散落着前辈遗物，机关尚未失效。",
+      "risk": "中",
+      "duration": 3000,
+      "min_level": 5,
+      "fatigue_cooldown": 480,
+      "base_exp_per_min": 58,
+      "base_gold_per_min": 16,
+      "level_bonus_exp": 14,
+      "level_bonus_gold": 3,
       "completion_bonus": {
-        "exp": 800,
+        "exp": 520,
+        "gold": 200
+      },
+      "event_weights": {
+        "safe": 40,
+        "standard": 42,
+        "risky": 18
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 1
+    },
+    {
+      "key": "market_road",
+      "name": "商路护镖",
+      "aliases": [
+        "商路",
+        "商路护镖",
+        "market_road"
+      ],
+      "description": "行走商路护卫货物，报酬丰厚但劫匪虎视眈眈。",
+      "risk": "中",
+      "duration": 3300,
+      "min_level": 6,
+      "fatigue_cooldown": 540,
+      "base_exp_per_min": 60,
+      "base_gold_per_min": 20,
+      "level_bonus_exp": 15,
+      "level_bonus_gold": 4,
+      "completion_bonus": {
+        "exp": 560,
+        "gold": 240
+      },
+      "event_weights": {
+        "safe": 38,
+        "standard": 44,
+        "risky": 18
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 1
+    },
+    {
+      "key": "spirit_marsh",
+      "name": "灵沼捕影",
+      "aliases": [
+        "灵沼",
+        "灵沼捕影",
+        "spirit_marsh"
+      ],
+      "description": "灵沼中雾霭升腾，沼泽深处隐有异宝微光。",
+      "risk": "中",
+      "duration": 3600,
+      "min_level": 6,
+      "fatigue_cooldown": 600,
+      "base_exp_per_min": 62,
+      "base_gold_per_min": 21,
+      "level_bonus_exp": 15,
+      "level_bonus_gold": 4,
+      "completion_bonus": {
+        "exp": 600,
         "gold": 260
       },
       "event_weights": {
-        "safe": 20,
-        "standard": 40,
-        "risky": 30,
-        "disaster": 10
+        "safe": 36,
+        "standard": 44,
+        "risky": 20
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 1
+    },
+    {
+      "key": "iron_mine",
+      "name": "铁矿探采",
+      "aliases": [
+        "铁矿",
+        "铁矿探采",
+        "iron_mine"
+      ],
+      "description": "废弃铁矿中矿脉复生，与矿妖争夺矿藏。",
+      "risk": "中",
+      "duration": 3900,
+      "min_level": 7,
+      "fatigue_cooldown": 660,
+      "base_exp_per_min": 65,
+      "base_gold_per_min": 24,
+      "level_bonus_exp": 16,
+      "level_bonus_gold": 4,
+      "completion_bonus": {
+        "exp": 640,
+        "gold": 280
+      },
+      "event_weights": {
+        "safe": 34,
+        "standard": 46,
+        "risky": 20
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 1
+    },
+    {
+      "key": "moon_lake",
+      "name": "月湖夜猎",
+      "aliases": [
+        "月湖",
+        "夜猎",
+        "月湖夜猎",
+        "moon_lake"
+      ],
+      "description": "月圆之夜的湖面浮起夜光灵珠，亦引来夜行妖兽。",
+      "risk": "中",
+      "duration": 4200,
+      "min_level": 7,
+      "fatigue_cooldown": 720,
+      "base_exp_per_min": 68,
+      "base_gold_per_min": 26,
+      "level_bonus_exp": 17,
+      "level_bonus_gold": 5,
+      "completion_bonus": {
+        "exp": 700,
+        "gold": 320
+      },
+      "event_weights": {
+        "safe": 32,
+        "standard": 46,
+        "risky": 22
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 1
+    },
+    {
+      "key": "wind_canyon",
+      "name": "风峡穿行",
+      "aliases": [
+        "风峡",
+        "风峡穿行",
+        "wind_canyon"
+      ],
+      "description": "罡风呼啸的峡谷，是剑修磨砺剑意的绝佳之地。",
+      "risk": "中",
+      "duration": 3900,
+      "min_level": 8,
+      "fatigue_cooldown": 660,
+      "base_exp_per_min": 70,
+      "base_gold_per_min": 27,
+      "level_bonus_exp": 17,
+      "level_bonus_gold": 5,
+      "completion_bonus": {
+        "exp": 720,
+        "gold": 330
+      },
+      "event_weights": {
+        "safe": 30,
+        "standard": 48,
+        "risky": 22
+      },
+      "drop_tier": "mid",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 1
+    },
+    {
+      "key": "beast_ridge",
+      "name": "兽脊巡猎",
+      "aliases": [
+        "兽脊",
+        "巡猎",
+        "兽脊巡猎",
+        "beast_ridge"
+      ],
+      "description": "妖兽迁徙必经的山脊，猎杀头兽可获得丰厚报酬。",
+      "risk": "高",
+      "duration": 4200,
+      "min_level": 9,
+      "fatigue_cooldown": 720,
+      "base_exp_per_min": 74,
+      "base_gold_per_min": 30,
+      "level_bonus_exp": 18,
+      "level_bonus_gold": 6,
+      "completion_bonus": {
+        "exp": 780,
+        "gold": 360
+      },
+      "event_weights": {
+        "safe": 25,
+        "standard": 48,
+        "risky": 27
       },
       "drop_tier": "mid",
       "bounty_tag": "adventure_hunt",
@@ -82,25 +433,1391 @@
     {
       "key": "peril",
       "name": "九死一生",
-      "aliases": ["绝境", "九死", "险行"],
-      "description": "闯入上古禁地寻找传承，历程充满未知与陷阱，但若成功可收获顶尖资源。",
-      "risk": "极高",
+      "aliases": [
+        "长途",
+        "绝地",
+        "九死一生",
+        "peril"
+      ],
+      "description": "深入九幽绝地，向死而生，非大毅力大机缘者不可往。",
+      "risk": "高",
       "duration": 7200,
-      "min_level": 12,
-      "fatigue_cooldown": 1200,
+      "min_level": 10,
+      "fatigue_cooldown": 900,
       "base_exp_per_min": 80,
-      "base_gold_per_min": 22,
-      "level_bonus_exp": 30,
+      "base_gold_per_min": 34,
+      "level_bonus_exp": 20,
+      "level_bonus_gold": 6,
+      "completion_bonus": {
+        "exp": 900,
+        "gold": 420
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 50,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "ghost_city",
+      "name": "鬼市寻踪",
+      "aliases": [
+        "鬼市",
+        "鬼市寻踪",
+        "ghost_city"
+      ],
+      "description": "昼伏夜出的鬼市中，奇珍与陷阱同样琳琅满目。",
+      "risk": "中",
+      "duration": 4500,
+      "min_level": 10,
+      "fatigue_cooldown": 780,
+      "base_exp_per_min": 76,
+      "base_gold_per_min": 32,
+      "level_bonus_exp": 19,
+      "level_bonus_gold": 6,
+      "completion_bonus": {
+        "exp": 820,
+        "gold": 400
+      },
+      "event_weights": {
+        "safe": 30,
+        "standard": 46,
+        "risky": 24
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "bone_forest",
+      "name": "枯骨林地",
+      "aliases": [
+        "枯骨",
+        "林地",
+        "枯骨林地",
+        "bone_forest"
+      ],
+      "description": "万骨堆成的林地，怨气凝而不散，正气修士镇之。",
+      "risk": "高",
+      "duration": 4800,
+      "min_level": 11,
+      "fatigue_cooldown": 840,
+      "base_exp_per_min": 80,
+      "base_gold_per_min": 36,
+      "level_bonus_exp": 20,
+      "level_bonus_gold": 7,
+      "completion_bonus": {
+        "exp": 900,
+        "gold": 440
+      },
+      "event_weights": {
+        "safe": 24,
+        "standard": 48,
+        "risky": 28
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "thunder_valley",
+      "name": "雷谷引雷",
+      "aliases": [
+        "雷谷",
+        "引雷",
+        "雷谷引雷",
+        "thunder_valley"
+      ],
+      "description": "雷暴终年的谷地，以身引雷淬体，凶险与机缘并存。",
+      "risk": "高",
+      "duration": 5100,
+      "min_level": 11,
+      "fatigue_cooldown": 870,
+      "base_exp_per_min": 84,
+      "base_gold_per_min": 38,
+      "level_bonus_exp": 21,
+      "level_bonus_gold": 7,
+      "completion_bonus": {
+        "exp": 960,
+        "gold": 480
+      },
+      "event_weights": {
+        "safe": 22,
+        "standard": 50,
+        "risky": 28
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "abyss_edge",
+      "name": "深渊边缘",
+      "aliases": [
+        "深渊",
+        "深渊边缘",
+        "abyss_edge"
+      ],
+      "description": "大地裂缝的边缘，深处传来远古的低语。",
+      "risk": "高",
+      "duration": 5400,
+      "min_level": 12,
+      "fatigue_cooldown": 900,
+      "base_exp_per_min": 88,
+      "base_gold_per_min": 42,
+      "level_bonus_exp": 22,
+      "level_bonus_gold": 8,
+      "completion_bonus": {
+        "exp": 1020,
+        "gold": 520
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 50,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "sky_bridge",
+      "name": "天栈古道",
+      "aliases": [
+        "天栈",
+        "古道",
+        "天栈古道",
+        "sky_bridge"
+      ],
+      "description": "悬于绝壁的古栈道，是通往上界遗迹的唯一通路。",
+      "risk": "高",
+      "duration": 5700,
+      "min_level": 12,
+      "fatigue_cooldown": 960,
+      "base_exp_per_min": 92,
+      "base_gold_per_min": 45,
+      "level_bonus_exp": 23,
       "level_bonus_gold": 9,
       "completion_bonus": {
+        "exp": 1100,
+        "gold": 560
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 50,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 2
+    },
+    {
+      "key": "flame_pass",
+      "name": "炎隘突袭",
+      "aliases": [
+        "炎隘",
+        "炎隘突袭",
+        "flame_pass"
+      ],
+      "description": "火山隘口火妖成群，一把火烧出的全是宝材。",
+      "risk": "高",
+      "duration": 5400,
+      "min_level": 12,
+      "fatigue_cooldown": 900,
+      "base_exp_per_min": 95,
+      "base_gold_per_min": 48,
+      "level_bonus_exp": 23,
+      "level_bonus_gold": 9,
+      "completion_bonus": {
+        "exp": 1150,
+        "gold": 580
+      },
+      "event_weights": {
+        "safe": 18,
+        "standard": 50,
+        "risky": 32
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 2
+    },
+    {
+      "key": "frost_peak",
+      "name": "寒峰采冰",
+      "aliases": [
+        "寒峰",
+        "采冰",
+        "寒峰采冰",
+        "frost_peak"
+      ],
+      "description": "终年不化的寒峰之巅，冰魄雪莲珍贵无比。",
+      "risk": "中",
+      "duration": 5100,
+      "min_level": 10,
+      "fatigue_cooldown": 870,
+      "base_exp_per_min": 98,
+      "base_gold_per_min": 50,
+      "level_bonus_exp": 24,
+      "level_bonus_gold": 10,
+      "completion_bonus": {
         "exp": 1200,
-        "gold": 320
+        "gold": 600
+      },
+      "event_weights": {
+        "safe": 28,
+        "standard": 48,
+        "risky": 24
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 2
+    },
+    {
+      "key": "poison_mire",
+      "name": "毒瘴泽地",
+      "aliases": [
+        "毒瘴",
+        "泽地",
+        "毒瘴泽地",
+        "poison_mire"
+      ],
+      "description": "毒瘴泽中万毒盘踞，解药与毒物同样值钱。",
+      "risk": "高",
+      "duration": 5700,
+      "min_level": 11,
+      "fatigue_cooldown": 960,
+      "base_exp_per_min": 100,
+      "base_gold_per_min": 52,
+      "level_bonus_exp": 25,
+      "level_bonus_gold": 10,
+      "completion_bonus": {
+        "exp": 1250,
+        "gold": 640
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 50,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 2
+    },
+    {
+      "key": "star_plateau",
+      "name": "星台观星",
+      "aliases": [
+        "星台",
+        "观星",
+        "星台观星",
+        "star_plateau"
+      ],
+      "description": "上古观星台夜夜星陨，拾取星屑可悟天道。",
+      "risk": "中",
+      "duration": 6000,
+      "min_level": 12,
+      "fatigue_cooldown": 1020,
+      "base_exp_per_min": 102,
+      "base_gold_per_min": 55,
+      "level_bonus_exp": 25,
+      "level_bonus_gold": 11,
+      "completion_bonus": {
+        "exp": 1300,
+        "gold": 680
+      },
+      "event_weights": {
+        "safe": 30,
+        "standard": 48,
+        "risky": 22
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 2
+    },
+    {
+      "key": "dragon_tomb",
+      "name": "龙冢探秘",
+      "aliases": [
+        "龙冢",
+        "龙冢探秘",
+        "dragon_tomb"
+      ],
+      "description": "上古真龙葬身之地，龙气凝为珠，万妖觊觎。",
+      "risk": "极高",
+      "duration": 7200,
+      "min_level": 13,
+      "fatigue_cooldown": 1080,
+      "base_exp_per_min": 108,
+      "base_gold_per_min": 60,
+      "level_bonus_exp": 27,
+      "level_bonus_gold": 12,
+      "completion_bonus": {
+        "exp": 1500,
+        "gold": 800
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "sword_tomb",
+      "name": "剑冢问剑",
+      "aliases": [
+        "剑冢",
+        "问剑",
+        "剑冢问剑",
+        "sword_tomb"
+      ],
+      "description": "万剑朝宗的剑冢，剑灵择主而侍。",
+      "risk": "高",
+      "duration": 6600,
+      "min_level": 13,
+      "fatigue_cooldown": 1020,
+      "base_exp_per_min": 110,
+      "base_gold_per_min": 62,
+      "level_bonus_exp": 27,
+      "level_bonus_gold": 12,
+      "completion_bonus": {
+        "exp": 1550,
+        "gold": 820
+      },
+      "event_weights": {
+        "safe": 18,
+        "standard": 50,
+        "risky": 32
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "sea_eye",
+      "name": "海眼垂钓",
+      "aliases": [
+        "海眼",
+        "垂钓",
+        "海眼垂钓",
+        "sea_eye"
+      ],
+      "description": "海眼深处巨妖沉睡，钓起的一尾都是传说。",
+      "risk": "高",
+      "duration": 6900,
+      "min_level": 14,
+      "fatigue_cooldown": 1080,
+      "base_exp_per_min": 112,
+      "base_gold_per_min": 65,
+      "level_bonus_exp": 28,
+      "level_bonus_gold": 13,
+      "completion_bonus": {
+        "exp": 1600,
+        "gold": 860
+      },
+      "event_weights": {
+        "safe": 18,
+        "standard": 50,
+        "risky": 32
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "buddhist_land",
+      "name": "梵音古刹",
+      "aliases": [
+        "梵音",
+        "古刹",
+        "梵音古刹",
+        "buddhist_land"
+      ],
+      "description": "荒废古刹佛音袅袅，悟佛法可洗练心境。",
+      "risk": "中",
+      "duration": 6000,
+      "min_level": 13,
+      "fatigue_cooldown": 1020,
+      "base_exp_per_min": 105,
+      "base_gold_per_min": 58,
+      "level_bonus_exp": 26,
+      "level_bonus_gold": 11,
+      "completion_bonus": {
+        "exp": 1450,
+        "gold": 760
+      },
+      "event_weights": {
+        "safe": 32,
+        "standard": 48,
+        "risky": 20
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 2
+    },
+    {
+      "key": "demon_rift",
+      "name": "魔渊裂隙",
+      "aliases": [
+        "魔渊",
+        "裂隙",
+        "魔渊裂隙",
+        "demon_rift"
+      ],
+      "description": "魔气自裂隙喷涌，斩魔取晶是修行也是功业。",
+      "risk": "极高",
+      "duration": 7500,
+      "min_level": 14,
+      "fatigue_cooldown": 1140,
+      "base_exp_per_min": 118,
+      "base_gold_per_min": 68,
+      "level_bonus_exp": 29,
+      "level_bonus_gold": 13,
+      "completion_bonus": {
+        "exp": 1700,
+        "gold": 900
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "immortal_vine",
+      "name": "仙藤攀崖",
+      "aliases": [
+        "仙藤",
+        "仙藤攀崖",
+        "immortal_vine"
+      ],
+      "description": "通天仙藤每千年结果一次，攀藤摘果九死一生。",
+      "risk": "极高",
+      "duration": 7800,
+      "min_level": 15,
+      "fatigue_cooldown": 1200,
+      "base_exp_per_min": 120,
+      "base_gold_per_min": 70,
+      "level_bonus_exp": 30,
+      "level_bonus_gold": 14,
+      "completion_bonus": {
+        "exp": 1750,
+        "gold": 940
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "void_mirror",
+      "name": "虚空镜湖",
+      "aliases": [
+        "镜湖",
+        "虚空镜湖",
+        "void_mirror"
+      ],
+      "description": "镜湖倒映的不是倒影，而是另一个自己。",
+      "risk": "高",
+      "duration": 6900,
+      "min_level": 14,
+      "fatigue_cooldown": 1080,
+      "base_exp_per_min": 122,
+      "base_gold_per_min": 72,
+      "level_bonus_exp": 30,
+      "level_bonus_gold": 14,
+      "completion_bonus": {
+        "exp": 1800,
+        "gold": 960
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 50,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "war_relic",
+      "name": "古战场拾遗",
+      "aliases": [
+        "古战场",
+        "古战场拾遗",
+        "war_relic"
+      ],
+      "description": "上古神魔战场的遗兵残阵，捡漏亦是斗智斗勇。",
+      "risk": "高",
+      "duration": 7200,
+      "min_level": 15,
+      "fatigue_cooldown": 1140,
+      "base_exp_per_min": 125,
+      "base_gold_per_min": 75,
+      "level_bonus_exp": 31,
+      "level_bonus_gold": 15,
+      "completion_bonus": {
+        "exp": 1850,
+        "gold": 1000
+      },
+      "event_weights": {
+        "safe": 18,
+        "standard": 50,
+        "risky": 32
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "spirit_vein",
+      "name": "灵脉争夺",
+      "aliases": [
+        "灵脉",
+        "灵脉争夺",
+        "spirit_vein"
+      ],
+      "description": "新生的灵脉引来各方势力，狭路相逢勇者胜。",
+      "risk": "极高",
+      "duration": 7500,
+      "min_level": 15,
+      "fatigue_cooldown": 1200,
+      "base_exp_per_min": 128,
+      "base_gold_per_min": 78,
+      "level_bonus_exp": 32,
+      "level_bonus_gold": 15,
+      "completion_bonus": {
+        "exp": 1900,
+        "gold": 1050
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "cloud_city",
+      "name": "云城行商",
+      "aliases": [
+        "云城",
+        "行商",
+        "云城行商",
+        "cloud_city"
+      ],
+      "description": "浮空云城百业兴隆，行商一趟利润翻倍。",
+      "risk": "中",
+      "duration": 6300,
+      "min_level": 13,
+      "fatigue_cooldown": 1080,
+      "base_exp_per_min": 118,
+      "base_gold_per_min": 70,
+      "level_bonus_exp": 29,
+      "level_bonus_gold": 14,
+      "completion_bonus": {
+        "exp": 1700,
+        "gold": 900
+      },
+      "event_weights": {
+        "safe": 30,
+        "standard": 50,
+        "risky": 20
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 2
+    },
+    {
+      "key": "pill_valley",
+      "name": "丹谷秘境",
+      "aliases": [
+        "丹谷秘境",
+        "pill_valley"
+      ],
+      "description": "丹谷秘境中灵丹遍地，但丹兽守护千年。",
+      "risk": "极高",
+      "duration": 8400,
+      "min_level": 16,
+      "fatigue_cooldown": 1320,
+      "base_exp_per_min": 132,
+      "base_gold_per_min": 82,
+      "level_bonus_exp": 33,
+      "level_bonus_gold": 16,
+      "completion_bonus": {
+        "exp": 2100,
+        "gold": 1150
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "meteor_field",
+      "name": "陨星荒原",
+      "aliases": [
+        "陨星",
+        "荒原",
+        "陨星荒原",
+        "meteor_field"
+      ],
+      "description": "陨星坠落的荒原上，星核之宝随处可见（也随处可见尸骨）。",
+      "risk": "极高",
+      "duration": 8700,
+      "min_level": 16,
+      "fatigue_cooldown": 1350,
+      "base_exp_per_min": 135,
+      "base_gold_per_min": 85,
+      "level_bonus_exp": 33,
+      "level_bonus_gold": 17,
+      "completion_bonus": {
+        "exp": 2200,
+        "gold": 1200
+      },
+      "event_weights": {
+        "safe": 15,
+        "standard": 50,
+        "risky": 35
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "immortal_battle",
+      "name": "仙人战场",
+      "aliases": [
+        "仙人战场",
+        " immortal_battle"
+      ],
+      "description": "两位仙人的战场余波未平，闯入者非死即悟。",
+      "risk": "极高",
+      "duration": 9000,
+      "min_level": 17,
+      "fatigue_cooldown": 1380,
+      "base_exp_per_min": 138,
+      "base_gold_per_min": 88,
+      "level_bonus_exp": 34,
+      "level_bonus_gold": 17,
+      "completion_bonus": {
+        "exp": 2300,
+        "gold": 1250
+      },
+      "event_weights": {
+        "safe": 12,
+        "standard": 50,
+        "risky": 38
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "nether_pass",
+      "name": "幽冥关口",
+      "aliases": [
+        "幽冥",
+        "关口",
+        "幽冥关口",
+        "nether_pass"
+      ],
+      "description": "生死簿上未记名者，可从幽冥关口窃得一缕生机。",
+      "risk": "极高",
+      "duration": 9000,
+      "min_level": 17,
+      "fatigue_cooldown": 1380,
+      "base_exp_per_min": 140,
+      "base_gold_per_min": 90,
+      "level_bonus_exp": 35,
+      "level_bonus_gold": 18,
+      "completion_bonus": {
+        "exp": 2400,
+        "gold": 1300
+      },
+      "event_weights": {
+        "safe": 12,
+        "standard": 50,
+        "risky": 38
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "chaos_sea",
+      "name": "混沌海域",
+      "aliases": [
+        "混沌海",
+        "混沌海域",
+        "chaos_sea"
+      ],
+      "description": "混沌海中万物无序，唯强大者能捞取造化。",
+      "risk": "极高",
+      "duration": 9300,
+      "min_level": 18,
+      "fatigue_cooldown": 1440,
+      "base_exp_per_min": 145,
+      "base_gold_per_min": 92,
+      "level_bonus_exp": 36,
+      "level_bonus_gold": 18,
+      "completion_bonus": {
+        "exp": 2500,
+        "gold": 1380
+      },
+      "event_weights": {
+        "safe": 12,
+        "standard": 50,
+        "risky": 38
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "god_tree",
+      "name": "神木采枝",
+      "aliases": [
+        "神木",
+        "神木采枝",
+        "god_tree"
+      ],
+      "description": "建木神枝一寸千金，但神木有灵，折枝者必被驱逐。",
+      "risk": "极高",
+      "duration": 9600,
+      "min_level": 18,
+      "fatigue_cooldown": 1470,
+      "base_exp_per_min": 148,
+      "base_gold_per_min": 95,
+      "level_bonus_exp": 37,
+      "level_bonus_gold": 19,
+      "completion_bonus": {
+        "exp": 2600,
+        "gold": 1450
+      },
+      "event_weights": {
+        "safe": 12,
+        "standard": 50,
+        "risky": 38
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "ancient_mine",
+      "name": "上古矿脉",
+      "aliases": [
+        "上古矿",
+        "上古矿脉",
+        "ancient_mine"
+      ],
+      "description": "上古矿脉深不见底，越深处的矿石越是惊人。",
+      "risk": "高",
+      "duration": 8100,
+      "min_level": 16,
+      "fatigue_cooldown": 1260,
+      "base_exp_per_min": 142,
+      "base_gold_per_min": 90,
+      "level_bonus_exp": 35,
+      "level_bonus_gold": 18,
+      "completion_bonus": {
+        "exp": 2450,
+        "gold": 1350
+      },
+      "event_weights": {
+        "safe": 18,
+        "standard": 52,
+        "risky": 30
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "sky_tomb",
+      "name": "天空陵墓",
+      "aliases": [
+        "天空陵",
+        "天空陵墓",
+        "sky_tomb"
+      ],
+      "description": "悬浮万里的天空陵墓，葬着一位不肯落幕的古帝。",
+      "risk": "极高",
+      "duration": 9900,
+      "min_level": 17,
+      "fatigue_cooldown": 1500,
+      "base_exp_per_min": 150,
+      "base_gold_per_min": 98,
+      "level_bonus_exp": 37,
+      "level_bonus_gold": 19,
+      "completion_bonus": {
+        "exp": 2700,
+        "gold": 1500
+      },
+      "event_weights": {
+        "safe": 12,
+        "standard": 50,
+        "risky": 38
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "time_river",
+      "name": "时光长河",
+      "aliases": [
+        "时光",
+        "长河",
+        "时光长河",
+        "time_river"
+      ],
+      "description": "溯流时光长河，窥见过去未来，一念成佛一念成魔。",
+      "risk": "极高",
+      "duration": 10200,
+      "min_level": 19,
+      "fatigue_cooldown": 1560,
+      "base_exp_per_min": 158,
+      "base_gold_per_min": 102,
+      "level_bonus_exp": 39,
+      "level_bonus_gold": 20,
+      "completion_bonus": {
+        "exp": 3000,
+        "gold": 1650
       },
       "event_weights": {
         "safe": 10,
-        "standard": 30,
-        "risky": 35,
-        "disaster": 25
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "star_core",
+      "name": "星核开采",
+      "aliases": [
+        "星核",
+        "星核开采",
+        "star_core"
+      ],
+      "description": "垂死恒星的星核中，蕴含焚灭万物的力量。",
+      "risk": "极高",
+      "duration": 10500,
+      "min_level": 19,
+      "fatigue_cooldown": 1600,
+      "base_exp_per_min": 162,
+      "base_gold_per_min": 105,
+      "level_bonus_exp": 40,
+      "level_bonus_gold": 21,
+      "completion_bonus": {
+        "exp": 3100,
+        "gold": 1700
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_hunt",
+      "bounty_progress": 3
+    },
+    {
+      "key": "soul_swamp",
+      "name": "魂沼渡魂",
+      "aliases": [
+        "魂沼",
+        "渡魂",
+        "魂沼渡魂",
+        "soul_swamp"
+      ],
+      "description": "万魂哀嚎的沼泽，渡一魂得一愿。",
+      "risk": "极高",
+      "duration": 10800,
+      "min_level": 20,
+      "fatigue_cooldown": 1650,
+      "base_exp_per_min": 165,
+      "base_gold_per_min": 108,
+      "level_bonus_exp": 41,
+      "level_bonus_gold": 21,
+      "completion_bonus": {
+        "exp": 3200,
+        "gold": 1750
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "dragon_market",
+      "name": "龙市淘珍",
+      "aliases": [
+        "龙市",
+        "淘珍",
+        "龙市淘珍",
+        "dragon_market"
+      ],
+      "description": "真龙开设的隐市，有缘者可购得仙家重宝。",
+      "risk": "高",
+      "duration": 9600,
+      "min_level": 19,
+      "fatigue_cooldown": 1500,
+      "base_exp_per_min": 160,
+      "base_gold_per_min": 105,
+      "level_bonus_exp": 40,
+      "level_bonus_gold": 21,
+      "completion_bonus": {
+        "exp": 3050,
+        "gold": 1680
+      },
+      "event_weights": {
+        "safe": 20,
+        "standard": 52,
+        "risky": 28
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 3
+    },
+    {
+      "key": "void_crack",
+      "name": "虚空裂缝",
+      "aliases": [
+        "虚空裂缝",
+        "void_crack"
+      ],
+      "description": "裂缝彼端是未知位面，进去的人十不存一。",
+      "risk": "极高",
+      "duration": 11400,
+      "min_level": 20,
+      "fatigue_cooldown": 1700,
+      "base_exp_per_min": 170,
+      "base_gold_per_min": 112,
+      "level_bonus_exp": 42,
+      "level_bonus_gold": 22,
+      "completion_bonus": {
+        "exp": 3400,
+        "gold": 1850
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "origin_sea",
+      "name": "本源之海",
+      "aliases": [
+        "本源",
+        "本源之海",
+        "origin_sea"
+      ],
+      "description": "万物本源汇聚之海，一瓢便可重塑根骨。",
+      "risk": "极高",
+      "duration": 11700,
+      "min_level": 21,
+      "fatigue_cooldown": 1750,
+      "base_exp_per_min": 175,
+      "base_gold_per_min": 115,
+      "level_bonus_exp": 43,
+      "level_bonus_gold": 23,
+      "completion_bonus": {
+        "exp": 3500,
+        "gold": 1900
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "immortal_tomb",
+      "name": "仙人陵寝",
+      "aliases": [
+        "仙人陵",
+        "仙人陵寝",
+        "immortal_tomb"
+      ],
+      "description": "真正仙人的陵寝，陪葬品足以引发仙人之战。",
+      "risk": "极高",
+      "duration": 12000,
+      "min_level": 21,
+      "fatigue_cooldown": 1800,
+      "base_exp_per_min": 180,
+      "base_gold_per_min": 118,
+      "level_bonus_exp": 45,
+      "level_bonus_gold": 23,
+      "completion_bonus": {
+        "exp": 3600,
+        "gold": 2000
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "dao_pool",
+      "name": "道池洗礼",
+      "aliases": [
+        "道池",
+        "道池洗礼",
+        "dao_pool"
+      ],
+      "description": "天道道池每一甲子开启一次，洗礼者脱胎换骨。",
+      "risk": "极高",
+      "duration": 12300,
+      "min_level": 20,
+      "fatigue_cooldown": 1850,
+      "base_exp_per_min": 185,
+      "base_gold_per_min": 120,
+      "level_bonus_exp": 46,
+      "level_bonus_gold": 24,
+      "completion_bonus": {
+        "exp": 3800,
+        "gold": 2100
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_roam",
+      "bounty_progress": 3
+    },
+    {
+      "key": "heaven_gate",
+      "name": "天门叩关",
+      "aliases": [
+        "天门",
+        "天门叩关",
+        "heaven_gate"
+      ],
+      "description": "叩响天门者，要么仙音绕体，要么形神俱灭。",
+      "risk": "极高",
+      "duration": 13200,
+      "min_level": 22,
+      "fatigue_cooldown": 1950,
+      "base_exp_per_min": 195,
+      "base_gold_per_min": 128,
+      "level_bonus_exp": 48,
+      "level_bonus_gold": 25,
+      "completion_bonus": {
+        "exp": 4500,
+        "gold": 2500
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "chaos_throne",
+      "name": "混沌王座",
+      "aliases": [
+        "混沌王座",
+        "chaos_throne"
+      ],
+      "description": "混沌深处的王座，坐上去的人都成了传说。",
+      "risk": "极高",
+      "duration": 13800,
+      "min_level": 25,
+      "fatigue_cooldown": 2100,
+      "base_exp_per_min": 210,
+      "base_gold_per_min": 138,
+      "level_bonus_exp": 52,
+      "level_bonus_gold": 27,
+      "completion_bonus": {
+        "exp": 5200,
+        "gold": 2900
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "fate_loom",
+      "name": "命运织机",
+      "aliases": [
+        "命运织机",
+        "fate_loom"
+      ],
+      "description": "命运织机从不停歇，剪下一缕便可改写一生。",
+      "risk": "极高",
+      "duration": 14400,
+      "min_level": 28,
+      "fatigue_cooldown": 2250,
+      "base_exp_per_min": 225,
+      "base_gold_per_min": 148,
+      "level_bonus_exp": 56,
+      "level_bonus_gold": 29,
+      "completion_bonus": {
+        "exp": 6000,
+        "gold": 3300
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "dao_end",
+      "name": "大道尽头",
+      "aliases": [
+        "大道尽头",
+        "dao_end"
+      ],
+      "description": "所有修行的终点。没有人知道尽头有什么。",
+      "risk": "极高",
+      "duration": 15000,
+      "min_level": 31,
+      "fatigue_cooldown": 2400,
+      "base_exp_per_min": 240,
+      "base_gold_per_min": 158,
+      "level_bonus_exp": 60,
+      "level_bonus_gold": 31,
+      "completion_bonus": {
+        "exp": 7000,
+        "gold": 3800
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "pluto_trial",
+      "name": "冥府试炼",
+      "aliases": [
+        "冥府",
+        "试炼",
+        "冥府试炼",
+        "pluto_trial"
+      ],
+      "description": "炼虚中期强者的试炼场：在冥府幻境中直视自己的死亡。",
+      "risk": "极高",
+      "duration": 12900,
+      "min_level": 23,
+      "fatigue_cooldown": 1980,
+      "base_exp_per_min": 188,
+      "base_gold_per_min": 188,
+      "level_bonus_exp": 47,
+      "level_bonus_gold": 37,
+      "completion_bonus": {
+        "exp": 4000,
+        "gold": 2200
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "soul_forge",
+      "name": "神魂锻炉",
+      "aliases": [
+        "神魂",
+        "锻炉",
+        "神魂锻炉",
+        "soul_forge"
+      ],
+      "description": "以神魂入炉淬炼，炼虚后期突破的必经之路。",
+      "risk": "极高",
+      "duration": 13200,
+      "min_level": 24,
+      "fatigue_cooldown": 2040,
+      "base_exp_per_min": 192,
+      "base_gold_per_min": 192,
+      "level_bonus_exp": 48,
+      "level_bonus_gold": 38,
+      "completion_bonus": {
+        "exp": 4200,
+        "gold": 2300
+      },
+      "event_weights": {
+        "safe": 10,
+        "standard": 50,
+        "risky": 40
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "dao_arena",
+      "name": "万道竞技场",
+      "aliases": [
+        "万道",
+        "竞技场",
+        "万道竞技场",
+        "dao_arena"
+      ],
+      "description": "上古强者的魂魄在此永战不休，胜者夺其道果。",
+      "risk": "极高",
+      "duration": 14100,
+      "min_level": 26,
+      "fatigue_cooldown": 2160,
+      "base_exp_per_min": 205,
+      "base_gold_per_min": 205,
+      "level_bonus_exp": 51,
+      "level_bonus_gold": 41,
+      "completion_bonus": {
+        "exp": 4800,
+        "gold": 2600
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 50,
+        "risky": 42
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "primordial_peak",
+      "name": "太初之巅",
+      "aliases": [
+        "太初",
+        "之巅",
+        "太初之巅",
+        "primordial_peak"
+      ],
+      "description": "天地初开时的第一座山峰，合体后期方可立足其上。",
+      "risk": "极高",
+      "duration": 14400,
+      "min_level": 27,
+      "fatigue_cooldown": 2220,
+      "base_exp_per_min": 210,
+      "base_gold_per_min": 210,
+      "level_bonus_exp": 52,
+      "level_bonus_gold": 42,
+      "completion_bonus": {
+        "exp": 5000,
+        "gold": 2700
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 50,
+        "risky": 42
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "cosmos_eye",
+      "name": "宇宙之眼",
+      "aliases": [
+        "宇宙之眼",
+        "cosmos_eye"
+      ],
+      "description": "大乘中期方可仰望的天眼，看透者可得一方小世界。",
+      "risk": "极高",
+      "duration": 15600,
+      "min_level": 29,
+      "fatigue_cooldown": 2340,
+      "base_exp_per_min": 220,
+      "base_gold_per_min": 220,
+      "level_bonus_exp": 55,
+      "level_bonus_gold": 44,
+      "completion_bonus": {
+        "exp": 5600,
+        "gold": 3000
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
+      },
+      "drop_tier": "high",
+      "bounty_tag": "adventure_peril",
+      "bounty_progress": 3
+    },
+    {
+      "key": "creation_altar",
+      "name": "造化祭坛",
+      "aliases": [
+        "造化祭坛",
+        "creation_altar"
+      ],
+      "description": "大乘后期向天道献祭换取消缘，也可献祭自己的性命。",
+      "risk": "极高",
+      "duration": 15900,
+      "min_level": 30,
+      "fatigue_cooldown": 2400,
+      "base_exp_per_min": 226,
+      "base_gold_per_min": 226,
+      "level_bonus_exp": 56,
+      "level_bonus_gold": 45,
+      "completion_bonus": {
+        "exp": 5900,
+        "gold": 3200
+      },
+      "event_weights": {
+        "safe": 8,
+        "standard": 48,
+        "risky": 44
       },
       "drop_tier": "high",
       "bounty_tag": "adventure_peril",
@@ -110,131 +1827,173 @@
   "event_groups": {
     "safe": [
       {
-        "key": "herb_bloom",
-        "name": "灵药丰收",
-        "desc": "你偶遇灵药盛放之地，顺手采撷一批。",
-        "exp_mult": 1.15,
+        "key": "steady_path",
+        "name": "平稳推进",
+        "desc": "历练过程顺风顺水，按部就班地完成目标。",
+        "exp_mult": 1.1,
         "gold_mult": 1.1,
-        "item_chance": 80,
-        "bonus_progress": 0
-      },
-      {
-        "key": "travel_insight",
-        "name": "旅途悟道",
-        "desc": "沿途的山河激发灵感，你对大道多了几分理解。",
-        "exp_mult": 1.25,
-        "gold_mult": 1.0,
         "item_chance": 60,
         "bonus_progress": 0
       },
       {
-        "key": "ally_help",
-        "name": "前辈相助",
-        "desc": "路遇前辈赠予心得与灵石，你受益良多。",
-        "exp_mult": 1.1,
-        "gold_mult": 1.35,
-        "item_chance": 40,
+        "key": "good_samaritan",
+        "name": "仗义相助",
+        "desc": "路见不平出手相助，结识一位同道中人。",
+        "exp_mult": 1.05,
+        "gold_mult": 1.0,
+        "item_chance": 55,
+        "bonus_progress": 1
+      },
+      {
+        "key": "herb_luck",
+        "name": "灵草满载",
+        "desc": "误入灵草丛生之地，采了个盆满钵满。",
+        "exp_mult": 1.0,
+        "gold_mult": 1.25,
+        "item_chance": 70,
         "bonus_progress": 0
       }
     ],
     "standard": [
       {
-        "key": "steady_path",
-        "name": "平稳推进",
-        "desc": "历练过程顺风顺水，按部就班地完成既定目标。",
-        "exp_mult": 1.0,
-        "gold_mult": 1.0,
-        "item_chance": 35,
-        "bonus_progress": 0
-      },
-      {
-        "key": "beast_skirmish",
-        "name": "遭遇拦路妖兽",
-        "desc": "你击退了扰民的妖兽，增长了实战经验。",
+        "key": "minor_skirmish",
+        "name": "遭遇小型冲突",
+        "desc": "击退拦路妖兽，实战经验有所增长。",
         "exp_mult": 1.2,
-        "gold_mult": 1.25,
-        "item_chance": 55,
+        "gold_mult": 1.2,
+        "item_chance": 50,
         "bonus_progress": 1
       },
       {
-        "key": "secret_cache",
-        "name": "秘宝遗迹",
-        "desc": "意外发现遗迹残骸，获得少量古物。",
-        "exp_mult": 1.05,
-        "gold_mult": 1.4,
-        "item_chance": 65,
+        "key": "hidden_cave",
+        "name": "发现隐秘洞窟",
+        "desc": "寻得一处无主洞窟，收获颇丰。",
+        "exp_mult": 1.25,
+        "gold_mult": 1.15,
+        "item_chance": 60,
+        "bonus_progress": 1
+      },
+      {
+        "key": "merchant_encounter",
+        "name": "偶遇行脚商人",
+        "desc": "与神秘商人交易，各取所需。",
+        "exp_mult": 1.1,
+        "gold_mult": 1.35,
+        "item_chance": 55,
         "bonus_progress": 0
       }
     ],
     "risky": [
       {
-        "key": "blood_battle",
-        "name": "血战妖巢",
-        "desc": "你一鼓作气攻陷妖兽巢穴，凶险却收获颇丰。",
-        "exp_mult": 1.45,
-        "gold_mult": 1.35,
-        "item_chance": 85,
-        "bonus_progress": 2
-      },
-      {
-        "key": "ancient_trial",
-        "name": "远古试炼",
-        "desc": "触发古阵心法考验，险些身陨，所幸理解了新的法则。",
-        "exp_mult": 1.6,
-        "gold_mult": 1.1,
-        "item_chance": 50,
-        "bonus_progress": 1
-      },
-      {
-        "key": "trade_windfall",
-        "name": "天降横财",
-        "desc": "解救的商队奉上重金答谢。",
-        "exp_mult": 0.9,
-        "gold_mult": 1.8,
-        "item_chance": 55,
-        "bonus_progress": 0
-      }
-    ],
-    "disaster": [
-      {
-        "key": "ambush_fail",
+        "key": "ambush",
         "name": "埋伏受创",
-        "desc": "敌对势力趁你不备发动袭击，你被迫撤退并整理伤势。",
-        "exp_mult": 0.55,
-        "gold_mult": 0.5,
+        "desc": "遭遇伏击，受了点伤但仍坚持完成任务。",
+        "exp_mult": 0.7,
+        "gold_mult": 0.7,
         "item_chance": 15,
         "bonus_progress": 0,
         "injury": true
       },
       {
-        "key": "lost_in_fog",
-        "name": "迷失古雾",
-        "desc": "你陷入幻雾耽误大量时间，所幸保住性命。",
-        "exp_mult": 0.6,
-        "gold_mult": 0.4,
+        "key": "beast_tide",
+        "name": "妖兽潮来袭",
+        "desc": "卷入妖兽迁徙浪潮，九死一生杀出重围。",
+        "exp_mult": 0.75,
+        "gold_mult": 0.75,
         "item_chance": 20,
-        "bonus_progress": 0
+        "bonus_progress": 1,
+        "injury": true
+      },
+      {
+        "key": "rival_robber",
+        "name": "同行相争",
+        "desc": "与其他修士争夺宝物，两败俱伤。",
+        "exp_mult": 0.8,
+        "gold_mult": 0.8,
+        "item_chance": 25,
+        "bonus_progress": 0,
+        "injury": true
       }
     ]
   },
   "drop_tables": {
     "low": [
-      { "name": "灵草", "weight": 50, "min": 1, "max": 3 },
-      { "name": "精铁", "weight": 30, "min": 1, "max": 2 },
-      { "name": "灵石碎片", "weight": 20, "min": 2, "max": 5 }
+      {
+        "name": "灵草",
+        "weight": 45,
+        "min": 1,
+        "max": 3
+      },
+      {
+        "name": "精铁",
+        "weight": 30,
+        "min": 1,
+        "max": 2
+      },
+      {
+        "name": "灵石碎片",
+        "weight": 25,
+        "min": 2,
+        "max": 5
+      }
     ],
     "mid": [
-      { "name": "灵草", "weight": 35, "min": 2, "max": 5 },
-      { "name": "玄铁", "weight": 25, "min": 1, "max": 3 },
-      { "name": "灵兽毛皮", "weight": 20, "min": 1, "max": 3 },
-      { "name": "星辰石", "weight": 20, "min": 1, "max": 2 }
+      {
+        "name": "灵草",
+        "weight": 30,
+        "min": 2,
+        "max": 5
+      },
+      {
+        "name": "玄铁",
+        "weight": 28,
+        "min": 1,
+        "max": 3
+      },
+      {
+        "name": "灵兽毛皮",
+        "weight": 22,
+        "min": 1,
+        "max": 2
+      },
+      {
+        "name": "妖兽精血",
+        "weight": 20,
+        "min": 1,
+        "max": 2
+      }
     ],
     "high": [
-      { "name": "玄铁", "weight": 30, "min": 2, "max": 4 },
-      { "name": "星辰石", "weight": 25, "min": 1, "max": 2 },
-      { "name": "灵兽内丹", "weight": 20, "min": 1, "max": 1 },
-      { "name": "功法残页", "weight": 15, "min": 1, "max": 1 },
-      { "name": "天材地宝", "weight": 10, "min": 1, "max": 1 }
+      {
+        "name": "玄铁",
+        "weight": 26,
+        "min": 2,
+        "max": 5
+      },
+      {
+        "name": "星辰石",
+        "weight": 24,
+        "min": 1,
+        "max": 3
+      },
+      {
+        "name": "灵兽内丹",
+        "weight": 22,
+        "min": 1,
+        "max": 2
+      },
+      {
+        "name": "天材地宝",
+        "weight": 18,
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "引雷符",
+        "weight": 10,
+        "min": 1,
+        "max": 1
+      }
     ]
   }
 }

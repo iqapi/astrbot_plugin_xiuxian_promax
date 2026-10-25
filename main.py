@@ -33,9 +33,30 @@ from .models_extended import UserStatus
 
 
 def require_whitelist(func):
-    """装饰器：检查群聊白名单权限"""
+    """装饰器：检查群聊白名单权限 + 强制指令前缀（/ 或 #）"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
+        # ===== v6.17 强制前缀：只有 / 或 # 开头的消息才响应 =====
+        # AstrBot 的 command 匹配到达这里时可能已剥离唤醒前缀，
+        # 因此根据平台配置做还原判断：只要原始消息不是以 / 或 # 开头就忽略
+        try:
+            raw = (event.get_message_str() or "").strip()
+        except Exception:
+            raw = ""
+        # 消息已被剥离前缀时 raw 不带 /；用 message_obj 原文兜底
+        if raw and not raw.startswith("/") and not raw.startswith("#"):
+            try:
+                mo = getattr(event, "message_obj", None)
+                raw_full = ""
+                if mo is not None:
+                    for comp in (mo.message or []):
+                        txt = getattr(comp, "text", "") or ""
+                        raw_full += txt
+                raw_full = raw_full.strip()
+                if raw_full and not raw_full.startswith("/") and not raw_full.startswith("#"):
+                    return  # 纯文本触发，一律忽略
+            except Exception:
+                return
         if not self._check_access(event):
             await self._send_access_denied_message(event)
             return
@@ -319,13 +340,15 @@ class XiuXianPlugin(Star):
         self.bounty_check_task = asyncio.create_task(self._schedule_bounty_check())
         self.demon_check_task = asyncio.create_task(self._schedule_demon_check())
         self.tide_check_task = asyncio.create_task(self._schedule_tide_check())
+        # v6.17 商店自动上货
+        self.restock_task = asyncio.create_task(self._schedule_restock())
         
         logger.info("【修仙插件】已加载。")
 
     async def terminate(self):
         for task in (self.boss_task, self.loan_check_task, self.spirit_eye_task,
                      self.bounty_check_task, self.demon_check_task,
-                     getattr(self, "tide_check_task", None)):
+                     getattr(self, "tide_check_task", None), getattr(self, "restock_task", None)):
             if task: task.cancel()
         await self.db.close()
         logger.info("【修仙插件】已卸载。")
@@ -419,6 +442,21 @@ class XiuXianPlugin(Star):
         if event_name not in self._whitelist_warned:
             self._whitelist_warned.add(event_name)
             logger.warning(f"【修仙插件】{event_name} 广播被跳过：未配置白名单 WHITELIST_GROUPS，全服事件将不会通知任何群聊！")
+
+    async def _schedule_restock(self):
+        """v6.17 商店自动上货：每 10 分钟检查三阁，售罄/到期自动补货"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(600)
+                n, detail = await self.shop_handler.auto_restock()
+                if n:
+                    logger.info(f"【修仙插件】自动上货完成（{n} 阁）：{detail}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"自动上货任务异常: {e}")
+                await asyncio.sleep(120)
 
     async def _broadcast_world_boss_spawn(self, msg: str):
         """广播动态世界Boss降临/天魔结算"""
@@ -734,6 +772,18 @@ class XiuXianPlugin(Star):
     async def handle_buy(self, event: AstrMessageEvent, item_name: str = ""):
         async for r in self.shop_handler.handle_buy(event, item_name): yield r
 
+    @filter.command("购买物品", "购买物品（无空格连写形式）")
+    @require_whitelist
+    async def handle_buy_compact(self, event: AstrMessageEvent, item_name: str = ""):
+        # 兼容 "购买物品玄铁 5" / "购买物品 玄铁"：剥离"购买物品"前缀后走同一逻辑
+        try:
+            raw = (event.get_message_str() or "").strip().lstrip('/').lstrip('#').strip()
+        except Exception:
+            raw = ""
+        if raw.startswith("购买物品"):
+            raw = raw[len("购买物品"):].strip()
+        async for r in self.shop_handler.handle_buy(event, raw): yield r
+
     @filter.command(CMD_STORAGE_RING, "查看储物戒信息")
     @require_whitelist
     async def handle_storage_ring(self, event: AstrMessageEvent):
@@ -861,11 +911,6 @@ class XiuXianPlugin(Star):
     async def handle_boss_info(self, event: AstrMessageEvent):
         async for r in self.boss_handlers.handle_boss_info(event): yield r
     
-    @filter.command("世界boss", "查看世界Boss状态(旧)")
-    @require_whitelist
-    async def handle_boss_info_lower(self, event: AstrMessageEvent):
-        async for r in self.boss_handlers.handle_boss_info(event): yield r
-
     @filter.command(CMD_BOSS_FIGHT, "挑战世界Boss(旧)")
     @require_whitelist
     async def handle_boss_fight(self, event: AstrMessageEvent):

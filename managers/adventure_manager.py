@@ -172,13 +172,62 @@ class AdventureManager:
         if user_cd.type != UserStatus.IDLE:
             return False, f"❌ 你当前正{UserStatus.get_name(user_cd.type)}，无法开始历练！"
 
+        # ===== v6.18 空参必须明选路线（不再静默进默认路线）=====
+        # 60+ 路线按境界过滤：只显示当前可走的 + 最近的 2 个待解锁预告
+        if not route_token or not route_token.strip():
+            lines = [
+                "🗺️ 请选择历练路线",
+                "━━━━━━━━━━━━━━━",
+            ]
+            available = sorted(
+                [r for r in self.routes.values() if player.level_index >= r.get("min_level", 0)],
+                key=lambda r: r.get("min_level", 0)
+            )
+            locked = sorted(
+                [r for r in self.routes.values() if player.level_index < r.get("min_level", 0)],
+                key=lambda r: r.get("min_level", 0)
+            )
+            for route in available:
+                lines.append(
+                    f"  · {route['name']}\n"
+                    f"      {route.get('description', '')}\n"
+                    f"      风险：{route.get('risk', '?')} | 时长：{route.get('duration', 0) // 60} 分钟"
+                    + (f" | 需境界{route.get('min_level')}" if route.get('min_level') else " | 无境界要求")
+                )
+            if not available:
+                lines.append("  （暂无可用路线，异常！）")
+            if locked:
+                lines.append("━━━━━━━━━━━━━━━")
+                lines.append("【即将解锁】再升几级就能去：")
+                for route in locked[:3]:
+                    lines.append(
+                        f"  🔒 {route['name']}（需境界{route.get('min_level')}，还差 {route.get('min_level', 0) - player.level_index} 级）"
+                        f" | 时长 {route.get('duration', 0) // 60} 分钟"
+                    )
+            lines.append("━━━━━━━━━━━━━━━")
+            lines.append(f"💡 共 {len(available)} 条路线可用（全服共 {len(self.routes)} 条）")
+            lines.append("💡 使用 /开始历练 <路线名> 出发（如 /开始历练 云游四方）")
+            return False, "\n".join(lines)
+            return False, "\n".join(lines)
+
         route_key = self._resolve_route(route_token)
         route = self.routes.get(route_key)
         if not route:
-            return False, "❌ 未找到对应的历练路线，请先发送 /历练信息 查看可选路线。"
+            valid = "、".join(r["name"] for r in self.routes.values())
+            return False, (
+                f"❌ 未找到路线【{route_token}】。\n"
+                f"可选路线：{valid}\n"
+                f"💡 也可发送 /开始历练 查看路线详情"
+            )
 
         if player.level_index < route.get("min_level", 0):
-            return False, "❌ 你的境界还不足以踏上这条路线，先提升境界吧！"
+            return False, (
+                f"❌ 境界不足，无法踏上【{route['name']}】！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"该路线需要境界等级 {route.get('min_level')}\n"
+                f"你当前境界等级：{player.level_index}（还差 {route.get('min_level', 0) - player.level_index} 级）\n"
+                f"💡 先在低风险路线积累修为，或 /闭关 提升"
+            )
 
         cooldown_key = f"adv_cd_{user_id}_{route_key}"
         cooldown_end = 0
