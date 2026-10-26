@@ -149,10 +149,10 @@ class CombatManager:
 
     @classmethod
     def player_vs_player(cls, player1: CombatStats, player2: CombatStats, combat_type: int = 1) -> Dict:
-        """玩家vs玩家战斗"""
+        """玩家vs玩家战斗 (限制5回合，按剩余血量百分比判定)"""
         combat_log = [f"☆━━━━ 战斗开始 ━━━━☆", f"{player1.name} VS {player2.name}"]
         round_num = 0
-        max_rounds = 100
+        max_rounds = 5  # ★ 修改：最多5回合
         
         while player1.hp > 0 and player2.hp > 0 and round_num < max_rounds:
             round_num += 1
@@ -192,25 +192,44 @@ class CombatManager:
                 
             combat_log.append("")
         
-        if player1.hp > 0: winner = player1.user_id
-        elif player2.hp > 0: winner = player2.user_id
-        else: winner = "平局"
+        # ★ 修改：判定胜负逻辑
+        if player2.hp <= 0 and player1.hp > 0:
+            winner = player1.user_id
+        elif player1.hp <= 0 and player2.hp > 0:
+            winner = player2.user_id
+        elif player1.hp <= 0 and player2.hp <= 0:
+            winner = "平局"
+        else:
+            # 打满回合未死亡，按剩余血量百分比判定
+            p1_ratio = player1.hp / player1.max_hp if player1.max_hp > 0 else 0
+            p2_ratio = player2.hp / player2.max_hp if player2.max_hp > 0 else 0
+            if p1_ratio > p2_ratio:
+                winner = player1.user_id
+            elif p2_ratio > p1_ratio:
+                winner = player2.user_id
+            else:
+                winner = "平局"
+        
+        # 提取真实的结束血量供展示（不打满血）
+        real_p1_hp = max(0, player1.hp)
+        real_p2_hp = max(0, player2.hp)
         
         if combat_type == 1:
             p1_hp, p2_hp = player1.max_hp, player2.max_hp
         else:
-            p1_hp = max(1, player1.hp) if player1.hp > 0 else 1
-            p2_hp = max(1, player2.hp) if player2.hp > 0 else 1
+            p1_hp = max(1, real_p1_hp) if real_p1_hp > 0 else 1
+            p2_hp = max(1, real_p2_hp) if real_p2_hp > 0 else 1
             
         return {
             "winner": winner, "combat_log": combat_log, "rounds": round_num,
             "player1_final_hp": p1_hp, "player1_final_mp": player1.mp,
-            "player2_final_hp": p2_hp, "player2_final_mp": player2.mp
+            "player2_final_hp": p2_hp, "player2_final_mp": player2.mp,
+            "player1_real_hp": real_p1_hp, "player2_real_hp": real_p2_hp
         }
 
     @classmethod
     def player_vs_player_balanced(cls, player1: CombatStats, player2: CombatStats) -> Dict:
-        """天道压制 PVP（强制拉平基础属性）"""
+        """天道压制 PVP（强制拉平基础属性，限5回合）"""
         p1_orig_hp, p1_orig_atk = player1.hp, player1.atk
         p2_orig_hp, p2_orig_atk = player2.hp, player2.atk
         
@@ -237,7 +256,7 @@ class CombatManager:
         ]
         
         round_num = 0
-        while player1.hp > 0 and player2.hp > 0 and round_num < 100:
+        while player1.hp > 0 and player2.hp > 0 and round_num < 5:  # ★ 修改：最多5回合
             round_num += 1
             combat_log.append(f"-- 第 {round_num} 回合 --")
             
@@ -273,19 +292,30 @@ class CombatManager:
                 
             combat_log.append("")
         
-        winner = player1.user_id if player1.hp > 0 else (player2.user_id if player2.hp > 0 else "平局")
+        # ★ 修改：判定胜负逻辑
+        if player2.hp <= 0 and player1.hp > 0:
+            winner = player1.user_id
+        elif player1.hp <= 0 and player2.hp > 0:
+            winner = player2.user_id
+        elif player1.hp <= 0 and player2.hp <= 0:
+            winner = "平局"
+        else:
+            if player1.hp > player2.hp: winner = player1.user_id
+            elif player2.hp > player1.hp: winner = player2.user_id
+            else: winner = "平局"
         
         return {
             "winner": winner, 
             "combat_log": combat_log, 
             "rounds": round_num,
             "player1_final_hp": 1, "player1_final_mp": 1,
-            "player2_final_hp": 1, "player2_final_mp": 1
+            "player2_final_hp": 1, "player2_final_mp": 1,
+            "player1_real_hp": max(0, player1.hp), "player2_real_hp": max(0, player2.hp)
         }
     
     @classmethod
     def player_vs_boss(cls, player: CombatStats, boss: CombatStats) -> Dict:
-        """玩家vs Boss战斗"""
+        """玩家vs Boss战斗 (保持100回合)"""
         combat_log = [f"☆━━━━ Boss战开始 ━━━━☆", f"{player.name} 挑战 {boss.name}"]
         round_num = 0
         total_damage_dealt = 0
