@@ -23,9 +23,7 @@
 
 <p align="center">
   <b>⭐ 觉得不错就点个 Star 吧 —— 你的 Star 是我们持续更新的动力！</b><br>
-  <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/stargazers">
-    <img src="https://reporoster.com/stars/dark/iqapi/astrbot_plugin_xiuxian_promax" alt="Stargazers">
-  </a>
+  <img src="./community/stats.svg" alt="Repo Stats">
 </p>
 
 ---
@@ -161,6 +159,13 @@ v6.16  情缘师徒     NPC仙灵道侣/师徒/火候/魔潮自动化
 v6.17  称号图鉴     110 称号六品阶加成体系
 v6.18  万象更新     前缀强制/自动上货/随机任务池
 ```
+
+## 👥 社区贡献者
+<img src="./community/contributors.svg" alt="Contributors">
+
+## 🏆 顶级贡献者
+<img src="./community/top-contributors.svg" alt="Top Contributors">
+
 
 ## 📜 许可证
 
