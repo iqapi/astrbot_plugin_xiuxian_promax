@@ -23,7 +23,7 @@
 
 <p align="center">
   <b>⭐ 觉得不错就点个 Star 吧 —— 你的 Star 是我们持续更新的动力！</b><br>
-  <img src="./community/stats.svg" alt="Repo Stats">
+  <img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/reposcope/stars.svg" alt="Star History">
 </p>
 
 ---
@@ -161,11 +161,10 @@ v6.18  万象更新     前缀强制/自动上货/随机任务池
 ```
 
 ## 👥 社区贡献者
-<img src="./community/contributors.svg" alt="Contributors">
+<img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/contributors.svg" alt="Contributors">
 
-## 🏆 顶级贡献者
-<img src="./community/top-contributors.svg" alt="Top Contributors">
-
+## 📈 Star 趋势
+<img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/stars.svg" alt="Star History">
 
 ## 📜 许可证
 
