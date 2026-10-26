@@ -2256,6 +2256,11 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
+        try:
+            text = self.title_mgr.collection_view(player)
+        except Exception as e:
+            logger.exception(f"称号图鉴渲染失败 uid={player.user_id}: {e}")
+            text = "❌ 称号图鉴读取失败，请稍后再试。"
         yield event.plain_result(self.title_mgr.collection_view(player))
 
     @filter.command("佩戴称号", "更换展示的称号（加成自动按最高品阶生效）")

@@ -21,6 +21,7 @@ class CombatHandlers:
         self.equipment_mgr = EquipmentManager(db, config_manager)
         self.pill_mgr = PillManager(db, config_manager)
         self.last_duel_result = None  # 记录最近一场决斗结果，供任务进度判定
+        self.last_spar_fought = False # 记录是否真正发生切磋
     
     async def _get_combat_cooldown(self, user_id: str) -> dict:
         try:
@@ -41,25 +42,49 @@ class CombatHandlers:
         except: pass
 
     async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
-        """解析目标ID，兼容 At 组件和纯文本"""
+        """解析目标ID（修复抓到自己、CQ码兼容、正则污染）"""
+        sender_id = str(event.get_sender_id())
+        
+        # 1. 优先从消息组件中提取 At 对象
         message_chain = []
         if hasattr(event, "message_obj") and event.message_obj:
             message_chain = getattr(event.message_obj, "message", []) or []
+            
         for component in message_chain:
+            # 标准 At 组件
             if isinstance(component, At):
                 candidate = None
                 for attr in ("qq", "target", "uin", "user_id"):
                     candidate = getattr(component, attr, None)
                     if candidate: break
-                if candidate: return str(candidate).lstrip("@")
+                if candidate:
+                    candidate_str = str(candidate).lstrip("@")
+                    if candidate_str.isdigit() and candidate_str != sender_id:
+                        return candidate_str
+            
+            # 兼容字符串形式的 CQ 码
+            if isinstance(component, str) and "[CQ:at,qq=" in component:
+                m = re.search(r"\[CQ:at,qq=(\d+)\]", component)
+                if m and m.group(1) != sender_id:
+                    return m.group(1)
+
+        # 2. 检查传入的 arg 参数
         if arg:
             cleaned = arg.strip().lstrip("@")
-            if cleaned.isdigit(): return cleaned
+            if cleaned.isdigit() and cleaned != sender_id:
+                return cleaned
         
+        # 3. 正则兜底（关键修复：排除自己，避免抓到发送者）
         message_text = ""
         if hasattr(event, "message_str"): message_text = event.message_str or ""
-        match = re.search(r'(\d{5,})', message_text)
-        if match: return match.group(1)
+        
+        # 提取文本中所有 5 位以上的数字
+        numbers = re.findall(r'\d{5,}', message_text)
+        for num in numbers:
+            # 只要不是发送者自己的 QQ 号，就当做目标
+            if num != sender_id:
+                return num
+                
         return None
 
     def _calculate_equipment_bonus(self, player) -> dict:
@@ -188,10 +213,16 @@ class CombatHandlers:
             )
             return
 
+        # ★ 提前检查对方是否修仙，避免查错人或未注册时提示模糊
+        target_player = await self.db.get_player_by_id(target_id)
+        if not target_player:
+            yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
+            return
+
         p1_stats = await self._prepare_combat_stats(user_id)
         p2_stats = await self._prepare_combat_stats(target_id)
         if not p1_stats or not p2_stats:
-            yield event.plain_result("❌ 双方都需要踏入修仙之路（对方可能还没创建角色），请先发送 /我要修仙。")
+            yield event.plain_result("❌ 战斗状态准备失败，请重试。")
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=2)
@@ -230,10 +261,16 @@ class CombatHandlers:
             )
             return
 
+        # ★ 提前检查对方是否修仙，避免查错人或未注册时提示模糊
+        target_player = await self.db.get_player_by_id(target_id)
+        if not target_player:
+            yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
+            return
+
         p1_stats = await self._prepare_combat_stats(user_id)
         p2_stats = await self._prepare_combat_stats(target_id)
         if not p1_stats or not p2_stats:
-            yield event.plain_result("❌ 双方都需要踏入修仙之路（对方可能还没创建角色），请先发送 /我要修仙。")
+            yield event.plain_result("❌ 战斗状态准备失败，请重试。")
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=1)

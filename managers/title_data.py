@@ -90,7 +90,7 @@ TITLES = [
     T("魔道巨擘", 3, "karma_neg", condition=-25, atk=100, lifesteal=5),
     T("炼丹宗师", 3, "craft_perfect", condition=40, exp=0.10),
     T("丹圣", 3, "craft_perfect", condition=80, exp=0.15, luck=5),
-    T("五品炉神", 3, "furnace_max", exp=0.10, atk=60),
+    T("五品炉神", 3, "furnace_max", condition=5, exp=0.10, atk=60),  # ★ 修复：添加了 condition=5，解决死称号问题
     T("大派栋梁", 3, "sect_battle_win", condition=10, atk=70),
     T("宗门柱石", 3, "sect_battle_win", condition=25, atk=100, phys_def=50),
     T("一代宗师", 3, "sect_battle_win", condition=50, atk=140, crit=4),

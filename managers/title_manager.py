@@ -1,6 +1,7 @@
 # managers/title_manager.py
 """称号系统 v6.17 - 110 称号六品阶，最高品阶生效加成"""
 import json
+import time
 from typing import Tuple, Optional, Dict
 
 from ..data.data_manager import DataBase
@@ -21,6 +22,8 @@ class TitleManager:
     def _load_owned(self, player: Player) -> Dict[str, float]:
         try:
             data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            if not isinstance(data, dict):  # 防御数据异常（如 null, []）
+                return {}
             owned = data.get("titles", {})
             return owned if isinstance(owned, dict) else {}
         except Exception:
@@ -30,6 +33,8 @@ class TitleManager:
         try:
             data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
         except Exception:
+            data = {}
+        if not isinstance(data, dict):
             data = {}
         data["titles"] = owned
         player.permanent_bonus = json.dumps(data, ensure_ascii=False)
@@ -42,7 +47,7 @@ class TitleManager:
         owned = self._load_owned(player)
         if title_name in owned:
             return False, ""
-        owned[title_name] = float(__import__("time").time())
+        owned[title_name] = float(time.time())
         self._save_owned(player, owned)
         tier_name = TIERS[t["tier"]][0]
         return True, f"\n🏅 获得称号【{title_name}】（{tier_name}）！已录入称号图鉴。"
@@ -88,7 +93,7 @@ class TitleManager:
         best = None
         for name in owned:
             t = self.titles.get(name)
-            if t and (best is None or t["tier"] > best["tier"]):
+            if t and (best is None or t["tier"] >= best["tier"]):
                 best = t
         return best
 
@@ -107,18 +112,25 @@ class TitleManager:
         """称号图鉴"""
         owned = self._load_owned(player)
         active = self.get_active_title(player)
-        lines = [f"📜 称号图鉴（已收集 {len(owned)}/{len(TITLES)}）", "━━━━━━━━━━━━━━━"]
+        
+        # ★ C2 修复：过滤掉不在当前版本 TITLES 中的残留称号，防止统计出错
+        valid_owned_count = len([n for n in owned if n in self.titles])
+        lines = [f"📜 称号图鉴（已收集 {valid_owned_count}/{len(TITLES)}）", "━━━━━━━━━━━━━━━"]
+        
         by_tier = {}
         for t in TITLES:
             by_tier.setdefault(t["tier"], []).append(t)
+            
         for tier in sorted(by_tier):
-            tier_name = TIERS[tier][0]
+            # ★ C1 修复：增加 get 防御，未来若加新品阶忘记改 TIERS 也不会崩溃
+            tier_name = TIERS.get(tier, (f"未知({tier})",))[0]
             lines.append(f"【{tier_name}】")
             for t in by_tier[tier]:
                 mark = "✅" if t["name"] in owned else "🔒"
                 active_mark = " ⭐生效中" if active and active["name"] == t["name"] else ""
                 how_txt = self._how_text(t)
                 lines.append(f"  {mark}【{t['name']}】{how_txt}{active_mark}")
+                
         lines.append("━━━━━━━━━━━━━━━")
         lines.append("💡 加成自动按已拥有的最高品阶称号生效；/佩戴称号 <名> 更换展示")
         return "\n".join(lines)
@@ -152,17 +164,19 @@ class TitleManager:
             "forge_count": f"强化/洗练共{cond}次",
             "pet_level": f"灵兽达到Lv.{cond}",
             "land_level": f"洞天达到Lv.{cond}",
-            "furnace_max": "丹炉升至满级",
+            # ★ A2 修复：配合 title_data 加入 condition=5
+            "furnace_max": (f"丹炉达到Lv.{cond}" if cond is not None else "丹炉升至满级"),
             "reincarnation": f"飞升转生{cond}次",
-            "rebirth": "弃道重修{cond}次".format(cond=cond) if cond else "弃道重修",
+            "rebirth": (f"弃道重修{cond}次" if cond is not None else "弃道重修"),
             "luck_event": f"触发奇遇{cond}次",
             "sect_battle_win": f"大比获胜{cond}场",
             "demon_catch": f"揪出天魔{cond}次",
             "tide_resist": f"参与抵御魔潮{cond}次",
-            "gold_reach": f"灵石达到{cond:,}",
+            # ★ 根因修复：防止 cond 为 None 时触发 {None:,} 格式化异常崩溃
+            "gold_reach": (f"灵石达到{cond:,}" if isinstance(cond, int) else "灵石达到一定数额"),
             "manual": "特殊途径获得",
         }
-        return texts.get(key, f"途径：{key} {cond or ''}")
+        return texts.get(key, f"途径：{key} {cond if cond is not None else ''}")
 
     def bonus_summary(self, player: Player) -> str:
         stats = self.get_active_bonus(player)
