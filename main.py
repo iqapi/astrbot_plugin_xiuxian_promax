@@ -418,6 +418,272 @@ class XiuXianPlugin(Star):
 
 
 
+    async def _schedule_boss_spawn(self):
+        """v6.19 世界Boss调度（全自动）：每周随机 3 次 + 15 分钟预告"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(60)
+                now = int(time.time())
+
+                # 清理过期未击杀的旧世界Boss
+                async with self.db.conn.execute(
+                    "SELECT boss_id FROM world_boss WHERE status=1 AND expire_time < ?", (now,)
+                ) as cur:
+                    if await cur.fetchone():
+                        await self.db.conn.execute(
+                            "UPDATE world_boss SET status=3 WHERE status=1 AND expire_time < ?", (now,))
+                        await self.db.conn.commit()
+                        logger.info("【修仙插件】清理了超时未击杀的世界Boss")
+
+                # 已有存活 Boss 则不调度
+                async with self.db.conn.execute("SELECT boss_id FROM world_boss WHERE status=1") as cur:
+                    if await cur.fetchone():
+                        continue
+
+                # 本周调度计划
+                plan_str = await self.db.ext.get_system_config("boss_week_plan")
+                week_key = time.strftime("%G-W%V")
+                plan = None
+                if plan_str:
+                    try:
+                        plan_data = json.loads(plan_str)
+                        if plan_data.get("week") == week_key:
+                            plan = plan_data
+                    except Exception:
+                        plan = None
+                if not plan:
+                    days = random.sample(range(7), 3)
+                    events = []
+                    for d in days:
+                        base = time.strptime(week_key + "-1", "%G-W%V-%u")
+                        base_ts = int(time.mktime((base.tm_year, base.tm_mon, base.tm_mday, 0, 0, 0, 0, 0, -1)))
+                        base_ts += d * 86400
+                        spawn_at = base_ts + random.randint(10, 22) * 3600 + random.choice([0, 1800])
+                        events.append(spawn_at)
+                    events = sorted(e for e in events if e > now)
+                    plan = {"week": week_key, "events": events}
+                    await self.db.ext.set_system_config("boss_week_plan", json.dumps(plan))
+                    logger.info(f"【修仙插件】本周世界Boss计划：{len(events)} 场")
+
+                if plan["events"]:
+                    next_at = plan["events"][0]
+                    announced_key = f"boss_preannounced_{next_at}"
+                    announced = await self.db.ext.get_system_config(announced_key)
+                    if not announced and 0 < next_at - now <= 900:
+                        pre_msg = await self.world_boss_mgr.preannounce()
+                        await self.db.ext.set_system_config(announced_key, "1")
+                        await self._broadcast_world_boss_spawn(pre_msg)
+                        logger.info("【修仙插件】世界Boss 15 分钟预告已广播")
+                        continue
+
+                    if now >= next_at:
+                        plan["events"].pop(0)
+                        await self.db.ext.set_system_config("boss_week_plan", json.dumps(plan))
+                        success, msg = await self.world_boss_mgr.spawn_boss()
+                        if success:
+                            logger.info("【修仙插件】世界Boss已降临")
+                            await self._broadcast_world_boss_spawn(msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Boss生成任务异常: {e}")
+                await asyncio.sleep(120)
+
+    async def _schedule_loan_check(self):
+        retry_count = 0
+        max_retry_delay = 3600
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(3600)
+                processed = await self.bank_mgr.check_and_process_overdue_loans()
+                if processed:
+                    logger.info(f"【修仙插件】处理了 {len(processed)} 笔逾期贷款")
+                    for loan_info in processed:
+                        if loan_info.get("death"):
+                            await self._broadcast_loan_death(loan_info)
+                retry_count = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"贷款检查任务异常: {e}")
+                retry_count += 1
+                delay = min(60 * (2 ** retry_count), max_retry_delay)
+                await asyncio.sleep(delay)
+
+    async def _schedule_demon_check(self):
+        """定时检查天魔入侵是否超时并自动结算"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(300)
+                is_active = await self.db.ext.get_system_config("demon_invasion_active")
+                if is_active == "1":
+                    end_time_str = await self.db.ext.get_system_config("demon_invasion_end_time")
+                    if end_time_str and end_time_str.isdigit() and int(time.time()) > int(end_time_str):
+                        success, msg = await self.demon_mgr.end_invasion()
+                        if success:
+                            logger.info(f"【修仙插件】天魔入侵超时自动结算：{msg}")
+                            await self._broadcast_world_boss_spawn(msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"天魔入侵检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _schedule_spirit_eye_spawn(self):
+        retry_count = 0
+        max_retry_delay = 3600
+        while True:
+            try:
+                await self.db.ensure_connection()
+                spawn_interval = 7200
+                next_spawn_str = await self.db.ext.get_system_config("spirit_eye_next_spawn_time")
+                current_time = int(time.time())
+                if next_spawn_str:
+                    next_spawn_time = int(next_spawn_str)
+                    remaining = next_spawn_time - current_time
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                else:
+                    next_spawn_time = current_time + spawn_interval
+                    await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
+                    await asyncio.sleep(spawn_interval)
+                success, msg = await self.spirit_eye_mgr.spawn_spirit_eye()
+                if success:
+                    logger.info(f"【修仙插件】{msg}")
+                    await self._broadcast_spirit_eye_spawn(msg)
+                next_spawn_time = int(time.time()) + spawn_interval
+                await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
+                retry_count = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"灵眼生成任务异常: {e}")
+                retry_count += 1
+                delay = min(60 * (2 ** retry_count), max_retry_delay)
+                await asyncio.sleep(delay)
+
+    async def _schedule_bounty_check(self):
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(1800)
+                expired = await self.bounty_mgr.check_and_expire_bounties()
+                if expired > 0:
+                    logger.info(f"【修仙插件】处理了 {expired} 个过期悬赏任务")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"悬赏检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _schedule_tide_check(self):
+        """定时检查魔潮：到期结算 + 周六/月初自动开启 + 月度称号"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(300)
+                settled, msg = await self.calamity_mgr.auto_check()
+                if settled and msg:
+                    logger.info(f"【修仙插件】魔潮事件：{msg.splitlines()[0]}")
+                    await self._broadcast_world_boss_spawn(msg)
+
+                # v6.21 月度称号：每月1日自动颁发全服之最
+                try:
+                    month_key = time.strftime("%Y%m")
+                    done = await self.db.ext.get_system_config(f"month_title_{month_key}")
+                    if not done and time.localtime().tm_mday == 1:
+                        await self.db.ext.set_system_config(f"month_title_{month_key}", "1")
+                        players = await self.db.get_all_players()
+                        if players:
+                            from .managers.title_manager import TitleManager
+                            tm = TitleManager(self.db)
+                            top_exp = max(players, key=lambda p: p.experience)
+                            top_karma = max(players, key=lambda p: (p.karma or 0))
+                            for p, title in ((top_exp, "月度人杰"), (top_karma, "月度大善")):
+                                tm.grant(p, title)
+                            broadcast = (
+                                f"🏆【月度盛典】新的一月，天道册封上月之最：\n"
+                                f"  · 修为至尊：【{top_exp.user_name or top_exp.user_id[:8]}】\n"
+                                f"  · 第一大善：【{top_karma.user_name or top_karma.user_id[:8]}】\n"
+                                f"获得月度限定称号，全服敬仰！"
+                            )
+                            await self._broadcast_world_boss_spawn(broadcast)
+                except Exception:
+                    pass
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"魔潮检查任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _schedule_restock(self):
+        """v6.18 商店自动上货：每 10 分钟检查三阁"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(600)
+                n, detail = await self.shop_handler.auto_restock()
+                if n:
+                    logger.info(f"【修仙插件】自动上货完成（{n} 阁）：{detail}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"自动上货任务异常: {e}")
+                await asyncio.sleep(120)
+
+    async def _broadcast_world_boss_spawn(self, msg: str):
+        """广播全服事件"""
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("世界Boss/魔潮")
+            return
+        message_chain = MessageChain().message(msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】广播失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】广播异常: {e}")
+
+    async def _broadcast_loan_death(self, loan_info: dict):
+        from astrbot.api.event import MessageChain
+        if not self.whitelist_groups:
+            self._warn_no_whitelist("贷款追杀")
+            return
+        player_name = loan_info.get("player_name", "某修士")
+        principal = loan_info.get("principal", 0)
+        broadcast_msg = (
+            f"💀 银行追杀公告 💀\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"修士【{player_name}】因贷款逾期未还\n"
+            f"欠款：{principal:,} 灵石\n"
+            f"已被灵石银行追杀致死！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"⚠️ 借贷有风险，还款需及时！"
+        )
+        message_chain = MessageChain().message(broadcast_msg)
+        try:
+            platforms = self.context.platform_manager.get_insts()
+            for platform in platforms:
+                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
+                for group_id in self.whitelist_groups:
+                    umo = f"{platform_name}:GroupMessage:{group_id}"
+                    try:
+                        await self.context.send_message(umo, message_chain)
+                    except Exception as e:
+                        logger.warning(f"【修仙插件】贷款追杀广播失败 (群{group_id}): {e}")
+        except Exception as e:
+            logger.error(f"【修仙插件】贷款追杀广播异常: {e}")
+
     async def _broadcast_spirit_eye_spawn(self, msg: str):
         from astrbot.api.event import MessageChain
         if not self.whitelist_groups:
