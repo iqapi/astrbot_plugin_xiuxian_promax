@@ -20,8 +20,8 @@ class CombatHandlers:
         self.config_manager = config_manager
         self.equipment_mgr = EquipmentManager(db, config_manager)
         self.pill_mgr = PillManager(db, config_manager)
-        self.last_duel_result = None  # 记录最近一场决斗结果，供任务进度判定
-        self.last_spar_fought = False # 记录是否真正发生切磋
+        self.last_duel_result = None
+        self.last_spar_fought = False
     
     async def _get_combat_cooldown(self, user_id: str) -> dict:
         try:
@@ -42,65 +42,45 @@ class CombatHandlers:
         except: pass
 
     async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
-        """解析目标ID（终极修复：排除发送者、排除机器人自身、多个@时优先取最后一个）"""
+        """解析目标ID（终极修复）"""
         sender_id = str(event.get_sender_id())
-        
-        # 尝试获取机器人自身的 ID
         self_id = ""
         try:
-            if hasattr(event, "get_self_id"):
-                self_id = str(event.get_self_id())
-            elif hasattr(event, "message_obj") and hasattr(event.message_obj, "self_id"):
-                self_id = str(event.message_obj.self_id)
-        except Exception:
-            pass
+            if hasattr(event, "get_self_id"): self_id = str(event.get_self_id())
+            elif hasattr(event, "message_obj") and hasattr(event.message_obj, "self_id"): self_id = str(event.message_obj.self_id)
+        except Exception: pass
 
         message_chain = []
         if hasattr(event, "message_obj") and event.message_obj:
             message_chain = getattr(event.message_obj, "message", []) or []
 
         valid_at_ids = []
-        
-        # 1. 从消息组件中提取 At 对象
         for component in message_chain:
             candidate_str = ""
-            # 标准 At 组件
             if isinstance(component, At):
                 for attr in ("qq", "target", "uin", "user_id"):
                     val = getattr(component, attr, None)
                     if val:
                         candidate_str = str(val).lstrip("@")
                         break
-            # 兼容字符串形式的 CQ 码
             elif isinstance(component, str) and "[CQ:at,qq=" in component:
                 m = re.search(r"\[CQ:at,qq=(\d+)\]", component)
-                if m:
-                    candidate_str = m.group(1)
+                if m: candidate_str = m.group(1)
 
             if candidate_str and candidate_str.isdigit():
-                # 排除发送者自己和机器人自己
                 if candidate_str != sender_id and candidate_str != self_id:
                     valid_at_ids.append(candidate_str)
 
-        # 优先取最后一个 At（通常是目标，因为前面可能是 @机器人）
-        if valid_at_ids:
-            return valid_at_ids[-1]
-
-        # 2. 检查传入的 arg 参数
+        if valid_at_ids: return valid_at_ids[-1]
         if arg:
             cleaned = arg.strip().lstrip("@")
-            if cleaned.isdigit() and cleaned != sender_id and cleaned != self_id:
-                return cleaned
+            if cleaned.isdigit() and cleaned != sender_id and cleaned != self_id: return cleaned
         
-        # 3. 正则兜底（排除自己、排除机器人）
         message_text = ""
         if hasattr(event, "message_str"): message_text = event.message_str or ""
-        
         numbers = re.findall(r'\d{5,}', message_text)
         for num in numbers:
-            # 只要不是发送者，也不是机器人，就当目标
-            if num != sender_id and num != self_id:
-                return num
+            if num != sender_id and num != self_id: return num
                 
         return None
 
@@ -116,11 +96,9 @@ class CombatHandlers:
         return bonus
 
     async def _prepare_combat_stats(self, user_id: str) -> CombatStats:
-        """准备战斗属性（包含装备、功法、灵兽、丹药加成）"""
         player = await self.db.get_player_by_id(user_id)
         if not player: return None
         
-        # 获取并应用丹药临时效果
         await self.pill_mgr.update_temporary_effects(player)
         pill_multipliers = self.pill_mgr.calculate_pill_attribute_effects(player)
         
@@ -129,24 +107,19 @@ class CombatHandlers:
         mp_buff = impart_info.impart_mp_per if impart_info else 0.0
         atk_buff = impart_info.impart_atk_per if impart_info else 0.0
         
-        # 计算基础面板
         base_hp, base_mp = self.combat_mgr.calculate_hp_mp(player.experience, hp_buff, mp_buff)
-        # 气血受丹药倍率影响
         hp = int(base_hp * max(pill_multipliers.get("physical_damage", 1.0), pill_multipliers.get("magic_damage", 1.0)))
         mp = base_mp
         
         base_atk = self.combat_mgr.calculate_atk(player.experience, player.atkpractice, atk_buff, player.physical_damage, player.magic_damage, player.cultivation_type)
-        # 攻击力受丹药倍率加成
         final_atk_multiplier = max(pill_multipliers.get("physical_damage", 1.0), pill_multipliers.get("magic_damage", 1.0))
         base_atk = int(base_atk * final_atk_multiplier)
         
         equip_bonus = self._calculate_equipment_bonus(player)
         final_atk = base_atk + equip_bonus["atk"]
         
-        # 获取功法/装备/词条特效
         effects = self.equipment_mgr.get_combat_effects(player)
 
-        # ===== v6.17 称号加成（最高品阶生效）=====
         title_magic = 0
         title_def_bonus = 0
         try:
@@ -159,24 +132,18 @@ class CombatHandlers:
                 title_def_bonus = int(tstats.get("phys_def", 0)) + int(tstats.get("magic_def", 0))
                 effects["crit_rate"] = effects.get("crit_rate", 0) + int(tstats.get("crit", 0))
                 effects["lifesteal"] = effects.get("lifesteal", 0) + int(tstats.get("lifesteal", 0))
-        except Exception:
-            pass
+        except Exception: pass
 
-        # 获取灵兽特效并注入
         from ..managers.pet_manager import PetManager
         pet_mgr = PetManager(self.db)
         pet = await pet_mgr.get_pet(user_id)
         if pet:
             pet_effects = pet_mgr.get_pet_combat_effects(pet)
-            for k, v in pet_effects.items():
-                effects[k] = effects.get(k, 0) + v
+            for k, v in pet_effects.items(): effects[k] = effects.get(k, 0) + v
             triggered, log_msg, mult = await pet_mgr.pet_coop_attack(pet)
-            if triggered:
-                effects["pet_damage_mult"] = mult
+            if triggered: effects["pet_damage_mult"] = mult
                 
-        # 防御力受丹药倍率加成
         final_defense = int(equip_bonus["defense"] * max(pill_multipliers.get("physical_defense", 1.0), pill_multipliers.get("magic_defense", 1.0)))
-        # 称号防御/法伤加成
         final_defense += title_def_bonus
         final_atk += title_magic
         
@@ -186,50 +153,36 @@ class CombatHandlers:
         await self.db.update_player(player)
 
         return CombatStats(
-            user_id=user_id,
-            name=player.user_name if player.user_name else f"道友{user_id}",
-            hp=hp, max_hp=hp, mp=mp, max_mp=mp,
-            atk=final_atk,
-            defense=final_defense,
-            exp=player.experience,
-            effects=effects,
+            user_id=user_id, name=player.user_name if player.user_name else f"道友{user_id}",
+            hp=hp, max_hp=hp, mp=mp, max_mp=mp, atk=final_atk, defense=final_defense,
+            exp=player.experience, effects=effects,
             element=(self._get_element_of(player.main_technique) or self._get_element_of(player.weapon))
         )
 
     def _get_element_of(self, item_name: str) -> str:
-        if not item_name:
-            return ""
+        if not item_name: return ""
         if self.config_manager and hasattr(self.config_manager, "get_item_element"):
             explicit = self.config_manager.get_item_element(item_name)
-            if explicit:
-                return explicit
+            if explicit: return explicit
         return self.combat_mgr.get_element_from_name(item_name)
 
     async def handle_duel(self, event: AstrMessageEvent, target: str):
-        """决斗 (受丹药/装备/灵兽加成，战后恢复满血)"""
         user_id = event.get_sender_id()
         target_id = await self._get_target_id(event, target)
         if not target_id:
-            yield event.plain_result(
-                "❌ 未识别到对手！请 @对方 或输入对方QQ号。\n"
-                "用法：/决斗 @道友\n（同一目标5分钟内只能决斗一次）"
-            )
+            yield event.plain_result("❌ 未识别到对手！请 @对方 或输入对方QQ号。\n用法：/决斗 @道友")
             return
         if user_id == target_id:
-            yield event.plain_result("❌ 不能和自己决斗，左手打右手是不行的。")
+            yield event.plain_result("❌ 不能和自己决斗。")
             return
 
-        # 决斗冷却检查（5分钟）
         cooldowns = await self._get_combat_cooldown(user_id)
         now = int(time.time())
         remaining_cd = DUEL_COOLDOWN - (now - cooldowns["last_duel_time"])
         if cooldowns["last_duel_time"] and remaining_cd > 0:
-            yield event.plain_result(
-                f"❌ 决斗调息中，请 {remaining_cd // 60} 分 {remaining_cd % 60} 秒后再战。"
-            )
+            yield event.plain_result(f"❌ 决斗调息中，请 {remaining_cd // 60} 分 {remaining_cd % 60} 秒后再战。")
             return
 
-        # 提前检查对方是否修仙
         target_player = await self.db.get_player_by_id(target_id)
         if not target_player:
             yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
@@ -244,40 +197,43 @@ class CombatHandlers:
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=2)
         self.last_duel_result = result
         
-        # ===== 核心修复：决斗结束后，强制恢复双方满状态 =====
         await self.db.ext.update_player_hp_mp(user_id, p1_stats.max_hp, p1_stats.max_mp)
         await self.db.ext.update_player_hp_mp(target_id, p2_stats.max_hp, p2_stats.max_mp)
-        # =======================================================
-
         await self._update_combat_cooldown(user_id, "duel")
         
-        yield event.plain_result("\n".join(result['combat_log']))
+        log_lines = result['combat_log']
+        final_log = "\n".join(log_lines)
+        
+        # 计算真实的剩余血量百分比
+        p1_hp_pct = int(result["player1_real_hp"] / p1_stats.max_hp * 100) if p1_stats.max_hp else 0
+        p2_hp_pct = int(result["player2_real_hp"] / p2_stats.max_hp * 100) if p2_stats.max_hp else 0
+
+        if result['winner'] == user_id:
+            final_log += f"\n\n🏆 决斗结束，{p1_stats.name} 获胜！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+        elif result['winner'] == target_id:
+            final_log += f"\n\n🏆 决斗结束，{p2_stats.name} 获胜！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+        else:
+            final_log += f"\n\n🏆 决斗结束，平局！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+
+        yield event.plain_result(final_log)
 
     async def handle_spar(self, event: AstrMessageEvent, target: str):
-        """切磋 (受丹药/装备/灵兽加成，战后恢复满血)"""
         user_id = event.get_sender_id()
         target_id = await self._get_target_id(event, target)
         if not target_id:
-            yield event.plain_result(
-                "❌ 未识别到对手！请 @对方 或输入对方QQ号。\n"
-                "用法：/切磋 @道友\n（切磋冷却1分钟）"
-            )
+            yield event.plain_result("❌ 未识别到对手！请 @对方 或输入对方QQ号。\n用法：/切磋 @道友")
             return
         if user_id == target_id:
             yield event.plain_result("❌ 不能和自己切磋。")
             return
 
-        # 切磋冷却检查（1分钟）
         cooldowns = await self._get_combat_cooldown(user_id)
         now = int(time.time())
         remaining_cd = SPAR_COOLDOWN - (now - cooldowns["last_spar_time"])
         if cooldowns["last_spar_time"] and remaining_cd > 0:
-            yield event.plain_result(
-                f"❌ 切磋调息中，请 {remaining_cd // 60} 分 {remaining_cd % 60} 秒后再战。"
-            )
+            yield event.plain_result(f"❌ 切磋调息中，请 {remaining_cd // 60} 分 {remaining_cd % 60} 秒后再战。")
             return
 
-        # 提前检查对方是否修仙
         target_player = await self.db.get_player_by_id(target_id)
         if not target_player:
             yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
@@ -290,13 +246,24 @@ class CombatHandlers:
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=1)
-        self.last_spar_fought = True  # 真正开打了，供任务进度判定
+        self.last_spar_fought = True
         
-        # ===== 核心修复：切磋结束后，强制恢复双方满状态 =====
         await self.db.ext.update_player_hp_mp(user_id, p1_stats.max_hp, p1_stats.max_mp)
         await self.db.ext.update_player_hp_mp(target_id, p2_stats.max_hp, p2_stats.max_mp)
-        # =======================================================
-
         await self._update_combat_cooldown(user_id, "spar")
         
-        yield event.plain_result("\n".join(result['combat_log']))
+        log_lines = result['combat_log']
+        final_log = "\n".join(log_lines)
+        
+        # 计算真实的剩余血量百分比
+        p1_hp_pct = int(result["player1_real_hp"] / p1_stats.max_hp * 100) if p1_stats.max_hp else 0
+        p2_hp_pct = int(result["player2_real_hp"] / p2_stats.max_hp * 100) if p2_stats.max_hp else 0
+
+        if result['winner'] == user_id:
+            final_log += f"\n\n🏆 切磋结束，{p1_stats.name} 获胜！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+        elif result['winner'] == target_id:
+            final_log += f"\n\n🏆 切磋结束，{p2_stats.name} 获胜！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+        else:
+            final_log += f"\n\n🏆 切磋结束，平局！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+
+        yield event.plain_result(final_log)
