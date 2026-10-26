@@ -23,7 +23,6 @@
 
 <p align="center">
   <b>⭐ 觉得不错就点个 Star 吧 —— 你的 Star 是我们持续更新的动力！</b><br>
-  <img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/reposcope/stars.svg" alt="Star History">
 </p>
 
 ---
@@ -99,7 +98,7 @@ Pillow>=9.0.0
 修仙帮助             ← 全部 168+ 指令
 ```
 
-> 💡 所有指令必须以 `/` 或 `#` 开头才会响应。
+> 💡 所有指令以 `/` 或 `` 开头才会响应。
 
 ---
 
@@ -159,12 +158,10 @@ v6.16  情缘师徒     NPC仙灵道侣/师徒/火候/魔潮自动化
 v6.17  称号图鉴     110 称号六品阶加成体系
 v6.18  万象更新     前缀强制/自动上货/随机任务池
 ```
-
-## 👥 社区贡献者
-<img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/contributors.svg" alt="Contributors">
-
-## 📈 Star 趋势
-<img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/reposcope/stars.svg" alt="Star History">
+## 🐍 吞噬修为的灵蛇
+<p align="center">
+  <img src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/snake.svg" alt="贡献贪吃蛇">
+</p>
 
 ## 📜 许可证
 
