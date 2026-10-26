@@ -41,7 +41,7 @@ class CombatHandlers:
             await self.db.conn.commit()
         except: pass
 
-        async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
+    async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
         """解析目标ID（终极修复：排除发送者、排除机器人自身、多个@时优先取最后一个）"""
         sender_id = str(event.get_sender_id())
         
@@ -193,7 +193,6 @@ class CombatHandlers:
             defense=final_defense,
             exp=player.experience,
             effects=effects,
-            # 五行属性：优先配置显式标注（主修心法 > 武器），其次名称推断
             element=(self._get_element_of(player.main_technique) or self._get_element_of(player.weapon))
         )
 
@@ -230,7 +229,7 @@ class CombatHandlers:
             )
             return
 
-        # ★ 提前检查对方是否修仙，避免查错人或未注册时提示模糊
+        # 提前检查对方是否修仙
         target_player = await self.db.get_player_by_id(target_id)
         if not target_player:
             yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
@@ -278,7 +277,7 @@ class CombatHandlers:
             )
             return
 
-        # ★ 提前检查对方是否修仙，避免查错人或未注册时提示模糊
+        # 提前检查对方是否修仙
         target_player = await self.db.get_player_by_id(target_id)
         if not target_player:
             yield event.plain_result(f"❌ 对方（识别到ID: {target_id}）尚未踏入仙途，请先发送 /我要修仙。")
