@@ -37,24 +37,6 @@ def require_whitelist(func):
     """装饰器：检查群聊白名单权限 + 强制指令前缀（/ 或 #）"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
-        # ===== v6.18 强制前缀：只有 / 或 # 开头的消息才响应 =====
-        try:
-            raw = (event.get_message_str() or "").strip()
-        except Exception:
-            raw = ""
-        if raw and not raw.startswith("/") and not raw.startswith("#"):
-            try:
-                mo = getattr(event, "message_obj", None)
-                raw_full = ""
-                if mo is not None:
-                    for comp in (mo.message or []):
-                        txt = getattr(comp, "text", "") or ""
-                        raw_full += txt
-                raw_full = raw_full.strip()
-                if raw_full and not raw_full.startswith("/") and not raw_full.startswith("#"):
-                    return
-            except Exception:
-                return
         if not self._check_access(event):
             await self._send_access_denied_message(event)
             return
