@@ -44,6 +44,14 @@ class EscortManager:
         """接镖：进入押镖状态，期间奖励随时间增长，但可被劫"""
         user_id = player.user_id
 
+        # 接单冷却（10分钟）：防止完成即接无限刷
+        cd_key = f"escort_cd_{user_id}"
+        cd_val = await self.db.ext.get_system_config(cd_key)
+        now0 = int(time.time())
+        if cd_val and cd_val.isdigit() and now0 < int(cd_val):
+            remain = int(cd_val) - now0
+            return False, f"❌ 镖行趟次刚结束，请 {remain // 60} 分 {remain % 60} 秒后再接新镖。", {}
+
         if player.level_index < self.MIN_LEVEL:
             return False, f"❌ 押镖需要达到境界等级 {self.MIN_LEVEL}（练气后期）。", {}
 
@@ -59,6 +67,15 @@ class EscortManager:
         escort_bonus = await self._companion_bonus(user_id, "escort")
         if escort_bonus > 0:
             base = int(base * (1 + escort_bonus))
+        # 称号 gold_pct 加成
+        try:
+            from .title_manager import TitleManager
+            tstats = TitleManager(self.db).get_active_bonus(player)
+            gold_pct = float(tstats.get("gold_pct", 0))
+            if gold_pct > 0:
+                base = int(base * (1 + gold_pct))
+        except Exception:
+            pass
         escort_gold = base + random.randint(-500, 1500)
         escort_exp = base // 2 + random.randint(0, 600)
 
@@ -103,6 +120,8 @@ class EscortManager:
         player.karma = (getattr(player, "karma", 0) or 0) + 1  # 护镖有功，功德+1
         await self.db.update_player(player)
         await self.db.ext.set_user_free(user_id)
+        # 接单冷却（10分钟）
+        await self.db.ext.set_system_config(f"escort_cd_{user_id}", str(int(time.time()) + 600))
 
         return True, (
             f"🎉 押镖成功！\n"
@@ -112,6 +131,12 @@ class EscortManager:
             f"获得酬劳：+{escort_exp:,} 修为\n"
             f"✨ 护镖有功，功德 +1（当前 {player.karma}）"
         )
+        try:
+            from ..managers.flavor import flavor
+            msg += flavor("escort_ok")
+        except Exception:
+            pass
+        return True, msg
 
     async def quit_escort(self, player: Player) -> Tuple[bool, str]:
         """放弃押镖（无收益）"""
@@ -180,6 +205,17 @@ class EscortManager:
             extra["escort_gold"] = escort_gold - robbed
             target_cd.extra_data = json.dumps(extra, ensure_ascii=False)
             await self.db.ext.update_user_cd(target_cd)
+
+            # 信箱：通知受害者
+            try:
+                from .enhance_systems import MailboxManager
+                await MailboxManager(self.db).send(
+                    target_id, "镖局急报",
+                    f"你的镖车被【{attacker.user_name or attacker.user_id[:8]}】劫走 {robbed:,} 灵石！"
+                    f"（/悬赏助力 或 /押镖 重建家业）"
+                )
+            except Exception:
+                pass
 
             attacker.gold += robbed
             attacker.karma = (getattr(attacker, "karma", 0) or 0) - 1  # 劫镖为恶行，增加业力

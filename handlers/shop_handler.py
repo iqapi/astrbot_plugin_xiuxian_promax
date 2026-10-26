@@ -349,12 +349,14 @@ class ShopHandler:
                     result_lines.append(f"⚠️ 存入储物戒失败：{msg}")
             
             elif item_type == 'legacy_pill':
-                success, message = await self._apply_legacy_pill_effects(player, target_item, quantity)
-                if not success:
-                    await self.db.conn.rollback()
-                    yield event.plain_result(message)
-                    return
-                result_lines.append(message)
+                # v6.18 修复：购买的丹药存入丹药背包由玩家自行使用（不再立即生效）
+                inventory = player.get_pills_inventory()
+                inventory[target_item['name']] = inventory.get(target_item['name'], 0) + quantity
+                player.set_pills_inventory(inventory)
+                result_lines.append(
+                    f"成功购买丹药【{target_item['name']}】x{quantity}，已存入丹药背包。\n"
+                    f"💡 使用 /服用丹药 {target_item['name']} 自行服用"
+                )
             
             elif item_type == 'material':
                 success, msg = await self.storage_ring_manager.store_item(player, target_item['name'], quantity, external_transaction=True)

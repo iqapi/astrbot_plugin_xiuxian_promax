@@ -17,26 +17,43 @@ class DailyTaskManager:
     }
 
     TASK_POOL = {
+        # 黄阶（入门，境界0+，全部日常可完成）
         "黄": [
-            {"title": "洞府巡游", "type": "visit_dongfu", "count": 1, "desc": "参观一次任意玩家的洞府"},
-            {"title": "宗门劳作", "type": "donate_material", "count": 10, "desc": "给宗门捐献10份材料"},
-            {"title": "每日签到", "type": "check_in", "count": 1, "desc": "完成一次每日签到"}
+            {"title": "晨钟暮鼓", "type": "check_in", "count": 1, "desc": "完成一次每日签到"},
+            {"title": "吐纳调息", "type": "cultivate", "count": 1, "desc": "完成一次闭关并出关"},
+            {"title": "山门信步", "type": "adventure", "count": 1, "desc": "完成一次历练（任意路线）"},
+            {"title": "田间劳作", "type": "harvest", "count": 1, "desc": "收获1次灵田作物"},
         ],
+        # 玄阶（进阶，境界3+解锁押镖/秘境后全可做）
         "玄": [
-            {"title": "闭关苦修", "type": "cultivate", "count": 1, "desc": "完成一次闭关并出关"},
-            {"title": "历练闯荡", "type": "adventure", "count": 1, "desc": "完成一次历练路线"},
-            {"title": "秘境探索", "type": "explore_rift", "count": 1, "desc": "完成一次秘境探索"}
+            {"title": "吐纳调息", "type": "cultivate", "count": 2, "desc": "闭关出关 2 次"},
+            {"title": "历练闯荡", "type": "adventure", "count": 2, "desc": "完成 2 次历练"},
+            {"title": "秘境探幽", "type": "explore_rift", "count": 1, "desc": "完成 1 次秘境探索"},
+            {"title": "灵田丰茂", "type": "harvest", "count": 3, "desc": "收获 3 次灵田作物"},
+            {"title": "镖行义从", "type": "escort", "count": 1, "desc": "完成 1 次押镖"},
         ],
+        # 地阶（高手，境界7+社交/炼丹玩法成熟）
         "地": [
-            {"title": "切磋斗法", "type": "spar", "count": 1, "desc": "参与一次玩家切磋"},
-            {"title": "炼丹大师", "type": "craft_pill", "count": 1, "desc": "成功炼制一次丹药"},
-            {"title": "灵田丰收", "type": "harvest", "count": 3, "desc": "收获3次灵田作物"}
+            {"title": "切磋问道", "type": "spar", "count": 2, "desc": "与同道切磋 2 场"},
+            {"title": "丹道精进", "type": "craft_pill", "count": 2, "desc": "成功炼制 2 枚丹药"},
+            {"title": "秘境深行", "type": "explore_rift", "count": 2, "desc": "完成 2 次秘境探索"},
+            {"title": "镖路艰辛", "type": "escort", "count": 2, "desc": "完成 2 次押镖"},
+            {"title": "历练老手", "type": "adventure", "count": 3, "desc": "完成 3 次历练"},
         ],
+        # 天阶（巅峰，境界10+，全服务性目标，需要Boss/玩家活跃）
         "天": [
-            {"title": "弑神之战", "type": "boss_damage", "count": 2, "desc": "对世界Boss造成至少2%伤害"},
-            {"title": "越级挑战", "type": "win_pvp", "count": 1, "desc": "在决斗中击败一名玩家"}
-        ]
+            {"title": "弑神之战", "type": "boss_damage", "count": 1, "desc": "对世界Boss造成 1 次伤害"},
+            {"title": "越级挑战", "type": "win_pvp", "count": 1, "desc": "在决斗中击败一名玩家"},
+            {"title": "斗法名家", "type": "spar", "count": 3, "desc": "切磋 3 场"},
+            {"title": "丹成九转", "type": "craft_pill", "count": 3, "desc": "成功炼制 3 枚丹药"},
+        ],
     }
+
+    # 各品阶推荐境界（接取提示用；不强制——但任务内容按境界可完成性设计）
+    LEVEL_MIN_LEVEL = {"黄": 0, "玄": 3, "地": 7, "天": 10}
+
+    def __init__(self, db: DataBase):
+        self.db = db
 
     def __init__(self, db: DataBase):
         self.db = db
@@ -112,9 +129,17 @@ class DailyTaskManager:
         return await self.show_board(player)
 
     async def generate_task(self, player: Player, level: str) -> Tuple[bool, str]:
-        """接取任务（v6.17：从今日随机池抽取，每人任务不同）"""
+        """接取任务（v6.19：境界绑定难度——推荐境界不足时给出更稳的选择建议）"""
         if level not in self.LEVEL_LIMITS:
             return False, "❌ 无效的任务品阶，请选择 黄/玄/地/天。"
+
+        # 境界适配建议（不硬拦，但明确告知难度来源，保证接到的任务都能靠日常行为完成）
+        rec_level = self.LEVEL_MIN_LEVEL.get(level, 0)
+        if player.level_index < rec_level:
+            return False, (
+                f"❌ 【{level}阶】任务推荐境界 {rec_level}（你当前 {player.level_index}）。\n"
+                f"💡 低品阶任务同样有不错收益，且保证可以完成；先接 黄/玄 阶练手吧。"
+            )
 
         # 检查同类任务上限
         active_tasks = await self.db.ext.get_user_active_tasks(player.user_id)

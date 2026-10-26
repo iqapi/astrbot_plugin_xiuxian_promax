@@ -1,4 +1,4 @@
-# AstrBot 插件：模拟修仙 v6.18 (万象更新版)
+# AstrBot 插件：模拟修仙 v6.21 (万象归一版)
 
 <p align="center">
   <img src="logo.png" alt="模拟修仙" width="200">
@@ -16,7 +16,7 @@
   <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/issues">
     <img src="https://img.shields.io/github/issues/iqapi/astrbot_plugin_xiuxian_promax?style=for-the-badge&logo=github" alt="Issues">
   </a>
-  <img src="https://img.shields.io/badge/version-v6.18-gold?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v6.21-gold?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/python-3.10+-green?style=for-the-badge&logo=python" alt="Python">
 </p>
@@ -116,6 +116,28 @@ py -3 -X utf8 _test_migration.py         # 数据库迁移真实验证
 
 ---
 
+## 🌟 版本亮点（v6.19 ~ v6.21）
+
+### 🧭 智能指引
+突破/出关/历练/秘境/签到后自动推荐下一步；突破按境界解锁新玩法提示。丹药七类分类说明（临时/永久/一次性规则一目了然）。
+
+### 🛡️ 天命可期（保底系统）
+突破连败 3 次每次 +15%；境界 30+ 失败积累**渡劫道韵**，满 100 下次**必定成功**——传说境界极难但可期。
+
+### 💍 新手七日仙途 / 社交协作
+`/新手七日` 七日任务链（第 7 天得称号【仙途新星】）；宗门协作周榜、悬赏助力（10% 奖励+功德）、宗门丹会（炼丹房每周全宗领丹）。
+
+### 👹 世界 Boss 全自动化
+血量 = **全服战力总和 60%**；每周随机 3 天自动降临 + 15 分钟全服预告 + 血量 25%/50%/75% 战况播报；`/仙谱` 查看你的全服排位。
+
+### 🍶 装备套装 & 离线信箱
+5 套同前缀套装（2件/3件梯度效果）`/装备图鉴` 鉴识；被劫镖/被助力自动寄信 `/信箱`。
+
+### 🛡️ 公平与健壮
+指令前缀强制（/或#）、@目标统一解析、境界压制衰减（防大号刷低级）、押镖/决斗防刷冷却、任务池全可完成、商店自动上货、管理工具支持@与全体发放。
+
+---
+
 ## 📊 项目规模
 
 | 指标 | 数量 |
@@ -161,7 +183,336 @@ v6.15  完璧版       任务判定修复/结算海报/帮助全量
 v6.16  情缘师徒     NPC仙灵道侣/师徒/火候/魔潮自动化
 v6.17  称号图鉴     110 称号六品阶加成体系
 v6.18  万象更新     前缀强制/自动上货/随机任务池
+v6.19  智能指引版   下一步提示/丹药七类分类/拜师强化
+v6.20  天命可期版   渡劫道韵/七日仙途/宗门协作/悬赏助力/仙谱
+v6.21  万象归一版   装备套装/离线信箱/Boss全自动化/月度称号/管理增强
 ```
+## 🗺️ 指令逻辑有向图
+
+整个项目的指令因果网：**167 条指令 · 43 个系统 · 7 个联动引擎**。
+
+<details>
+<summary><b>📍 点击展开完整逻辑图（GitHub 原生渲染 Mermaid）</b></summary>
+
+```mermaid
+graph LR
+  classDef sys fill:#6a5520,stroke:#ffd700,stroke-width:2px,color:#fff,font-weight:bold;
+  subgraph help["帮助工具"]
+    help_0["修仙帮助"]
+    help_1["解卡"]
+  end
+  subgraph player["玩家基础"]
+    player_2["我要修仙"]
+    player_3["我的信息"]
+    player_4["弃道重修"]
+    player_5["闭关"]
+    player_6["出关"]
+    player_7["签到"]
+    player_8["一键日常"]
+  end
+  subgraph equip["装备"]
+    equip_9["我的装备"]
+    equip_10["装备"]
+    equip_11["卸下"]
+  end
+  subgraph breakthrough["修炼突破"]
+    breakthrough_12["突破信息"]
+    breakthrough_13["突破"]
+  end
+  subgraph pill["丹药"]
+    pill_14["服用丹药"]
+    pill_15["丹药背包"]
+    pill_16["丹药信息"]
+  end
+  subgraph shop["商店"]
+    shop_17["丹阁"]
+    shop_18["器阁"]
+    shop_19["百宝阁"]
+    shop_20["物品信息"]
+    shop_21["购买"]
+    shop_22["购买物品"]
+  end
+  subgraph ring["储物戒"]
+    ring_23["储物戒"]
+    ring_24["取出"]
+    ring_25["更换储物戒"]
+    ring_26["丢弃"]
+    ring_27["赠予"]
+    ring_28["接收"]
+    ring_29["拒绝"]
+    ring_30["搜索物品"]
+    ring_31["取出所有"]
+  end
+  subgraph sect["宗门"]
+    sect_32["创建宗门"]
+    sect_33["加入宗门"]
+    sect_34["退出宗门"]
+    sect_35["我的宗门"]
+    sect_36["宗门任务"]
+    sect_37["完成宗门任务"]
+    sect_38["宗门列表"]
+    sect_39["宗门捐献"]
+    sect_40["踢出成员"]
+    sect_41["宗主传位"]
+    sect_42["职位变更"]
+    sect_43["大比切磋"]
+  end
+  subgraph oldboss["旧Boss"]
+    oldboss_44["世界Boss"]
+    oldboss_45["挑战Boss"]
+  end
+  subgraph ranking["排行榜"]
+    ranking_46["境界排行"]
+    ranking_47["战力排行"]
+    ranking_48["灵石排行"]
+    ranking_49["宗门排行"]
+    ranking_50["存款排行"]
+    ranking_51["贡献排行"]
+  end
+  subgraph pvp["战斗PVP"]
+    pvp_52["决斗"]
+    pvp_53["切磋"]
+  end
+  subgraph rift["秘境"]
+    rift_54["秘境列表"]
+    rift_55["探索秘境"]
+    rift_56["退出秘境"]
+  end
+  subgraph adventure["历练"]
+    adventure_57["开始历练"]
+    adventure_58["历练状态"]
+    adventure_59["历练信息"]
+  end
+  subgraph alchemy["炼丹"]
+    alchemy_60["丹药配方"]
+    alchemy_61["炼丹"]
+  end
+  subgraph impart["传承"]
+    impart_62["传承信息"]
+  end
+  subgraph nickname["道号"]
+    nickname_63["改道号"]
+  end
+  subgraph bank["银行"]
+    bank_64["银行"]
+    bank_65["存灵石"]
+    bank_66["取灵石"]
+    bank_67["领取利息"]
+    bank_68["贷款"]
+    bank_69["还款"]
+    bank_70["银行流水"]
+    bank_71["突破贷款"]
+  end
+  subgraph bounty["悬赏"]
+    bounty_72["悬赏令"]
+    bounty_73["接取悬赏"]
+    bounty_74["悬赏状态"]
+    bounty_75["完成悬赏"]
+    bounty_76["放弃悬赏"]
+  end
+  subgraph impartpk["传承PK"]
+    impartpk_77["传承挑战"]
+    impartpk_78["传承排行"]
+  end
+  subgraph land["洞天"]
+    land_79["我的洞天"]
+    land_80["购买洞天"]
+    land_81["升级洞天"]
+    land_82["洞天收取"]
+    land_83["进阶洞天"]
+  end
+  subgraph farm["灵田"]
+    farm_84["我的灵田"]
+    farm_85["开垦灵田"]
+    farm_86["种植"]
+    farm_87["收获"]
+    farm_88["升级灵田"]
+  end
+  subgraph eye["灵眼"]
+    eye_89["灵眼信息"]
+    eye_90["抢占灵眼"]
+    eye_91["灵眼收取"]
+    eye_92["释放灵眼"]
+  end
+  subgraph dailytask["日常任务"]
+    dailytask_93["任务榜"]
+    dailytask_94["接取任务"]
+    dailytask_95["领取任务奖励"]
+  end
+  subgraph worldboss["世界Boss"]
+    worldboss_96["挑战世界Boss"]
+    worldboss_97["世界Boss状态"]
+  end
+  subgraph robbery["掠夺"]
+    robbery_98["开启护府"]
+    robbery_99["潜入洞府"]
+  end
+  subgraph gamble["赌石黑市"]
+    gamble_100["切原石"]
+    gamble_101["黑市"]
+    gamble_102["黑市购买"]
+  end
+  subgraph forge["炼器"]
+    forge_103["强化"]
+    forge_104["洗练"]
+  end
+  subgraph demon["天魔入侵"]
+    demon_105["开启天魔入侵"]
+    demon_106["查验天魔"]
+    demon_107["天魔状态"]
+  end
+  subgraph pet["灵兽"]
+    pet_108["我的灵兽"]
+    pet_109["孵化灵兽"]
+    pet_110["喂养灵兽"]
+    pet_111["放生灵兽"]
+    pet_112["吞噬灵兽"]
+  end
+  subgraph auction["坊市"]
+    auction_113["坊市"]
+    auction_114["坊市上架"]
+    auction_115["坊市购买"]
+    auction_116["坊市下架"]
+  end
+  subgraph spirit["仙灵"]
+    spirit_117["仙灵结缘"]
+    spirit_118["仙灵共修"]
+    spirit_119["仙灵解除"]
+    spirit_120["仙灵代收"]
+  end
+  subgraph mentor["师徒"]
+    mentor_121["拜师"]
+    mentor_122["出师"]
+    mentor_123["逐出师门"]
+    mentor_124["师徒"]
+    mentor_125["师德兑换"]
+  end
+  subgraph title["称号图鉴"]
+    sys_title["称号图鉴"]
+    title_127["佩戴称号"]
+    title_128["我的称号"]
+  end
+  subgraph tide["魔潮天灾"]
+    tide_129["开启魔潮"]
+    tide_130["魔潮状态"]
+    tide_131["抵御魔潮"]
+    tide_132["仙界日历"]
+  end
+  subgraph avatar["化身托管"]
+    avatar_133["激活化身"]
+  end
+  subgraph escort["押镖劫道"]
+    escort_134["押镖"]
+    escort_135["完成押镖"]
+    escort_136["放弃押镖"]
+    escort_137["劫镖"]
+  end
+  subgraph karma["功德因果"]
+    karma_138["行善"]
+  end
+  subgraph admintool["管理工具"]
+    admintool_139["仙界管理"]
+  end
+  subgraph lifeskill["生活职业"]
+    lifeskill_140["选择生活职业"]
+    lifeskill_141["制符"]
+  end
+  subgraph encounter["奇遇"]
+    encounter_142["奇遇选择"]
+  end
+  subgraph furnish["洞天装修"]
+    furnish_143["洞天装修"]
+  end
+  subgraph sectbuild["宗门建筑"]
+    sectbuild_144["宗门建筑"]
+    sectbuild_145["升级建筑"]
+  end
+  subgraph misc2["其他扩展"]
+    misc2_146["完成探索"]
+    misc2_147["提前退出"]
+    misc2_148["完成历练"]
+    misc2_149["双修"]
+    misc2_150["接受双修"]
+    misc2_151["拒绝双修"]
+    misc2_152["飞升"]
+    misc2_153["解封传家宝"]
+    misc2_154["仙缘商店"]
+    misc2_155["仙缘兑换"]
+    misc2_156["开启宗门大比"]
+    misc2_157["结束宗门大比"]
+    misc2_158["施肥"]
+    misc2_159["杂交"]
+    misc2_160["储物戒附魔"]
+    misc2_161["升级丹炉"]
+    misc2_162["季节"]
+    misc2_163["火候"]
+    misc2_164["功德榜"]
+    misc2_165["气运榜"]
+    misc2_166["师德榜"]
+  end
+  subgraph equipset["装备图鉴"]
+    装备图鉴["装备图鉴"]
+  end
+  subgraph mailbox["离线信箱"]
+    信箱["信箱"]
+  end
+  subgraph pillparty["宗门丹会"]
+    宗门丹会["宗门丹会"]
+    领丹会丹["领丹会丹"]
+  end
+  subgraph xianpu["仙谱"]
+    仙谱["仙谱"]
+  end
+  sys_title{"⚙ 称号图鉴"}:::sys
+  sys_encounter{"⚙ 奇遇系统"}:::sys
+  sys_advisor{"⚙ 智能提示引擎"}:::sys
+  sys_karma{"⚙ 功德因果"}:::sys
+  sys_mentor{"⚙ 师徒系统"}:::sys
+  sys_spirit{"⚙ 仙灵道侣"}:::sys
+  sys_daily{"⚙ 日常任务"}:::sys
+  sys_bounty{"⚙ 悬赏系统"}:::sys
+  hub_breakthrough -->|境界称号| sys_title
+  hub_breakthrough -->|师德+5| sys_mentor
+  hub_breakthrough -->|下一步指引| sys_advisor
+  player_5 --> sys_advisor
+  player_7 --> sys_advisor
+  adventure_57 -->|20%触发| sys_encounter
+  misc2_148 --> sys_bounty
+  misc2_148 --> sys_title
+  misc2_146 -->|25%触发| sys_encounter
+  misc2_146 --> sys_daily
+  shop_21 --> ring_23
+  shop_21 --> hub_pill
+  escort_135 --> sys_bounty
+  escort_135 --> sys_karma
+  escort_137 -->|业力| sys_karma
+  worldboss_96 --> sys_daily
+  worldboss_96 --> sys_title
+  tide_131 --> sys_karma
+  demon_106 --> sys_title
+  spirit_117 --> sys_spirit
+  spirit_117 -->|互斥| misc2_149
+  spirit_120 --> sys_spirit
+  sect_43 --> sys_title
+  misc2_152 --> sys_title
+  karma_138 --> sys_karma
+  alchemy_61 --> sys_title
+  alchemy_61 --> sys_advisor
+  hub_breakthrough{"修炼突破"}
+  hub_pill{"丹药"}
+  装备 --> equipset_panel["🎴 套装生效"]
+  劫镖 --> mailbox_node["📮 离线信箱"]
+  悬赏助力 --> mailbox_node
+
+```
+
+</details>
+
+> 📖 也可查看 [docs/command_graph.md](docs/command_graph.md)（含联动关系速查表）  
+> 🖼️ 交互版：下载 [docs_command_graph.html](docs_command_graph.html) 用浏览器打开
+
+---
+
 ## 📜 许可证
 
 [AGPL-3.0](LICENSE) · 原作与二改贡献同样遵循原许可证

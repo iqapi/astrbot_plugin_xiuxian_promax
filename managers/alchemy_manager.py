@@ -357,6 +357,11 @@ class AlchemyManager:
                 perfect_note = ""
                 if perfect:
                     perfect_note = "\n🌟 天时地利！此丹竟是【极品】！额外多得一枚同款丹药"
+                try:
+                    from ..managers.flavor import flavor
+                    perfect_note += flavor("craft_ok")
+                except Exception:
+                    pass
                 msg = f"""
 🎉 炼丹成功！
 ━━━━━━━━━━━━━━━

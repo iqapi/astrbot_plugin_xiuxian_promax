@@ -61,6 +61,27 @@ class PillManager:
 
         return None
 
+    def get_pill_kind(self, pill_data: dict) -> Tuple[str, str]:
+        """丹药分类：返回 (类别名, 说明)。帮助玩家理解临时/永久/一次性"""
+        subtype = pill_data.get("subtype", "")
+        effect_type = pill_data.get("effect_type", "")
+        if subtype == "breakthrough":
+            return ("🔥破境丹", "仅在 /突破 时消耗，大幅提升成功率")
+        if subtype == "resurrection":
+            return ("🛡回生丹", "被动持有：死亡时自动抵消一次（一次性）")
+        if subtype == "exp" or "exp_gain" in pill_data:
+            return ("📈修为丹", "服用立即永久增加修为（一次性消耗）")
+        if "effect" in pill_data or any(k.startswith("add_") for k in pill_data.keys()):
+            return ("💊药力丹", "服用立即永久增加属性（一次性消耗）")
+        if effect_type == "temporary":
+            mins = pill_data.get("duration_minutes", 0)
+            return (f"⏱临时丹", f"服用后 {mins} 分钟内生效，到期自动失效（不重复叠加）")
+        if effect_type == "permanent":
+            return ("🌟永久丹", "服用永久增加属性，受 30% 上限约束")
+        if effect_type == "instant":
+            return ("⚡恢复丹", "立即恢复灵气/气血（一次性消耗，满状态时服用浪费）")
+        return ("❓未知", "效果未知，谨慎服用")
+
     async def update_temporary_effects(self, player: Player):
         """更新临时丹药效果，移除过期效果"""
         effects = player.get_active_pill_effects()
@@ -129,8 +150,89 @@ class PillManager:
             return await self._use_permanent_pill(player, pill_name, pill_data)
         elif effect_type == "instant":
             return await self._use_instant_pill(player, pill_name, pill_data)
+        elif "effect" in pill_data or any(k.startswith("add_") for k in pill_data.keys()):
+            # legacy 丹药（items.json 中 type=丹药，effect 字段直接含 add_xxx）
+            return await self._use_legacy_pill(player, pill_name, pill_data)
         else:
             return False, f"未知的丹药类型：{effect_type}"
+
+    async def _use_legacy_pill(self, player: Player, pill_name: str, pill_data: dict) -> Tuple[bool, str]:
+        """服用 legacy 丹药（items.json：effect = {add_experience/add_hp/add_attack/...}）"""
+        effect = pill_data.get("effect") or {}
+        if not effect:
+            # 兼容直接平铺 add_xxx 字段的写法
+            effect = {k: v for k, v in pill_data.items() if k.startswith("add_")}
+        if not effect:
+            return False, f"【{pill_name}】没有可生效的药力（配置缺失），已联系天道修补。"
+
+        msgs = []
+
+        def apply(key, label, fn):
+            if key in effect:
+                v = int(effect[key])
+                fn(v)
+                msgs.append(f"{label}{'+' if v >= 0 else ''}{v:,}")
+
+        if "add_experience" in effect:
+            v = int(effect["add_experience"])
+            player.experience = max(0, player.experience + v)
+            msgs.append(f"修为+{v:,}")
+        if "add_gold" in effect:
+            v = int(effect["add_gold"])
+            player.gold = max(0, player.gold + v)
+            msgs.append(f"灵石+{v:,}")
+        if "add_hp" in effect:
+            v = int(effect["add_hp"])
+            if player.cultivation_type == "体修":
+                old = player.blood_qi
+                player.blood_qi = max(0, min(player.max_blood_qi, player.blood_qi + v))
+                msgs.append(f"气血+{player.blood_qi - old}")
+            else:
+                old = player.spiritual_qi
+                player.spiritual_qi = max(0, min(player.max_spiritual_qi, player.spiritual_qi + v))
+                msgs.append(f"灵气+{player.spiritual_qi - old}")
+        if "add_max_hp" in effect:
+            v = int(effect["add_max_hp"])
+            if player.cultivation_type == "体修":
+                player.max_blood_qi += v
+                msgs.append(f"气血上限+{v}")
+            else:
+                player.max_spiritual_qi += v
+                msgs.append(f"灵气上限+{v}")
+        if "add_attack" in effect:
+            v = int(effect["add_attack"])
+            player.physical_damage = max(0, player.physical_damage + v)
+            msgs.append(f"物伤+{v}")
+        if "add_spiritual_power" in effect:
+            v = int(effect["add_spiritual_power"])
+            player.magic_damage = max(0, player.magic_damage + v)
+            msgs.append(f"法伤+{v}")
+        if "add_defense" in effect:
+            v = int(effect["add_defense"])
+            player.physical_defense = max(0, player.physical_defense + v)
+            msgs.append(f"物防+{v}")
+        if "add_mental_power" in effect:
+            v = int(effect["add_mental_power"])
+            player.mental_power = max(0, player.mental_power + v)
+            msgs.append(f"精神力+{v}")
+
+        if not msgs:
+            return False, f"【{pill_name}】的药力配置无法解析。"
+
+        # 扣丹
+        inventory = player.get_pills_inventory()
+        inventory[pill_name] -= 1
+        if inventory[pill_name] <= 0:
+            del inventory[pill_name]
+        player.set_pills_inventory(inventory)
+        await self.db.update_player(player)
+
+        return True, (
+            "✨ 服用【" + pill_name + "】成功！\n"
+            "━━━━━━━━━━━━━━━\n"
+            "💊 药力：" + "、".join(msgs) + "\n"
+            "━━━━━━━━━━━━━━━"
+        )
 
     async def _use_exp_pill(self, player: Player, pill_name: str, pill_data: dict) -> Tuple[bool, str]:
         """使用修为丹"""

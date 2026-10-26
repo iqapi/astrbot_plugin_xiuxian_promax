@@ -93,6 +93,22 @@ class BreakthroughHandler:
                 info_lines.append(f"功德庇佑：{karma_bonus:+.1%}（功德 {karma}）\n")
             else:
                 info_lines.append(f"业力缠身：{karma_bonus:+.1%}（业力 {karma}，/行善 可消解）\n")
+        # 连败保底与渡劫道韵
+        try:
+            import json as _json
+            _pb = _json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            _streak = int(_pb.get("bt_fail_streak", 0))
+            if _streak >= 1:
+                info_lines.append(f"🌟 道心磨砺：连败{_streak}次" + ("（下次+15%）" if _streak >= 3 else "（3次后每次+15%）") + "\n")
+            if player.level_index >= 30:
+                _dy = int(_pb.get("daoyun", 0))
+                _g = int(_pb.get("daoyun_guarantee", 0))
+                if _g:
+                    info_lines.append("🌠 道韵已圆满：下次突破【必定成功】！\n")
+                elif _dy > 0:
+                    info_lines.append(f"🌠 渡劫道韵：{_dy}/100（满后必成）\n")
+        except Exception:
+            pass
         death_reduce = 1 - modifiers["permanent_death_multiplier"]
         if death_reduce > 0:
             info_lines.append(f"突破死亡概率降低：{death_reduce:.1%}\n")

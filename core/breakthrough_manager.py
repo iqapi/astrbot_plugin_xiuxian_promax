@@ -136,8 +136,26 @@ class BreakthroughManager:
         # 3. 判定突破结果（资费已缴，无论成败不退）
         player.gold -= breakthrough_cost
         cost_note = f"\n💰 突破资费：-{breakthrough_cost:,} 灵石（剩余 {player.gold:,}）"
-        random_value = random.random()
-        breakthrough_success = random_value < success_rate
+
+        # ===== v6.20 连败保底：连续失败3次，下次+15%（永久累计直到成功）=====
+        pity_data = {}
+        try:
+            pity_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            pity_data = {}
+        fail_streak = int(pity_data.get("bt_fail_streak", 0))
+        if fail_streak >= 3:
+            success_rate = min(0.98, success_rate + 0.15)
+            cost_note += f"\n🌟 道心磨砺（连败{fail_streak}次）：本次成功率+15%"
+
+        # 渡劫必成符（道韵满100积累）：直接成功
+        guarantee = int(pity_data.get("daoyun_guarantee", 0))
+        if guarantee:
+            breakthrough_success = True
+            cost_note += "\n🌠【道韵爆发】此前凝聚的道韵轰然引爆——这一步，天命所归！"
+        else:
+            random_value = random.random()
+            breakthrough_success = random_value < success_rate
 
         current_level_name = level_data[player.level_index]["level_name"]
         next_level_index = player.level_index + 1
@@ -244,6 +262,25 @@ class BreakthroughManager:
             except Exception:
                 pass
 
+            # 风味文案
+            try:
+                from ..managers.flavor import flavor
+                success_msg += flavor("breakthrough_ok")
+            except Exception:
+                pass
+
+            # 成功后清除连败计数与必成符
+            try:
+                pdata = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+                if "bt_fail_streak" in pdata or "daoyun_guarantee" in pdata or "daoyun" in pdata:
+                    pdata.pop("bt_fail_streak", None)
+                    pdata.pop("daoyun_guarantee", None)
+                    pdata.pop("daoyun", None)
+                    player.permanent_bonus = json.dumps(pdata, ensure_ascii=False)
+                    await self.db.update_player(player)
+            except Exception:
+                pass
+
             return True, success_msg, False
 
         else:
@@ -296,6 +333,28 @@ class BreakthroughManager:
                 # 失败但未死
                 exp_penalty = int(player.experience * 0.1)
                 player.experience = max(0, player.experience - exp_penalty)
+
+                # 连败计数+1
+                pity_data = {}
+                try:
+                    pity_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+                except Exception:
+                    pity_data = {}
+                pity_data["bt_fail_streak"] = int(pity_data.get("bt_fail_streak", 0)) + 1
+
+                # ===== v6.20 渡劫道韵：境界30+失败累积道韵，100点下次必定成功 =====
+                pity_note = ""
+                if player.level_index >= 30:
+                    daoyun = int(pity_data.get("daoyun", 0)) + random.randint(18, 25)
+                    pity_data["daoyun"] = daoyun
+                    if daoyun >= 100:
+                        pity_data["daoyun"] = 0
+                        pity_data["daoyun_guarantee"] = 1
+                        pity_note = f"\n🌠 道韵圆满！你隐约触到了那扇门——下次突破【必定成功】"
+                    else:
+                        pity_note = f"\n🌠 渡劫道韵：{daoyun}/100（满100后下次突破必定成功）"
+
+                player.permanent_bonus = json.dumps(pity_data, ensure_ascii=False)
                 await self.db.update_player(player)
 
                 fail_msg = (

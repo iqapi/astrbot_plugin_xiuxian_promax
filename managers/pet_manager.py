@@ -145,13 +145,21 @@ class PetManager:
             
         return effects
 
-    async def pet_coop_attack(self, pet: Optional[Dict]) -> Tuple[bool, str, int]:
-        """灵兽协战判定（每回合触发）"""
+    async def pet_coop_attack(self, pet: Optional[Dict], user_id: str = None) -> Tuple[bool, str, int]:
+        """灵兽协战判定（每回合触发）；灵汐仙灵加成协战概率"""
         if not pet:
             return False, "", 0
-            
-        # 基础触发概率 20% + 等级加成
+
+        # 基础触发概率 20% + 等级加成 + 仙灵加成
         trigger_rate = 0.2 + (pet["level"] * 0.01)
+        if user_id:
+            try:
+                from .social_manager import SocialManager
+                comp_bonus = await SocialManager(self.db).companion_bonus_async(user_id, "pet")
+                if comp_bonus > 0:
+                    trigger_rate += comp_bonus * 0.5  # +5%起
+            except Exception:
+                pass
         
         if random.random() < trigger_rate:
             # 灵兽伤害基于主人境界（假设与玩家等级相关）

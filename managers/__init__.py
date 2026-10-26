@@ -3,7 +3,6 @@
 # 基础系统
 from .combat_manager import CombatManager, CombatStats
 from .sect_manager import SectManager
-from .boss_manager import BossManager
 from .rift_manager import RiftManager
 from .ranking_manager import RankingManager
 from .adventure_manager import AdventureManager
@@ -45,7 +44,7 @@ from .life_skill_manager import LifeSkillManager
 from .calamity_manager import CalamityManager
 
 __all__ = [
-    "CombatManager", "CombatStats", "SectManager", "BossManager", "RiftManager",
+    "CombatManager", "CombatStats", "SectManager", "RiftManager",
     "RankingManager", "AdventureManager", "AlchemyManager", "ImpartManager",
     "BankManager", "BountyManager", "ImpartPkManager",
     "BlessedLandManager", "SpiritFarmManager", "DualCultivationManager", "SpiritEyeManager",

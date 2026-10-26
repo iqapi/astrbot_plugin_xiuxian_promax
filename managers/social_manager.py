@@ -402,9 +402,7 @@ class SocialManager:
         vp = getattr(player, "virtue_points", 0)
         if vp < goods["cost"]:
             return False, f"❌ 师德点不足！需要 {goods['cost']}，当前 {vp}。\n💡 收徒并等弟子 /突破 即可累积师德。"
-        if goods["type"] == "item" and not getattr(player, "_storage_ref", None):
-            pass  # 储物戒由 handler 层传入处理
-        player.virtue_points = vp - goods["cost"]
+        # 扣点（handler 层存储失败时会退还）
         if goods["type"] == "title":
             if player.title and "传道真人" in player.title:
                 return False, "❌ 你已拥有该称号。"

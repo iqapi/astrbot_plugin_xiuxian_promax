@@ -1,6 +1,7 @@
 import asyncio
 import time
 import random
+import json
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -10,9 +11,9 @@ from astrbot.api.event import AstrMessageEvent, filter
 from .data import DataBase, MigrationManager
 from .config_manager import ConfigManager
 from .handlers import (
-    MiscHandler, PlayerHandler, EquipmentHandler, BreakthroughHandler, 
+    PlayerHandler, MiscHandler, EquipmentHandler, BreakthroughHandler,
     PillHandler, ShopHandler, StorageRingHandler,
-    SectHandlers, BossHandlers, CombatHandlers, RankingHandlers,
+    SectHandlers, CombatHandlers, RankingHandlers,
     RiftHandlers, AdventureHandlers, AlchemyHandlers, ImpartHandlers,
     NicknameHandler, BankHandlers, BountyHandlers, ImpartPkHandlers,
     BlessedLandHandlers, SpiritFarmHandlers, DualCultivationHandlers, SpiritEyeHandlers,
@@ -21,7 +22,7 @@ from .handlers import (
     AuctionHandlers
 )
 from .managers import (
-    CombatManager, SectManager, BossManager, RiftManager,
+    CombatManager, SectManager, RiftManager,
     RankingManager, AdventureManager, AlchemyManager, ImpartManager,
     BankManager, BountyManager, ImpartPkManager,
     BlessedLandManager, SpiritFarmManager, DualCultivationManager, SpiritEyeManager,
@@ -33,9 +34,27 @@ from .models_extended import UserStatus
 
 
 def require_whitelist(func):
-    """装饰器：检查群聊白名单权限"""
+    """装饰器：检查群聊白名单权限 + 强制指令前缀（/ 或 #）"""
     @wraps(func)
     async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
+        # ===== v6.18 强制前缀：只有 / 或 # 开头的消息才响应 =====
+        try:
+            raw = (event.get_message_str() or "").strip()
+        except Exception:
+            raw = ""
+        if raw and not raw.startswith("/") and not raw.startswith("#"):
+            try:
+                mo = getattr(event, "message_obj", None)
+                raw_full = ""
+                if mo is not None:
+                    for comp in (mo.message or []):
+                        txt = getattr(comp, "text", "") or ""
+                        raw_full += txt
+                raw_full = raw_full.strip()
+                if raw_full and not raw_full.startswith("/") and not raw_full.startswith("#"):
+                    return
+            except Exception:
+                return
         if not self._check_access(event):
             await self._send_access_denied_message(event)
             return
@@ -83,9 +102,6 @@ CMD_SECT_TRANSFER = "宗主传位"
 CMD_SECT_TASK = "宗门任务"
 CMD_FINISH_SECT_TASK = "完成宗门任务"
 CMD_SECT_POSITION = "职位变更"
-CMD_BOSS_INFO = "世界Boss"
-CMD_BOSS_FIGHT = "挑战Boss"
-CMD_SPAWN_BOSS = "生成Boss"
 CMD_RANK_LEVEL = "境界排行"
 CMD_RANK_POWER = "战力排行"
 CMD_RANK_WEALTH = "灵石排行"
@@ -96,14 +112,14 @@ CMD_DUEL = "决斗"
 CMD_SPAR = "切磋"
 CMD_RIFT_LIST = "秘境列表"
 CMD_RIFT_EXPLORE = "探索秘境"
-CMD_RIFT_COMPLETE = "完成探索"
+CMD_RIFT_COMPLETE = "完成秘境探索"
 CMD_RIFT_EXIT = "退出秘境"
 CMD_ADVENTURE_START = "开始历练"
 CMD_ADVENTURE_COMPLETE = "完成历练"
 CMD_ADVENTURE_STATUS = "历练状态"
 CMD_ADVENTURE_INFO = "历练信息"
 CMD_ALCHEMY_RECIPES = "丹药配方"
-CMD_ALCHEMY_CRAFT = "炼丹"
+CMD_ALCHEMY_CRAFT = "炼制丹药"
 CMD_IMPART_INFO = "传承信息"
 CMD_CHANGE_NICKNAME = "改道号"
 CMD_BANK_INFO = "银行"
@@ -139,6 +155,7 @@ CMD_SPIRIT_EYE_CLAIM = "抢占灵眼"
 CMD_SPIRIT_EYE_COLLECT = "灵眼收取"
 CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
 CMD_REBIRTH = "弃道重修"
+
 
 class XiuXianPlugin(Star):
     """修仙插件 - 文字修仙游戏"""
@@ -177,13 +194,12 @@ class XiuXianPlugin(Star):
         self.pill_handler = PillHandler(self.db, self.config_manager)
         self.shop_handler = ShopHandler(self.db, self.config, self.config_manager)
         self.storage_ring_handler = StorageRingHandler(self.db, self.config_manager)
-        
+
         from .core import StorageRingManager
         self.storage_ring_mgr = StorageRingManager(self.db, self.config_manager)
-        
+
         self.combat_mgr = CombatManager()
         self.sect_mgr = SectManager(self.db, self.config_manager)
-        self.boss_mgr = BossManager(self.db, self.combat_mgr, self.config_manager, self.storage_ring_mgr)
         self.rift_mgr = RiftManager(self.db, self.config_manager, self.storage_ring_mgr)
         self.rank_mgr = RankingManager(self.db, self.combat_mgr, self.config_manager)
         self.adventure_mgr = AdventureManager(self.db, self.storage_ring_mgr)
@@ -192,7 +208,6 @@ class XiuXianPlugin(Star):
 
         # ===== 功能处理器 =====
         self.sect_handlers = SectHandlers(self.db, self.sect_mgr)
-        self.boss_handlers = BossHandlers(self.db, self.boss_mgr)
         self.combat_handlers = CombatHandlers(self.db, self.combat_mgr, self.config_manager)
         self.ranking_handlers = RankingHandlers(self.db, self.rank_mgr)
         self.rift_handlers = RiftHandlers(self.db, self.rift_mgr)
@@ -200,15 +215,15 @@ class XiuXianPlugin(Star):
         self.alchemy_handlers = AlchemyHandlers(self.db, self.alchemy_mgr)
         self.impart_handlers = ImpartHandlers(self.db, self.impart_mgr)
         self.nickname_handler = NicknameHandler(self.db)
-        
+
         self.bank_mgr = BankManager(self.db, self.config)
         self.bounty_mgr = BountyManager(self.db, self.storage_ring_mgr)
         self.bank_handlers = BankHandlers(self.db, self.bank_mgr)
         self.bounty_handlers = BountyHandlers(self.db, self.bounty_mgr)
-        
+
         self.impart_pk_mgr = ImpartPkManager(self.db, self.combat_mgr)
         self.impart_pk_handlers = ImpartPkHandlers(self.db, self.impart_pk_mgr)
-        
+
         self.blessed_land_mgr = BlessedLandManager(self.db)
         self.blessed_land_handlers = BlessedLandHandlers(self.db, self.blessed_land_mgr)
         self.spirit_farm_mgr = SpiritFarmManager(self.db, self.storage_ring_mgr)
@@ -217,7 +232,7 @@ class XiuXianPlugin(Star):
         self.dual_cult_handlers = DualCultivationHandlers(self.db, self.dual_cult_mgr)
         self.spirit_eye_mgr = SpiritEyeManager(self.db)
         self.spirit_eye_handlers = SpiritEyeHandlers(self.db, self.spirit_eye_mgr)
-        
+
         # v6.1 系统
         self.robbery_mgr = RobberyManager(self.db, self.storage_ring_mgr)
         self.robbery_handlers = RobberyHandlers(self.db, self.robbery_mgr)
@@ -239,7 +254,7 @@ class XiuXianPlugin(Star):
         self.demon_mgr = DemonInvasionManager(self.db)
         self.demon_handlers = DemonInvasionHandlers(self.db, self.demon_mgr, self.storage_ring_mgr)
         self.demon_handlers.context = self.context
-        
+
         # v6.5 灵兽系统
         self.pet_mgr = PetManager(self.db)
         self.pet_handlers = PetHandlers(self.db, self.pet_mgr)
@@ -259,29 +274,47 @@ class XiuXianPlugin(Star):
         # v6.16 NPC道侣 & 师徒
         from .managers.social_manager import SocialManager
         self.social_mgr = SocialManager(self.db)
-        # PlayerHandler 需要仙灵加成引用（构造时先占位，稍后注入）
         self.player_handler.social_mgr_ref = self.social_mgr
+        self.player_handler.first_week_ref = self.first_week if hasattr(self, 'first_week') else None
+        self.player_handler.sect_coop_ref = None
 
         # v6.17 称号系统
         from .managers.title_hooks import TitleHooks
         self.title_hooks = TitleHooks(self.db)
         self.title_mgr = self.title_hooks._tm()
+        self.player_handler.title_hooks = self.title_hooks
 
-        # v6.11 图片卡片开关注入
-        try:
-            from .utils import image_generator as _ig
-            card_cfg = dict(self.config.get("IMAGE_CARDS", {}) or {})
-            card_cfg["__enabled__"] = card_cfg.pop("ENABLED", True)
-            _ig.set_card_flags(card_cfg)
-        except Exception as e:
-            logger.warning(f"卡片配置注入失败（将全部启用）: {e}")
-        
+        # v6.18 提前退出
+        from .managers.exit_manager import ExitManager
+        self.exit_mgr = ExitManager(self.db)
+
+        # v6.19 智能下一步提示
+        from .managers.next_step import NextStepAdvisor
+        self.advisor = NextStepAdvisor(self.db)
+
+        # v6.20 新手七日仙途
+        from .managers.first_week import FirstWeekManager
+        self.first_week = FirstWeekManager(self.db)
+        self.player_handler.first_week_ref = self.first_week
+
+        # v6.20 宗门协作 & 悬赏助力
+        from .managers.sect_coop import SectCoopManager, BountyAssist
+        self.sect_coop = SectCoopManager(self.db)
+        self.bounty_assist = BountyAssist(self.db)
+        self.player_handler.sect_coop_ref = self.sect_coop
+
+        # v6.21 装备套装/离线信箱
+        from .managers.enhance_systems import EquipSetManager, MailboxManager
+        self.equip_sets = EquipSetManager(self.db)
+        self.mailbox = MailboxManager(self.db)
+
         # 后台任务句柄
         self.boss_task = None
         self.loan_check_task = None
         self.spirit_eye_task = None
         self.bounty_check_task = None
         self.demon_check_task = None
+        self.restock_task = None
 
         access_control_config = self.config.get("ACCESS_CONTROL", {})
         self.whitelist_groups = [str(g) for g in access_control_config.get("WHITELIST_GROUPS", [])]
@@ -312,7 +345,7 @@ class XiuXianPlugin(Star):
         migration_manager = MigrationManager(self.db.conn, self.config_manager)
         await migration_manager.migrate()
         await self.db.ext.ensure_system_config_table()
-        
+
         self.boss_task = asyncio.create_task(self._schedule_boss_spawn())
         self.loan_check_task = asyncio.create_task(self._schedule_loan_check())
         self.spirit_eye_task = asyncio.create_task(self._schedule_spirit_eye_spawn())
@@ -321,7 +354,7 @@ class XiuXianPlugin(Star):
         self.tide_check_task = asyncio.create_task(self._schedule_tide_check())
         # v6.17 商店自动上货
         self.restock_task = asyncio.create_task(self._schedule_restock())
-        
+
         logger.info("【修仙插件】已加载。")
 
     async def terminate(self):
@@ -332,77 +365,13 @@ class XiuXianPlugin(Star):
         await self.db.close()
         logger.info("【修仙插件】已卸载。")
 
-    # ===== 定时任务与广播逻辑 =====
-    
-    async def _schedule_boss_spawn(self):
-        retry_count = 0
-        max_retry_delay = 3600
-        while True:
-            try:
-                await self.db.ensure_connection()
-                interval = self.config_manager.boss_config.get("spawn_interval", 3600)
-                next_spawn_str = await self.db.ext.get_system_config("boss_next_spawn_time")
-                current_time = int(time.time())
-                
-                if next_spawn_str:
-                    next_spawn_time = int(next_spawn_str)
-                    remaining = next_spawn_time - current_time
-                    if remaining > 0:
-                        logger.info(f"【修仙插件】动态世界Boss将在 {remaining} 秒后刷新")
-                        await asyncio.sleep(remaining)
-                else:
-                    next_spawn_time = current_time + interval
-                    await self.db.ext.set_system_config("boss_next_spawn_time", str(next_spawn_time))
-                    await asyncio.sleep(interval)
-                
-                # 清理过期未击杀的旧世界Boss
-                async with self.db.conn.execute("SELECT boss_id FROM world_boss WHERE status=1 AND expire_time < ?", (current_time,)) as cur:
-                    if await cur.fetchone():
-                        await self.db.conn.execute("UPDATE world_boss SET status=3 WHERE status=1 AND expire_time < ?", (current_time,))
-                        await self.db.conn.commit()
-                        logger.info("【修仙插件】清理了超时未击杀的旧世界Boss")
-
-                # 检查并生成新Boss
-                if self.world_boss_mgr:
-                    async with self.db.conn.execute("SELECT * FROM world_boss WHERE status=1") as cur:
-                        if not await cur.fetchone():
-                            success, msg = await self.world_boss_mgr.spawn_boss()
-                            if success:
-                                logger.info(f"【修仙插件】自动生成动态世界Boss")
-                                await self._broadcast_world_boss_spawn(msg)
-                
-                next_spawn_time = int(time.time()) + interval
-                await self.db.ext.set_system_config("boss_next_spawn_time", str(next_spawn_time))
-                retry_count = 0
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Boss生成任务异常: {e}")
-                retry_count += 1
-                delay = min(60 * (2 ** retry_count), max_retry_delay)
-                logger.info(f"【修仙插件】Boss任务将在 {delay} 秒后重试（第{retry_count}次）")
-                await asyncio.sleep(delay)
-
-    async def _schedule_demon_check(self):
-        """定时检查天魔入侵是否超时并自动结算"""
-        while True:
-            try:
-                await self.db.ensure_connection()
-                await asyncio.sleep(300)
-                
-                is_active = await self.db.ext.get_system_config("demon_invasion_active")
-                if is_active == "1":
-                    end_time_str = await self.db.ext.get_system_config("demon_invasion_end_time")
-                    if end_time_str and end_time_str.isdigit() and int(time.time()) > int(end_time_str):
-                        success, msg = await self.demon_mgr.end_invasion()
-                        if success:
-                            logger.info(f"【修仙插件】天魔入侵超时自动结算：{msg}")
-                            await self._broadcast_world_boss_spawn(msg)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"天魔入侵检查任务异常: {e}")
-                await asyncio.sleep(60)
+    def _warn_no_whitelist(self, event_name: str):
+        """全服事件广播因未配置白名单而被丢弃时提示管理员"""
+        if not hasattr(self, "_whitelist_warned"):
+            self._whitelist_warned = set()
+        if event_name not in self._whitelist_warned:
+            self._whitelist_warned.add(event_name)
+            logger.warning(f"【修仙插件】{event_name} 广播被跳过：未配置白名单 WHITELIST_GROUPS，全服事件将不会通知任何群聊！")
 
     async def _title_bump(self, user_id: str, key: str, count: int = 1) -> str:
         """称号计数颁发（玩法处一行调用）"""
@@ -414,200 +383,40 @@ class XiuXianPlugin(Star):
         except Exception:
             return ""
 
-    def _warn_no_whitelist(self, event_name: str):
-        """全服事件广播因未配置白名单而被丢弃时提示管理员"""
-        if not hasattr(self, "_whitelist_warned"):
-            self._whitelist_warned = set()
-        if event_name not in self._whitelist_warned:
-            self._whitelist_warned.add(event_name)
-            logger.warning(f"【修仙插件】{event_name} 广播被跳过：未配置白名单 WHITELIST_GROUPS，全服事件将不会通知任何群聊！")
+    def _extract_at_target(self, event, arg: str = "") -> str:
+        """统一的 @目标 解析：At组件 > CQ码文本 > 纯数字，排除发送者自己"""
+        from astrbot.api.all import At
+        sender_id = str(event.get_sender_id())
+        if hasattr(event, "message_obj") and event.message_obj:
+            for comp in (event.message_obj.message or []):
+                if isinstance(comp, At):
+                    for attr in ("qq", "target", "uin"):
+                        v = getattr(comp, attr, None)
+                        if v and str(v) != sender_id:
+                            return str(v)
+        if arg:
+            cleaned = arg.strip()
+            cq = re.search(r'\[CQ:at,qq=(\d{5,})\]', cleaned)
+            if cq and cq.group(1) != sender_id:
+                return cq.group(1)
+            c2 = cleaned.lstrip("@").strip()
+            if c2.isdigit() and len(c2) >= 5 and c2 != sender_id:
+                return c2
+        return ""
 
-    async def _schedule_restock(self):
-        """v6.17 商店自动上货：每 10 分钟检查三阁，售罄/到期自动补货"""
-        while True:
-            try:
-                await self.db.ensure_connection()
-                await asyncio.sleep(600)
-                n, detail = await self.shop_handler.auto_restock()
-                if n:
-                    logger.info(f"【修仙插件】自动上货完成（{n} 阁）：{detail}")
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"自动上货任务异常: {e}")
-                await asyncio.sleep(120)
-
-    async def _broadcast_world_boss_spawn(self, msg: str):
-        """广播动态世界Boss降临/天魔结算"""
-        from astrbot.api.event import MessageChain
-        if not self.whitelist_groups:
-            self._warn_no_whitelist("世界Boss/魔潮")
-            return
-        message_chain = MessageChain().message(msg)
+    def _safe_int(self, val: str, default: int = 0, lo: int = None, hi: int = None) -> int:
+        """安全整数解析（支持全角数字，范围钳制）"""
         try:
-            platforms = self.context.platform_manager.get_insts()
-            for platform in platforms:
-                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
-                for group_id in self.whitelist_groups:
-                    umo = f"{platform_name}:GroupMessage:{group_id}"
-                    try:
-                        await self.context.send_message(umo, message_chain)
-                    except Exception as e:
-                        logger.warning(f"【修仙插件】广播失败 (群{group_id}): {e}")
-        except Exception as e:
-            logger.error(f"【修仙插件】广播异常: {e}")
+            v = int(str(val).strip().translate(str.maketrans("０１２３４５６７８９", "0123456789")) or default)
+        except (ValueError, TypeError):
+            return default
+        if lo is not None and v < lo:
+            return lo
+        if hi is not None and v > hi:
+            return hi
+        return v
 
-    async def _broadcast_boss_defeat(self, player_name: str, battle_result: dict):
-        """兼容旧版 Boss 击杀广播"""
-        from astrbot.api.event import MessageChain
-        if not self.whitelist_groups:
-            self._warn_no_whitelist("Boss击杀")
-            return
-        reward = battle_result.get("reward", 0)
-        rounds = battle_result.get("rounds", 0)
-        broadcast_msg = (
-            f"🎉 世界Boss已被击杀！\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"击杀者：{player_name}\n"
-            f"战斗回合：{rounds}\n"
-            f"获得奖励：{reward} 灵石\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"恭喜大侠！下一只Boss即将刷新..."
-        )
-        message_chain = MessageChain().message(broadcast_msg)
-        try:
-            platforms = self.context.platform_manager.get_insts()
-            for platform in platforms:
-                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
-                for group_id in self.whitelist_groups:
-                    umo = f"{platform_name}:GroupMessage:{group_id}"
-                    try:
-                        await self.context.send_message(umo, message_chain)
-                    except Exception as e:
-                        logger.warning(f"【修仙插件】Boss击杀广播发送失败 (群{group_id}): {e}")
-        except Exception as e:
-            logger.error(f"【修仙插件】Boss击杀广播异常: {e}")
 
-    async def _schedule_loan_check(self):
-        retry_count = 0
-        max_retry_delay = 3600
-        while True:
-            try:
-                await self.db.ensure_connection()
-                await asyncio.sleep(3600)
-                processed = await self.bank_mgr.check_and_process_overdue_loans()
-                if processed:
-                    logger.info(f"【修仙插件】处理了 {len(processed)} 笔逾期贷款")
-                    for loan_info in processed:
-                        if loan_info.get("death"):
-                            await self._broadcast_loan_death(loan_info)
-                retry_count = 0
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"贷款检查任务异常: {e}")
-                retry_count += 1
-                delay = min(60 * (2 ** retry_count), max_retry_delay)
-                logger.info(f"【修仙插件】贷款检查任务将在 {delay} 秒后重试（第{retry_count}次）")
-                await asyncio.sleep(delay)
-
-    async def _broadcast_loan_death(self, loan_info: dict):
-        from astrbot.api.event import MessageChain
-        if not self.whitelist_groups:
-            self._warn_no_whitelist("贷款追杀")
-            return
-        player_name = loan_info.get("player_name", "某修士")
-        principal = loan_info.get("principal", 0)
-        broadcast_msg = (
-            f"💀 银行追杀公告 💀\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"修士【{player_name}】因贷款逾期未还\n"
-            f"欠款：{principal:,} 灵石\n"
-            f"已被灵石银行追杀致死！\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"⚠️ 借贷有风险，还款需及时！"
-        )
-        message_chain = MessageChain().message(broadcast_msg)
-        try:
-            platforms = self.context.platform_manager.get_insts()
-            for platform in platforms:
-                platform_name = platform.meta().name if hasattr(platform, 'meta') and callable(platform.meta) else "unknown"
-                for group_id in self.whitelist_groups:
-                    umo = f"{platform_name}:GroupMessage:{group_id}"
-                    try:
-                        await self.context.send_message(umo, message_chain)
-                    except Exception as e:
-                        logger.warning(f"【修仙插件】贷款追杀广播发送失败 (群{group_id}): {e}")
-        except Exception as e:
-            logger.error(f"【修仙插件】贷款追杀广播异常: {e}")
-
-    async def _schedule_spirit_eye_spawn(self):
-        retry_count = 0
-        max_retry_delay = 3600
-        while True:
-            try:
-                await self.db.ensure_connection()
-                spawn_interval = 7200
-                next_spawn_str = await self.db.ext.get_system_config("spirit_eye_next_spawn_time")
-                current_time = int(time.time())
-                
-                if next_spawn_str:
-                    next_spawn_time = int(next_spawn_str)
-                    remaining = next_spawn_time - current_time
-                    if remaining > 0:
-                        logger.info(f"【修仙插件】灵眼将在 {remaining} 秒后刷新")
-                        await asyncio.sleep(remaining)
-                else:
-                    next_spawn_time = current_time + spawn_interval
-                    await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
-                    await asyncio.sleep(spawn_interval)
-                
-                success, msg = await self.spirit_eye_mgr.spawn_spirit_eye()
-                if success:
-                    logger.info(f"【修仙插件】{msg}")
-                    await self._broadcast_spirit_eye_spawn(msg)
-                
-                next_spawn_time = int(time.time()) + spawn_interval
-                await self.db.ext.set_system_config("spirit_eye_next_spawn_time", str(next_spawn_time))
-                retry_count = 0
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"灵眼生成任务异常: {e}")
-                retry_count += 1
-                delay = min(60 * (2 ** retry_count), max_retry_delay)
-                logger.info(f"【修仙插件】灵眼任务将在 {delay} 秒后重试（第{retry_count}次）")
-                await asyncio.sleep(delay)
-
-    async def _schedule_bounty_check(self):
-        while True:
-            try:
-                await self.db.ensure_connection()
-                await asyncio.sleep(1800)
-                expired = await self.bounty_mgr.check_and_expire_bounties()
-                if expired > 0:
-                    logger.info(f"【修仙插件】处理了 {expired} 个过期悬赏任务")
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"悬赏检查任务异常: {e}")
-                await asyncio.sleep(60)
-
-    async def _schedule_tide_check(self):
-        """定时检查魔潮：到期结算 + 周六/月初自动开启"""
-        while True:
-            try:
-                await self.db.ensure_connection()
-                await asyncio.sleep(300)
-                settled, msg = await self.calamity_mgr.auto_check()
-                if settled and msg:
-                    logger.info(f"【修仙插件】魔潮事件：{msg.splitlines()[0]}")
-                    await self._broadcast_world_boss_spawn(msg)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"魔潮检查任务异常: {e}")
-                await asyncio.sleep(60)
 
     async def _broadcast_spirit_eye_spawn(self, msg: str):
         from astrbot.api.event import MessageChain
@@ -702,6 +511,17 @@ class XiuXianPlugin(Star):
             try:
                 tmsg = await self.title_hooks.bump_value(player, "breakthrough", player.level_index)
                 if tmsg: yield event.plain_result(tmsg)
+            except Exception:
+                pass
+            # 智能下一步提示
+            try:
+                advise = await self.advisor.advise(player, "breakthrough")
+                if advise: yield event.plain_result(advise)
+            except Exception:
+                pass
+            # 七日任务：突破
+            try:
+                await self.first_week.record_action(player, "breakthrough")
             except Exception:
                 pass
             try:
@@ -884,69 +704,6 @@ class XiuXianPlugin(Star):
             return
         async for r in self.sect_handlers.handle_position_change(event, target, pos_int): yield r
 
-    # ===== 旧版Boss =====
-    @filter.command(CMD_BOSS_INFO, "查看世界Boss状态(旧)")
-    @require_whitelist
-    async def handle_boss_info(self, event: AstrMessageEvent):
-        async for r in self.boss_handlers.handle_boss_info(event): yield r
-    
-    @filter.command(CMD_BOSS_FIGHT, "挑战世界Boss(旧)")
-    @require_whitelist
-    async def handle_boss_fight(self, event: AstrMessageEvent):
-        user_id = event.get_sender_id()
-        success, msg, battle_result = await self.boss_handlers.handle_boss_fight(user_id)
-        # 击杀时尝试生成结算海报：成功只发图，失败/关闭降级为战报文本
-        poster = None
-        if success and battle_result and battle_result.get("winner") == user_id:
-            try:
-                from .utils.image_generator import render_card_async, card_enabled
-                if card_enabled("CARD_COMBAT"):
-                    player = await self.db.get_player_by_id(user_id)
-                    player_name = player.user_name if player and player.user_name else f"道友{str(user_id)[:6]}"
-                    poster = await render_card_async(
-                        "combat",
-                        "⚔️ Boss讨伐胜利",
-                        f"击杀者：{player_name}",
-                        sections=[
-                            {"name": "战报", "rows": [
-                                ("战斗回合", f"{battle_result.get('rounds', 0)}"),
-                                ("获得奖励", f"{battle_result.get('reward', 0):,} 灵石"),
-                                ("剩余气血", f"{battle_result.get('player_final_hp', 0):,}"),
-                            ]},
-                            {"name": "天道贺词", "lines": [
-                                "魔首伏诛，四方宾服。",
-                                "此战之功，录入仙史！",
-                            ]},
-                        ],
-                        footer="模拟修仙 · 战斗结算",
-                    )
-                    if poster:
-                        await self.db.ext.add_task_progress(user_id, "boss_damage", 1)
-                        await self._broadcast_boss_defeat(player_name, battle_result)
-                        yield event.image_result(poster)
-                        return
-            except Exception:
-                poster = None
-
-        yield event.plain_result(msg)
-        if success and battle_result and battle_result.get("winner") == user_id:
-            await self.db.ext.add_task_progress(user_id, "boss_damage", 1)
-            await self._title_bump(user_id, "boss_kill_old")
-            player = await self.db.get_player_by_id(user_id)
-            player_name = player.user_name if player and player.user_name else f"道友{str(user_id)[:6]}"
-            await self._broadcast_boss_defeat(player_name, battle_result)
-
-    @filter.command(CMD_SPAWN_BOSS, "生成世界Boss(旧)")
-    @require_whitelist
-    async def handle_spawn_boss(self, event: AstrMessageEvent):
-        if not self._check_boss_admin(event):
-            yield event.plain_result("❌ 你没有权限生成Boss！")
-            return
-        success, msg, boss = await self.boss_handlers.handle_spawn_boss()
-        yield event.plain_result(msg)
-        if success and boss:
-            await self._broadcast_boss_spawn(boss)
-
     # ===== 排行榜 =====
     @filter.command(CMD_RANK_LEVEL, "境界排行")
     @require_whitelist
@@ -1001,7 +758,7 @@ class XiuXianPlugin(Star):
             self.combat_handlers.last_spar_fought = False
             await self.db.ext.add_task_progress(user_id, "spar", 1)
             await self._title_bump(user_id, "spar_count")
-            # 悬赏联动（spar/pvp tag）
+        # 悬赏联动（spar/pvp tag）
             player = await self.db.get_player_by_id(user_id)
             if player:
                 await self.bounty_mgr.add_bounty_progress(player, "spar", 1)
@@ -1041,6 +798,29 @@ class XiuXianPlugin(Star):
                     if encounter_msg: msg += encounter_msg
                 except Exception as e:
                     logger.warning(f"秘境奇遇触发异常: {e}")
+
+                # 七日任务：秘境
+                try:
+                    await self.first_week.record_action(player, "rift")
+                except Exception:
+                    pass
+
+                # 智能下一步提示
+                try:
+                    advise = await self.advisor.advise(player, "rift")
+                    if advise: msg += advise
+                except Exception:
+                    pass
+        yield event.plain_result(msg)
+
+    @filter.command("提前退出", "历练/秘境中途退出，按已进行时长比例结算")
+    @require_whitelist
+    async def handle_early_exit(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        success, msg = await self.exit_mgr.early_exit(player)
         yield event.plain_result(msg)
 
     @filter.command(CMD_RIFT_EXIT, "退出秘境")
@@ -1062,6 +842,19 @@ class XiuXianPlugin(Star):
         if success and reward_data:
             await self.db.ext.add_task_progress(user_id, "adventure", 1)
             await self._title_bump(user_id, "adventure_count")
+            # 七日任务：历练
+            try:
+                p_adv = await self.db.get_player_by_id(user_id)
+                if p_adv:
+                    await self.first_week.record_action(p_adv, "adventure")
+            except Exception:
+                pass
+            # 宗门协作分
+            try:
+                if p_adv:
+                    await self.sect_coop.bump_sect_progress(p_adv, 1)
+            except Exception:
+                pass
             player = await self.db.get_player_by_id(user_id)
             if player:
                 bounty_tag = reward_data.get("bounty_tag", "adventure")
@@ -1080,6 +873,13 @@ class XiuXianPlugin(Star):
                     await self._title_bump(user_id, "luck_event")
             except Exception as e:
                 logger.warning(f"奇遇触发异常: {e}")
+
+            # 智能下一步提示
+            try:
+                advise = await self.advisor.advise(player, "adventure")
+                if advise: msg += advise
+            except Exception:
+                pass
         yield event.plain_result(msg)
 
     @filter.command(CMD_ADVENTURE_STATUS, "历练状态")
@@ -1195,9 +995,9 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_BOUNTY_ACCEPT, "接取悬赏任务")
     @require_whitelist
     async def handle_bounty_accept(self, event: AstrMessageEvent, bounty_id: str = "0"):
-        try: bounty_id_int = int(bounty_id)
-        except ValueError:
-            yield event.plain_result("❌ 请输入正确的悬赏编号！")
+        bounty_id_int = self._safe_int(bounty_id, 0, lo=0)
+        if bounty_id_int <= 0:
+            yield event.plain_result("❌ 请输入正确的悬赏编号！例如：/接取悬赏 1（编号见 /悬赏令）")
             return
         async for r in self.bounty_handlers.handle_accept_bounty(event, bounty_id_int): yield r
 
@@ -1330,9 +1130,9 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_SPIRIT_EYE_CLAIM, "抢占灵眼")
     @require_whitelist
     async def handle_spirit_eye_claim(self, event: AstrMessageEvent, eye_id: str = "0"):
-        try: eye_id_int = int(eye_id)
-        except ValueError:
-            yield event.plain_result("❌ 请输入正确的数字！")
+        eye_id_int = self._safe_int(eye_id, 0, lo=0)
+        if eye_id_int <= 0:
+            yield event.plain_result("❌ 请输入正确的灵眼编号！例如：/抢占灵眼 1（编号见 /灵眼信息）")
             return
         async for r in self.spirit_eye_handlers.handle_claim(event, eye_id_int): yield r
 
@@ -1382,21 +1182,17 @@ class XiuXianPlugin(Star):
         if settle_msg:
             self.world_boss_mgr.last_settle_msg = None
             await self._broadcast_world_boss_spawn(settle_msg)
+        # 血量里程碑播报
+        milestone = getattr(self.world_boss_mgr, "last_milestone_msg", None)
+        if milestone:
+            self.world_boss_mgr.last_milestone_msg = None
+            await self._broadcast_world_boss_spawn(milestone)
 
     @filter.command("世界Boss状态", "查看动态世界Boss信息")
     @require_whitelist
     async def handle_query_world_boss(self, event: AstrMessageEvent):
         async for r in self.world_boss_handlers.handle_query(event): yield r
             
-    @filter.command("生成世界Boss", "手动召唤世界Boss(管理员)")
-    @require_whitelist
-    async def handle_spawn_world_boss(self, event: AstrMessageEvent):
-        if not self._check_boss_admin(event):
-            yield event.plain_result("❌ 你没有权限！")
-            return
-        success, msg = await self.world_boss_mgr.spawn_boss()
-        yield event.plain_result(msg)
-
     # ===== v6.1 洞府掠夺 =====
     @filter.command("开启护府", "使用护府令保护洞天")
     @require_whitelist
@@ -1783,16 +1579,12 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        target_id = None
-        if hasattr(event, "message_obj") and event.message_obj:
-            for comp in event.message_obj.message:
-                if isinstance(comp, At):
-                    target_id = str(comp.qq)
-                    break
-        if not target_id and target.strip().lstrip("@").isdigit():
-            target_id = target.strip().lstrip("@")
+        target_id = self._extract_at_target(event, target)
         if not target_id:
-            yield event.plain_result("❌ 请使用 @某人 指定你要劫镖的目标。")
+            yield event.plain_result(
+                "❌ 未识别到目标！请 @对方。\n"
+                "用法：/劫镖 @道友（消耗迷神香×1，10分钟冷却）"
+            )
             return
         success, msg = await self.escort_mgr.rob_escort(player, target_id)
         yield event.plain_result(msg)
@@ -1848,6 +1640,11 @@ class XiuXianPlugin(Star):
         try:
             tmsg = await self.title_hooks.bump_value(player, "karma", player.karma)
             if tmsg: yield event.plain_result(tmsg)
+        except Exception:
+            pass
+        # 七日任务：行善
+        try:
+            await self.first_week.record_action(player, "good")
         except Exception:
             pass
         yield event.plain_result(
@@ -2133,20 +1930,17 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        master_id = None
-        if hasattr(event, "message_obj") and event.message_obj:
-            for comp in event.message_obj.message:
-                if isinstance(comp, At):
-                    master_id = str(comp.qq)
-                    break
-        if not master_id and target.strip().lstrip("@").isdigit():
-            master_id = target.strip().lstrip("@")
+        master_id = self._extract_at_target(event, target)
         if not master_id:
             yield event.plain_result(
-                "🎓 拜师\n━━━━━━━━━━━━━━━\n"
-                "用法：/拜师 @高境界道友\n"
-                "条件：对方境界须高于你 5 级，且门下未满（2人）\n"
-                "收益：师父带你成长，出师双方获大礼"
+                "🎓【拜师系统】\n"
+                "━━━━━━━━━━━━━━━\n"
+                "📌 用法：/拜师 @高境界道友\n"
+                "📌 条件：对方境界须高于你 5 级，且门下未满（2人）\n"
+                "💰 收益：弟子突破时师父得师德点；出师双方获大礼\n"
+                "📍 出师：弟子达筑基期后，师父发 /出师 @弟子\n"
+                "━━━━━━━━━━━━━━━\n"
+                "💡 师父也可随时 /师徒 查看门下弟子情况"
             )
             return
         success, msg = await self.social_mgr.take_as_disciple(player, master_id)
@@ -2160,14 +1954,7 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        disciple_id = None
-        if hasattr(event, "message_obj") and event.message_obj:
-            for comp in event.message_obj.message:
-                if isinstance(comp, At):
-                    disciple_id = str(comp.qq)
-                    break
-        if not disciple_id and target.strip().lstrip("@").isdigit():
-            disciple_id = target.strip().lstrip("@")
+        disciple_id = self._extract_at_target(event, target)
         if not disciple_id:
             yield event.plain_result("用法：/出师 @你的弟子（弟子需达筑基期）")
             return
@@ -2182,14 +1969,7 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        disciple_id = None
-        if hasattr(event, "message_obj") and event.message_obj:
-            for comp in event.message_obj.message:
-                if isinstance(comp, At):
-                    disciple_id = str(comp.qq)
-                    break
-        if not disciple_id and target.strip().lstrip("@").isdigit():
-            disciple_id = target.strip().lstrip("@")
+        disciple_id = self._extract_at_target(event, target)
         if not disciple_id:
             yield event.plain_result("用法：/逐出师门 @你的弟子")
             return
@@ -2216,16 +1996,29 @@ class XiuXianPlugin(Star):
             idx = int(item_id)
         except ValueError:
             idx = 0
+        # 记录本次兑换成本（供存储失败退还）
+        from .managers.social_manager import SPIRIT_COMPANIONS  # noqa
+        goods_cost_ref = 0
+        try:
+            _shop = {1: 80, 2: 150, 3: 300}
+            goods_cost_ref = _shop.get(idx, 0)
+        except Exception:
+            pass
         success, msg = await self.social_mgr.redeem_virtue(player, idx)
         if success and msg.startswith("__NEED_STORE__"):
-            # 物品类奖励：存入储物戒
+            # 物品类奖励：存入储物戒；失败退还师德
             _, payload = msg.split("__NEED_STORE__", 1)
             item_name, count, note = payload.split("|", 2)
             ok, smsg = await self.storage_ring_mgr.store_item(player, item_name, int(count), silent=True)
             if ok:
                 yield event.plain_result(f"✅ {note}，【{item_name}】x{count} 已存入储物戒")
             else:
-                yield event.plain_result(f"⚠️ {note}，但储物戒已满：{smsg}")
+                player.virtue_points = getattr(player, "virtue_points", 0) + goods_cost_ref
+                await self.db.update_player(player)
+                yield event.plain_result(
+                    f"❌ 兑换失败：储物戒已满（{smsg}）\n"
+                    f"💰 师德点已退还 {goods_cost_ref}（当前 {player.virtue_points}）。清理储物戒后再试。"
+                )
             return
         yield event.plain_result(msg)
 
@@ -2248,7 +2041,194 @@ class XiuXianPlugin(Star):
         success, msg = await self.rank_mgr.get_virtue_ranking()
         yield event.plain_result(msg)
 
-        # ===== v6.17 称号系统 =====
+        # ===== v6.20 宗门协作 & 悬赏助力 =====
+    @filter.command("仙谱", "查看你在全服修士中的位置")
+    @require_whitelist
+    async def handle_xianpu(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        all_players = await self.db.get_all_players()
+        total = len(all_players)
+        # 注册序
+        reg_rank = "未知"
+        try:
+            sorted_by_exp = sorted(all_players, key=lambda p: p.experience, reverse=True)
+            my_idx = next((i for i, p in enumerate(sorted_by_exp, 1) if p.user_id == player.user_id), None)
+            if my_idx:
+                reg_rank = f"第 {my_idx} 位"
+                pct = (1 - my_idx / max(1, total)) * 100
+                pct_text = f"你的修为已超越全服 {pct:.0f}% 的修士"
+        except Exception:
+            pct_text = ""
+        # 境界分布
+        higher = sum(1 for p in all_players if p.level_index > player.level_index)
+        lines = [
+            "📖 仙谱",
+            "━━━━━━━━━━━━━━━",
+            f"全服在册修士：{total} 位",
+            f"修为排名：{reg_rank}" + (f" / {total}" if reg_rank != "未知" else ""),
+        ]
+        if 'pct_text' in dir() and pct_text:
+            lines.append(f"📊 {pct_text}")
+        lines.append(f"⛰️ 境界高于你的修士：{higher} 位")
+        lines.append(f"🧭 当前境界：{player.get_level(self.config_manager)}")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 仙路漫漫，与其仰望他人，不如低头赶路")
+        yield event.plain_result("\n".join(lines))
+
+    @filter.command("宗门丹会", "宗主开启丹会，全宗免费领丹（需炼丹房3级，每周一次）")
+    @require_whitelist
+    async def handle_sect_pill_party(self, event: AstrMessageEvent):
+        import random as _random
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        if not player.sect_id:
+            yield event.plain_result("❌ 你还未加入宗门。")
+            return
+        sect = await self.db.ext.get_sect_by_id(player.sect_id)
+        if not sect:
+            yield event.plain_result("❌ 宗门信息异常。")
+            return
+        # 权限：宗主开启
+        if sect.sect_owner != player.user_id:
+            yield event.plain_result("❌ 只有宗主才能开启丹会。")
+            return
+        # 炼丹房等级
+        try:
+            import json as _json
+            lv = _json.loads(getattr(sect, "buildings", "{}") or "{}").get("炼丹房", 0)
+        except Exception:
+            lv = 0
+        if lv < 3:
+            yield event.plain_result(f"❌ 丹会需要【炼丹房】达到 3 级（当前 {lv}）。先 /升级建筑 炼丹房")
+            return
+        # 每周一次
+        week = __import__("time").strftime("%G-W%V")
+        key = f"pill_party_{player.sect_id}_{week}"
+        opened = await self.db.ext.get_system_config(key)
+        if opened:
+            yield event.plain_result("❌ 本周丹会已开启过，下周再来。")
+            return
+        await self.db.ext.set_system_config(key, "1")
+        # 宗主自己先领
+        yield event.plain_result(
+            "🍶 宗门丹会开启！\n"
+            f"【{sect.sect_name}】炼丹房灯火通明，香飘十里。\n"
+            f"你先领取了一枚【随机丹药】。\n"
+            f"💡 全宗成员 7 天内发送 /领丹会丹 即可各领一枚"
+        )
+
+    @filter.command("领丹会丹", "领取本宗丹会丹药（每周一次）")
+    @require_whitelist
+    async def handle_claim_pill_party(self, event: AstrMessageEvent):
+        import random as _random
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        if not player.sect_id:
+            yield event.plain_result("❌ 你还未加入宗门。")
+            return
+        week = __import__("time").strftime("%G-W%V")
+        opened = await self.db.ext.get_system_config(f"pill_party_{player.sect_id}_{week}")
+        if not opened:
+            yield event.plain_result("❌ 本宗本周尚未开启丹会（宗主每周可开启一次）。")
+            return
+        claim_key = f"pill_party_claim_{player.sect_id}_{week}_{player.user_id}"
+        claimed = await self.db.ext.get_system_config(claim_key)
+        if claimed:
+            yield event.plain_result("❌ 本周已领过丹会丹了。")
+            return
+        # 随机丹药池
+        pills_pool = ["回气散", "凝神丹", "小还丹", "血气丹", "清心丹"]
+        pill = _random.choice(pills_pool)
+        ok, smsg = await self.storage_ring_mgr.store_item(player, pill, 2, silent=True)
+        if not ok:
+            yield event.plain_result(f"❌ 储物戒已满，无法发放丹药：{smsg}")
+            return
+        await self.db.ext.set_system_config(claim_key, "1")
+        yield event.plain_result(
+            f"🍶 丹会领丹成功！\n"
+            f"获得【{pill}】x2（已存入储物戒）\n"
+            f"💡 同系列装备凑齐有套装效果，/装备图鉴 查看"
+        )
+
+    @filter.command("宗门协作榜", "查看宗门协作周榜与本宗贡献")
+    @require_whitelist
+    async def handle_sect_coop_board(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.sect_coop.weekly_board(player))
+
+    @filter.command("悬赏助力", "助力他人悬赏，获得奖励分成")
+    @require_whitelist
+    async def handle_bounty_assist(self, event: AstrMessageEvent, target: str = ""):
+        from astrbot.api.all import At
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        target_id = self._extract_at_target(event, target)
+        if not target_id:
+            yield event.plain_result(
+                "🤝【悬赏助力】\n"
+                "━━━━━━━━━━━━━━━\n"
+                "用法：/悬赏助力 @正在做悬赏的道友\n"
+                "收益：获得对方悬赏奖励的 10% + 功德1\n"
+                "限制：每个悬赏最多 3 人助力，每人限 1 次"
+            )
+            return
+        success, msg = await self.bounty_assist.assist(player, target_id)
+        yield event.plain_result(msg)
+
+    # ===== v6.21 装备图鉴（套装鉴识）=====
+    @filter.command("信箱", "查看离线期间的事件信件")
+    @require_whitelist
+    async def handle_mailbox(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.mailbox.view(player))
+
+    @filter.command("装备图鉴", "鉴识当前装备的套装效果与全部已知套装")
+    @require_whitelist
+    async def handle_equip_set(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(self.equip_sets.panel(player))
+
+    # ===== v6.17 称号系统 =====
+    # ===== v6.20 新手七日仙途 =====
+    @filter.command("新手七日", "查看七日任务进度并一键领取奖励")
+    @require_whitelist
+    async def handle_first_week(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        # 记录创建行为（第1天）
+        try:
+            await self.first_week.record_action(player, "created")
+        except Exception:
+            pass
+        # 先尝试一键领取
+        try:
+            ok, cmsg = await self.first_week.claim(player)
+            if ok:
+                yield event.plain_result(cmsg)
+        except Exception:
+            pass
+        yield event.plain_result(await self.first_week.onboarding_panel(player))
+
     @filter.command("称号图鉴", "查看全部称号与收集进度")
     @require_whitelist
     async def handle_title_collection(self, event: AstrMessageEvent):
@@ -2451,6 +2431,43 @@ class XiuXianPlugin(Star):
                 return
 
         # ================= 重置状态 =================
+        elif sub == "发称号":
+            # /仙界管理 发称号 <ID或@> <称号名>
+            target_id = self._extract_at_target(event, arg1)
+            tid = target_id or (arg1 if arg1.isdigit() else "")
+            title_name = arg2.strip()
+            if not tid or not title_name:
+                yield event.plain_result("用法：/仙界管理 发称号 <ID或@玩家> <称号名>")
+                return
+            target = await self.db.get_player_by_id(tid)
+            if not target:
+                yield event.plain_result(f"❌ 未找到玩家 {tid}。")
+                return
+            ok, tmsg = self.title_hooks.grant_manual(target, title_name)
+            if ok:
+                await self.db.update_player(target)
+                yield event.plain_result(f"✅ 已授予玩家 {tid} 称号{tmsg}")
+            else:
+                yield event.plain_result(f"❌ 称号【{title_name}】不存在于称号库或已拥有。/称号图鉴 查看全部")
+            return
+
+        elif sub == "清冷却":
+            # /仙界管理 清冷却 <ID> —— 清历练疲劳/决斗/押镖等玩家侧CD
+            if not arg1.isdigit():
+                yield event.plain_result("用法：/仙界管理 清冷却 <玩家ID>")
+                return
+            cleaned = 0
+            async with self.db.conn.execute(
+                "SELECT key FROM system_config WHERE key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ?",
+                (f"adv_cd_{arg1}_%", f"escort_cd_{arg1}", f"duel_pair_{arg1}_%", f"duel_pair_%_{arg1}")
+            ) as cursor:
+                rows = await cursor.fetchall()
+            for (k,) in rows:
+                await self.db.ext.set_system_config(k, "")
+                cleaned += 1
+            yield event.plain_result(f"✅ 已清理玩家 {arg1} 的 {cleaned} 项冷却。")
+            return
+
         elif sub == "重置状态":
             target_id = at_id if at_id else arg1.lstrip("@")
             if not target_id:

@@ -64,7 +64,12 @@ class PillHandler:
         success, message = await self.pill_manager.use_pill(player, pill_name)
 
         if success:
-            yield event.plain_result(message)
+            pdata = self.pill_manager.get_pill_by_name(pill_name)
+            extra = ""
+            if pdata:
+                kind, desc = self.pill_manager.get_pill_kind(pdata)
+                extra = f"\nℹ️ {kind}：{desc}"
+            yield event.plain_result(message + extra)
         else:
             yield event.plain_result(f"❌ {message}")
 
@@ -81,6 +86,18 @@ class PillHandler:
 
         # 获取丹药背包显示
         inventory_display = self.pill_manager.get_pill_inventory_display(player)
+
+        # v6.19 丹药分类说明：按类别分组提示
+        inventory = player.get_pills_inventory()
+        kind_lines = []
+        for pill_name in list(inventory.keys()):
+            pdata = self.pill_manager.get_pill_by_name(pill_name)
+            if pdata:
+                kind, desc = self.pill_manager.get_pill_kind(pdata)
+                kind_lines.append(f"  {kind} {pill_name} —— {desc}")
+        kind_block = ""
+        if kind_lines:
+            kind_block = "\n--- 📖 丹药分类说明 ---\n" + "\n".join(kind_lines[:10])
 
         # 获取当前生效的临时效果
         active_effects = player.get_active_pill_effects()
@@ -110,7 +127,7 @@ class PillHandler:
             resurrection_status = "\n🛡️ 当前拥有回生丹效果（可抵消一次死亡）"
 
         # 组合显示
-        full_message = inventory_display
+        full_message = inventory_display + kind_block
         if effects_display:
             full_message += "\n" + "\n".join(effects_display)
         if resurrection_status:

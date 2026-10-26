@@ -140,7 +140,7 @@ class CombatHandlers:
         if pet:
             pet_effects = pet_mgr.get_pet_combat_effects(pet)
             for k, v in pet_effects.items(): effects[k] = effects.get(k, 0) + v
-            triggered, log_msg, mult = await pet_mgr.pet_coop_attack(pet)
+            triggered, log_msg, mult = await pet_mgr.pet_coop_attack(pet, user_id=user_id)
             if triggered: effects["pet_damage_mult"] = mult
                 
         final_defense = int(equip_bonus["defense"] * max(pill_multipliers.get("physical_defense", 1.0), pill_multipliers.get("magic_defense", 1.0)))
@@ -182,6 +182,16 @@ class CombatHandlers:
         if cooldowns["last_duel_time"] and remaining_cd > 0:
             yield event.plain_result(f"❌ 决斗调息中，请 {remaining_cd // 60} 分 {remaining_cd % 60} 秒后再战。")
             return
+        # 同对手30分钟冷却（防轮换对手刷称号）
+        duo_key = f"duel_pair_{user_id}_{target_id}"
+        duo_val = await self.db.ext.get_system_config(duo_key)
+        if duo_val and duo_val.isdigit() and now < int(duo_val):
+            remain = int(duo_val) - now
+            yield event.plain_result(
+                f"❌ 你与该对手刚刚交过手（{remain // 60} 分 {remain % 60} 秒后可再战）。\n"
+                f"💡 换个对手，或等冷却结束。"
+            )
+            return
 
         target_player = await self.db.get_player_by_id(target_id)
         if not target_player:
@@ -200,6 +210,7 @@ class CombatHandlers:
         await self.db.ext.update_player_hp_mp(user_id, p1_stats.max_hp, p1_stats.max_mp)
         await self.db.ext.update_player_hp_mp(target_id, p2_stats.max_hp, p2_stats.max_mp)
         await self._update_combat_cooldown(user_id, "duel")
+        await self.db.ext.set_system_config(f"duel_pair_{user_id}_{target_id}", str(now + 1800))
         
         log_lines = result['combat_log']
         final_log = "\n".join(log_lines)

@@ -101,9 +101,8 @@ class StorageRingManager:
         return used_volume
 
     def get_available_slots(self, player: Player) -> int:
-        capacity = self.get_total_capacity(player)
-        used = self.get_used_slots(player)
-        return max(0, capacity - used)
+        """v6.20 储物戒改为无限空间（背包），容量仅作戒指品阶展示"""
+        return 9999
 
     def get_space_warning(self, player: Player) -> Optional[str]:
         available = self.get_available_slots(player)
@@ -149,11 +148,7 @@ class StorageRingManager:
             required_volume = item_volume * count
             available = self.get_available_slots(player)
             
-            if available < required_volume:
-                if not external_transaction:
-                    await self.db.conn.rollback()
-                capacity = self.get_total_capacity(player)
-                return False, f"储物戒容量不足！需要 {required_volume}，仅剩 {available}（上限{capacity}）"
+            # v6.20 无限空间：不再因容量拒绝入库
 
             items[item_name] = items.get(item_name, 0) + count
             player.set_storage_ring_items(items)

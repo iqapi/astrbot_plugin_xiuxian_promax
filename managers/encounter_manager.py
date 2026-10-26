@@ -39,10 +39,18 @@ class EncounterManager:
         if random.randint(1, 100) > chance:
             return None
 
-        # 已有未结算的奇遇则不再叠加
+        # 已有未结算的奇遇则不再叠加（但已过期的残留自动清除）
         existing = await self.db.ext.get_system_config(self._storage_key(player.user_id))
         if existing:
-            return None
+            try:
+                old_payload = json.loads(existing)
+                if int(time.time()) > int(old_payload.get("expire", 0)):
+                    # 过期残留：清除并继续本次触发
+                    await self.db.ext.set_system_config(self._storage_key(player.user_id), "")
+                else:
+                    return None  # 真正未结算且未过期
+            except Exception:
+                await self.db.ext.set_system_config(self._storage_key(player.user_id), "")
 
         # 按境界筛选可用事件
         eligible = [ev for ev in EVENT_POOL if player.level_index >= ev.get("min_level", 0)]

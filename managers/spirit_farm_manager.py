@@ -153,8 +153,11 @@ class SpiritFarmManager:
         if available_slots <= 0:
             return False, f"❌ 灵田已满！最多种植 {max_slots} 株。"
         
-        # 调整种植数量
+        # 调整种植数量（空位不足时截断并明确告知）
         plant_count = min(count, available_slots)
+        truncated_note = ""
+        if count > available_slots:
+            truncated_note = f"\n⚠️ 你要求种植 {count} 株，但空位只剩 {available_slots} 个，实际种下 {plant_count} 株"
         if plant_count <= 0:
             return False, "❌ 种植数量必须大于0！"
         
@@ -185,7 +188,7 @@ class SpiritFarmManager:
         return True, (
             f"🌱 成功种植【{herb_name}】！\n"
             f"成熟时间：约 {grow_hours} 小时"
-            f"{season_note}\n"
+            f"{season_note}{truncated_note}\n"
             f"当前种植：{len(crops)}/{max_slots}"
         )
     

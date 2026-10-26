@@ -11,7 +11,6 @@ from .storage_ring_handler import StorageRingHandler
 
 # 宗门与战斗
 from .sect_handlers import SectHandlers
-from .boss_handlers import BossHandlers
 from .combat_handlers import CombatHandlers
 from .ranking_handlers import RankingHandlers
 
@@ -49,7 +48,7 @@ from .auction_handlers import AuctionHandlers
 __all__ = [
     "PlayerHandler", "MiscHandler", "EquipmentHandler", "BreakthroughHandler", 
     "PillHandler", "ShopHandler", "StorageRingHandler", "SectHandlers", 
-    "BossHandlers", "CombatHandlers", "RankingHandlers", "RiftHandlers", 
+    "CombatHandlers", "RankingHandlers", "RiftHandlers", 
     "AdventureHandlers", "AlchemyHandlers", "ImpartHandlers", "NicknameHandler", 
     "BankHandlers", "BountyHandlers", "ImpartPkHandlers", "BlessedLandHandlers", 
     "SpiritFarmHandlers", "DualCultivationHandlers", "SpiritEyeHandlers", 

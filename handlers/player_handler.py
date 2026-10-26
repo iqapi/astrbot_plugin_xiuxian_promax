@@ -459,6 +459,16 @@ class PlayerHandler:
                 tide_note += f"\n💞 仙灵相伴：修炼收益+{int(comp_bonus * 100)}%"
         except Exception:
             pass
+        # 称号 exp 加成（最高品阶生效）
+        try:
+            if getattr(self, "title_hooks", None):
+                tstats = self.title_hooks._tm().get_active_bonus(player)
+                exp_pct = float(tstats.get("exp", 0))
+                if exp_pct > 0:
+                    gained_exp = int(gained_exp * (1 + exp_pct))
+                    tide_note += f"\n🏅 称号加成：修炼收益+{exp_pct:.0%}"
+        except Exception:
+            pass
 
         # 化身傀儡：激活期间化身代为行功，闭关收益+20%
         try:
@@ -479,12 +489,51 @@ class PlayerHandler:
 
         await self.db.ext.add_task_progress(player.user_id, "cultivate", 1)
         tutorial_msg = await self.tutorial_mgr.check_and_advance(player, "cultivate")
+        # 称号：累计闭关
+        try:
+            tmsg = await self.title_hooks.bump(player, "cultivate_count") if getattr(self, "title_hooks", None) else ""
+            if tmsg: tutorial_msg += tmsg
+        except Exception:
+            pass
+        # 智能下一步提示
+        try:
+            from ..managers.next_step import NextStepAdvisor
+            tutorial_msg += await NextStepAdvisor(self.db).advise(player, "cultivate")
+        except Exception:
+            pass
+        # 七日任务：闭关
+        try:
+            if getattr(self, "first_week_ref", None):
+                await self.first_week_ref.record_action(player, "cultivate")
+        except Exception:
+            pass
+        # 宗门协作分
+        try:
+            if getattr(self, "sect_coop_ref", None):
+                await self.sect_coop_ref.bump_sect_progress(player, 1)
+        except Exception:
+            pass
+
+        # 风味文案（出关意境）
+        try:
+            from ..managers.flavor import flavor
+            tutorial_msg += flavor("cultivate_out")
+        except Exception:
+            pass
 
         hours = duration_minutes // 60
         minutes = duration_minutes % 60
         time_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
 
-        exceed_msg = f"\n⚠️ 闭关超过{MAX_CULTIVATION_MINUTES//60}小时，仅计算前{MAX_CULTIVATION_MINUTES//60}小时修为" if exceeded_time else ""
+        if exceeded_time:
+            offline_hours = duration_minutes // 60 - MAX_CULTIVATION_MINUTES // 60
+            exceed_msg = (
+                f"\n⚠️ 闭关收益上限为 {MAX_CULTIVATION_MINUTES // 60} 小时"
+                f"（你闭关了 {duration_minutes // 60} 小时，超出 {offline_hours} 小时不计收益）\n"
+                f"💡 记得及时出关，或让仙灵道侣替你行功"
+            )
+        else:
+            exceed_msg = ""
         
         reply_msg = (
             "🌟 道友出关成功！\n"
@@ -540,6 +589,11 @@ class PlayerHandler:
         # 称号：累计签到
         try:
             self._last_checkin_title = await self.title_hooks.bump(player, "checkin_count") if getattr(self, "title_hooks", None) else ""
+            try:
+                if getattr(self, "first_week_ref", None):
+                    await self.first_week_ref.record_action(player, "checkin")
+            except Exception:
+                pass
         except Exception:
             self._last_checkin_title = ""
 
@@ -580,6 +634,13 @@ class PlayerHandler:
                 yield event.plain_result(reply_msg)
         except Exception:
             yield event.plain_result(reply_msg)
+        # 智能下一步提示
+        try:
+            from ..managers.next_step import NextStepAdvisor
+            advise = await NextStepAdvisor(self.db).advise(player, "checkin")
+            if advise: yield event.plain_result(advise)
+        except Exception:
+            pass
 
     @player_required
     async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):

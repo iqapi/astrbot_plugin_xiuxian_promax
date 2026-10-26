@@ -15,35 +15,52 @@ class WorldBossManager:
         self.db = db
         self.config_manager = config_manager
         self.storage_ring_mgr = storage_ring_mgr
+        self.last_milestone_msg = None
 
-    async def calculate_dynamic_hp(self) -> Tuple[int, int]:
-        """动态水位评估：计算全服活跃玩家战力，返回 (目标血量, 参与人数基数)"""
+    HP_RATIO = 0.60  # v6.19：Boss血量 = 全服玩家战力总和的 60%
+
+    async def calculate_total_power(self) -> Tuple[int, int]:
+        """计算全服玩家战力总和（含装备/称号加成的综合战力口径）
+        返回 (总战力, 参与人数)"""
         players = await self.db.get_all_players()
         if not players:
-            return 500_000, 10
+            return 500_000, 0
 
-        active_powers = []
+        total = 0
+        count = 0
         for p in players:
-            if p.experience > 1000:
-                power = p.experience + p.physical_damage + p.magic_damage
-                active_powers.append(power)
+            # 战力口径与排行榜一致：物伤+法伤+双防+精神力/10，再叠加修为基数
+            power = (p.experience + p.physical_damage + p.magic_damage +
+                     p.physical_defense + p.magic_defense + p.mental_power // 10)
+            total += power
+            count += 1
+        if total <= 0:
+            total, count = 500_000, 0
+        return total, count
 
-        if not active_powers:
-            return 500_000, 10
-
-        active_powers.sort()
-        trim_start = int(len(active_powers) * 0.2)
-        trim_end = int(len(active_powers) * 0.95)
-        valid_powers = active_powers[trim_start:trim_end]
-        if not valid_powers:
-            valid_powers = active_powers
-
-        avg_power = sum(valid_powers) / len(valid_powers)
-        player_count = len(valid_powers)
-
-        target_hp = int(avg_power * player_count * 3)
-        target_hp = max(500_000, min(target_hp, 5_000_000_000))
+    async def calculate_dynamic_hp(self) -> Tuple[int, int]:
+        """v6.19：Boss 血量 = 全服玩家战力总和的 60%（一周三刷，玩家合围可破）"""
+        total_power, player_count = await self.calculate_total_power()
+        target_hp = int(total_power * self.HP_RATIO)
+        target_hp = max(500_000, min(target_hp, 10_000_000_000))
         return target_hp, player_count
+
+    async def preannounce(self) -> str:
+        """Boss 降临预告（提前 15 分钟广播）"""
+        total_power, count = await self.calculate_total_power()
+        hp = int(total_power * self.HP_RATIO)
+        hp = max(500_000, min(hp, 10_000_000_000))
+        name = random.choice(self.BOSS_NAMES)
+        return (
+            f"📣【天道预警】15 分钟后，【{name}】将降临人间！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"❤️ 预估血量：约 {hp:,}（全服战力总和的 60%）\n"
+            f"👥 当前可战修士：{count} 位\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💡 各位道友抓紧准备：修理法器（/强化）、备好丹药（/丹药背包）、\n"
+            f"   检查五行克制（功法/武器名带金木水火土）\n"
+            f"💡 15 分钟后发送 /挑战世界Boss 参与讨伐，排名奖励丰厚！"
+        )
 
     async def spawn_boss(self) -> Tuple[bool, str]:
         """生成世界Boss"""
@@ -68,7 +85,7 @@ class WorldBossManager:
             f"━━━━━━━━━━━━━━━\n"
             f"👹 名称：{boss_name}\n"
             f"💀 境界：灭世级\n"
-            f"❤️ 血量：{max_hp:,} （基于全服 {p_count} 名活跃修士战力生成）\n"
+            f"❤️ 血量：{max_hp:,}（全服战力总和的 60%，{p_count} 位修士合力可破）\n"
             f"⏳ 存活时间：24小时\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💡 发送 /挑战世界Boss 参与讨伐！"
@@ -99,7 +116,8 @@ class WorldBossManager:
         if now > boss["expire_time"]:
             return False, "❌ Boss已逃遁，请等待下次降临。"
 
-        # 2. 检查个人挑战次数与冷却
+        # 2. 检查个人挑战次数与冷却（次数按自然日重置：跨日后当日次数清零）
+        today_str = time.strftime("%Y%m%d")
         async with self.db.conn.execute(
             "SELECT * FROM world_boss_damage WHERE boss_id = ? AND user_id = ?",
             (boss["boss_id"], player.user_id)
@@ -107,8 +125,12 @@ class WorldBossManager:
             record = await cursor.fetchone()
             if record:
                 rec = dict(record)
+                # 上次攻击不是今天 → 今日次数视为 0（重置）
+                last_day = time.strftime("%Y%m%d", time.localtime(rec["last_attack_time"])) if rec["last_attack_time"] else ""
+                if last_day != today_str:
+                    rec["attack_count"] = 0
                 if rec["attack_count"] >= 3:
-                    return False, "❌ 你今日的挑战次数已用尽（每日限3次）。"
+                    return False, "❌ 你今日的挑战次数已用尽（每日限3次，次日刷新）。"
                 if now - rec["last_attack_time"] < 300: # 5分钟CD
                     return False, f"❌ 调息中，请 {300 - (now - rec['last_attack_time'])} 秒后再来。"
             else:
@@ -163,6 +185,24 @@ class WorldBossManager:
             return False, "❌ 战斗异常，请稍后再试。"
 
         self.last_challenge_ok = True  # 真正打出伤害，供任务进度判定
+
+        # v6.20 血量里程碑全服播报（25%/50%/75%，每档只播一次）
+        try:
+            new_pct = new_hp / max(1, boss["max_hp"])
+            for threshold, label in ((0.75, "75%"), (0.50, "50%"), (0.25, "25%")):
+                if new_pct <= threshold:
+                    key = f"boss_hp_ann_{boss['boss_id']}_{label.replace('%','')}"
+                    announced = await self.db.ext.get_system_config(key)
+                    if not announced:
+                        await self.db.ext.set_system_config(key, "1")
+                        self.last_milestone_msg = (
+                            f"📢【战况播报】【{boss['boss_name']}】血量已跌破 {label}！\n"
+                            f"❤️ 剩余 {new_hp:,} / {boss['max_hp']:,}\n"
+                            f"⚔️ 各位道友一鼓作气，尾刀奖励丰厚！"
+                        )
+                    break
+        except Exception:
+            pass
 
         # 5. 构造战报
         msg = [

@@ -75,7 +75,7 @@ TITLES = [
     T("灵兽伙伴", 2, "pet_level", condition=40, atk=45),
     T("驯兽大师", 2, "pet_level", condition=50, atk=60, crit=2),
     T("降魔先锋", 2, "boss_damage", condition=10, atk=45),
-    T("Boss猎手", 2, "boss_kill_old", condition=3, atk=55),
+    T("Boss猎手", 2, "boss_damage", condition=5, atk=55),
     T("天魔猎人", 2, "demon_catch", condition=1, crit=3),
     T("照妖明镜", 2, "demon_catch", condition=3, crit=5),
 
@@ -112,7 +112,7 @@ TITLES = [
     T("初露锋芒·极", 4, "sect_battle_win", condition=80, atk=200, crit=6),
     T("天下无双", 4, "win_pvp", condition=120, atk=260, crit=8),
     T("横扫八荒", 4, "win_pvp", condition=200, atk=320, crit=10),
-    T("屠龙英雄", 4, "boss_kill_old", condition=15, atk=240, lifesteal=4),
+    T("屠龙英雄", 4, "boss_damage", condition=25, atk=240, lifesteal=4),
     T("魔潮砥柱", 4, "tide_resist", condition=3, exp=0.15, phys_def=150),
     T("中流砥柱", 4, "tide_resist", condition=8, exp=0.20, phys_def=200, magic_def=150),
     T("灵兽至尊", 4, "pet_level", condition=50, atk=200, crit=6),
@@ -136,6 +136,9 @@ TITLES = [
     T("百炼成圣", 5, "enhance_count", condition=100, atk=380, phys_def=300),
     T("驯兽神王", 5, "pet_level", condition=50, atk=380, crit=12),
     T("镇魔大元帅", 5, "demon_catch", condition=20, atk=380, crit=12),
+
+    T("月度人杰", 5, "manual", atk=300, exp=0.25, luck=15),
+    T("月度大善", 5, "manual", atk=150, exp=0.20, luck=25),
 
     # ========== 帝品（唯一性/隐藏，8）==========
     T("灭世魔神·帝", 6, "manual", atk=600, crit=15, lifesteal=8),

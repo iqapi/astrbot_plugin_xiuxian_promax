@@ -125,6 +125,16 @@ class EquipmentHandler:
         if not sent:
             yield event.plain_result(text_msg)
 
+        # v6.21 套装鉴识追加（文本提示，图片后再补一条轻量信息）
+        try:
+            from ..managers.enhance_systems import EquipSetManager
+            set_panel = EquipSetManager(self.db).panel(player)
+            triggered_lines = [l for l in set_panel.splitlines() if l.startswith("✅")]
+            if triggered_lines:
+                yield event.plain_result("🎴【套装生效】\n" + "\n".join(triggered_lines))
+        except Exception:
+            pass
+
     @player_required
     async def handle_equip_item(self, player: Player, event: AstrMessageEvent, item_name: str):
         """装备物品"""

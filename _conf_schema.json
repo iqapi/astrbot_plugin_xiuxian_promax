@@ -45,12 +45,6 @@
         "default": true,
         "hint": "/我的灵田 追加图片卡片。"
       },
-      "CARD_COMBAT": {
-        "description": "战斗结算海报",
-        "type": "bool",
-        "default": true,
-        "hint": "Boss击杀结算追加图片海报。"
-      },
       "CARD_SHOP": {
         "description": "商店货架卡片",
         "type": "bool",
@@ -126,7 +120,10 @@
       "BREAKTHROUGH_DEATH_PROBABILITY": {
         "description": "突破失败死亡概率范围",
         "type": "list",
-        "default": [0.01, 0.1],
+        "default": [
+          0.01,
+          0.1
+        ],
         "hint": "突破失败时的死亡概率范围。第一个值为最小概率（1%），第二个值为最大概率（10%）。每次突破失败会在此范围内随机一个死亡概率。"
       },
       "PAVILION_REFRESH_HOURS": {

@@ -307,6 +307,15 @@ class AdventureManager:
             dropped_items, item_msg = await self._handle_drops(player, route, event, external_transaction=True)
 
             # 修改玩家属性
+            # v6.21 境界压制衰减：超出路线需求10级以上，每级-5%（下限40%）
+            try:
+                from .enhance_systems import apply_level_suppression
+                sup = apply_level_suppression(player, route.get("min_level", 0))
+                if sup < 1.0:
+                    rewards["exp"] = int(rewards["exp"] * sup)
+                    rewards["gold"] = int(rewards["gold"] * sup)
+            except Exception:
+                pass
             comp_bonus = 0.0
             try:
                 if self._social is None:

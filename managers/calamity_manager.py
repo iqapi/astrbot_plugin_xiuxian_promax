@@ -230,6 +230,8 @@ class CalamityManager:
 
         players = await self.db.get_all_players()
         if len(players) < 3:
+            from astrbot.api import logger
+            logger.warning(f"【修仙插件】今日为魔潮自动开启日，但全服仅 {len(players)} 人（需≥3），本次跳过")
             return False, ""
 
         hours = 8 if is_first_of_month else 5
