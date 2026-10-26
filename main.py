@@ -2312,22 +2312,67 @@ class XiuXianPlugin(Star):
             
         yield event.plain_result(res)
 
-    @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
+        @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
     @require_whitelist
-    async def handle_admin_tool(self, event: AstrMessageEvent, sub: str = "", arg1: str = "", arg2: str = ""):
+    async def handle_admin_tool(self, event: AstrMessageEvent):
         if not self._check_boss_admin(event):
             yield event.plain_result("❌ 你没有管理员权限！")
             return
 
+        # 1. 尝试获取被 @ 的玩家 ID
+        at_id = None
+        if hasattr(event, "message_obj") and event.message_obj:
+            from astrbot.api.all import At
+            for comp in event.message_obj.message:
+                if isinstance(comp, At):
+                    at_id = str(comp.qq)
+                    break
+                elif isinstance(comp, str) and "[CQ:at,qq=" in comp:
+                    import re
+                    m = re.search(r"\[CQ:at,qq=(\d+)\]", comp)
+                    if m:
+                        at_id = m.group(1)
+                        break
+
+        # 2. 暴力提取纯文本，防止 @ 组件剥离导致错位
+        try:
+            raw_text = event.get_plain_text()
+        except AttributeError:
+            raw_text = event.get_message_str() or ""
+
+        idx = raw_text.find("仙界管理")
+        if idx != -1:
+            args_str = raw_text[idx + 4:].strip()
+        else:
+            args_str = raw_text.strip()
+
+        parts = args_str.split()
+        clean_parts = [p for p in parts if p.strip()]
+
+        if not clean_parts:
+            yield event.plain_result("❌ 请提供子指令。例如：/仙界管理 发灵石 12345 1000")
+            return
+            
+        sub = clean_parts[0]
+        arg1 = clean_parts[1] if len(clean_parts) > 1 else ""
+        arg2 = clean_parts[2] if len(clean_parts) > 2 else ""
+
+        # ================= 查玩家 =================
         if sub == "查玩家":
             target = None
-            if arg1.isdigit():
-                target = await self.db.get_player_by_id(arg1)
-            else:
-                target = await self.db.get_player_by_name(arg1)
+            # 兼容 @查询
+            if at_id and not arg1:
+                target = await self.db.get_player_by_id(at_id)
+            elif arg1:
+                if arg1.isdigit() or (arg1.startswith("@") and arg1[1:].isdigit()):
+                    target = await self.db.get_player_by_id(arg1.lstrip("@"))
+                else:
+                    target = await self.db.get_player_by_name(arg1)
+            
             if not target:
-                yield event.plain_result(f"❌ 未找到玩家【{arg1}】。")
+                yield event.plain_result(f"❌ 未找到该玩家。")
                 return
+                
             user_cd = await self.db.ext.get_user_cd(target.user_id)
             loan = await self.db.ext.get_active_loan(target.user_id)
             status = UserStatus.get_name(user_cd.type) if user_cd else "空闲"
@@ -2347,32 +2392,85 @@ class XiuXianPlugin(Star):
             )
             return
 
+        # ================= 发灵石 =================
         elif sub == "发灵石":
-            if not arg1.isdigit() or not arg2.lstrip('-').isdigit():
-                yield event.plain_result("用法：/仙界管理 发灵石 <玩家ID> <数量>")
+            target_id = ""
+            amount_str = ""
+            
+            if arg1 == "全体":
+                target_id = "全体"
+                amount_str = arg2
+            elif at_id:
+                # 如果有 @，说明是给被艾特的人发
+                target_id = at_id
+                # 不管 @ 有没有被文本解析吃掉，参数最后一位必然是金额
+                if len(clean_parts) >= 2:
+                    amount_str = clean_parts[-1]
+            elif arg1.isdigit() or (arg1.startswith("@") and arg1[1:].isdigit()):
+                # 纯数字 ID
+                target_id = arg1.lstrip("@")
+                amount_str = arg2
+            elif arg1:
+                # 尝试按道号查询
+                target = await self.db.get_player_by_name(arg1)
+                if target:
+                    target_id = target.user_id
+                    amount_str = arg2
+                else:
+                    yield event.plain_result(f"❌ 未找到玩家【{arg1}】。")
+                    return
+            
+            if not target_id or not amount_str:
+                yield event.plain_result("❌ 参数格式错误。用法：/仙界管理 发灵石 <玩家ID/道号/@玩家/全体> <数量>")
                 return
-            amount = int(arg2)
-            target = await self.db.get_player_by_id(arg1)
-            if not target:
-                yield event.plain_result(f"❌ 未找到玩家 {arg1}。")
+                
+            try:
+                amount = int(amount_str)
+            except ValueError:
+                yield event.plain_result("❌ 灵石数量必须是整数。")
                 return
-            await self.db.add_player_gold(arg1, amount)
-            sign = "+" if amount >= 0 else ""
-            yield event.plain_result(f"✅ 已向玩家 {arg1}（{target.user_name or '无名'}）{sign}{amount:,} 灵石。")
-            return
 
+            # --- 全体发放逻辑 ---
+            if target_id == "全体":
+                await self.db.conn.execute("UPDATE players SET gold = MAX(0, gold + ?)", (amount,))
+                await self.db.conn.commit()
+                sign = "+" if amount >= 0 else ""
+                yield event.plain_result(f"✅ 已向 **全体玩家** 发放 {sign}{amount:,} 灵石。")
+                return
+                
+            # --- 单人发放逻辑 ---
+            else:
+                target = await self.db.get_player_by_id(target_id)
+                if not target:
+                    yield event.plain_result(f"❌ 数据库中未找到该玩家（ID: {target_id}）。")
+                    return
+                
+                await self.db.add_player_gold(target_id, amount)
+                sign = "+" if amount >= 0 else ""
+                yield event.plain_result(f"✅ 已向玩家 {target_id}（{target.user_name or '无名'}）{sign}{amount:,} 灵石。")
+                return
+
+        # ================= 重置状态 =================
         elif sub == "重置状态":
-            target = await self.db.get_player_by_id(arg1)
-            if not target:
-                yield event.plain_result(f"❌ 未找到玩家 {arg1}。")
+            target_id = at_id if at_id else arg1.lstrip("@")
+            if not target_id:
+                yield event.plain_result("❌ 请指定要重置状态的玩家。")
                 return
-            await self.db.ext.set_user_busy(arg1, UserStatus.IDLE, 0, extra_data={})
-            await self.db.update_player_fields(arg1, state="空闲", cultivation_start_time=0)
-            yield event.plain_result(f"✅ 已重置玩家 {arg1}（{target.user_name or '无名'}）的卡死状态。")
+                
+            target = await self.db.get_player_by_id(target_id)
+            if not target:
+                yield event.plain_result(f"❌ 未找到玩家 {target_id}。")
+                return
+                
+            await self.db.ext.set_user_busy(target_id, UserStatus.IDLE, 0, extra_data={})
+            await self.db.update_player_fields(target_id, state="空闲", cultivation_start_time=0)
+            yield event.plain_result(f"✅ 已重置玩家 {target_id}（{target.user_name or '无名'}）的卡死状态。")
             return
 
+        # ================= 公告 =================
         elif sub == "公告":
-            text = f"{arg1} {arg2}".strip()
+            # 公告直接把后面的所有内容拼接
+            text = " ".join(clean_parts[1:]).strip()
             if not text:
                 yield event.plain_result("用法：/仙界管理 公告 <文本>")
                 return
@@ -2383,8 +2481,8 @@ class XiuXianPlugin(Star):
         yield event.plain_result(
             "🛠️ 仙界管理工具\n"
             "━━━━━━━━━━━━━━━\n"
-            "/仙界管理 查玩家 <ID或道号>\n"
-            "/仙界管理 发灵石 <ID> <数量(可负)>\n"
-            "/仙界管理 重置状态 <ID>\n"
+            "/仙界管理 查玩家 <ID/道号/@玩家>\n"
+            "/仙界管理 发灵石 <ID/道号/@玩家/全体> <数量>\n"
+            "/仙界管理 重置状态 <ID/@玩家>\n"
             "/仙界管理 公告 <文本>"
         )
