@@ -1,0 +1,35 @@
+name: README showcase
+
+on:
+  schedule: 
+    - cron: "0 4 * * *" # 每天 UTC 4:00 (北京时间 12:00) 自动更新
+  workflow_dispatch: # 支持在 Actions 页面手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  art:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 必须拉取完整历史，否则无法统计提交
+
+      - name: Generate Share Art
+        uses: HowardZlh/github-action-shares@v1
+        with:
+          source: repo      # 指定数据源为当前仓库
+          git-path: .       # 统计当前目录的 git log
+          window: auto      # 自动调整时间窗口
+          out-dir: dist     # 输出目录
+
+      - name: Push to output branch
+        uses: crazy-max/ghaction-github-pages@v3.1.0
+        with:
+          target_branch: output
+          build_dir: dist
+          keep_history: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
