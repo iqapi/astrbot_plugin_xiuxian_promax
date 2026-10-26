@@ -160,8 +160,8 @@ v6.18  万象更新     前缀强制/自动上货/随机任务池
 ```
 ## 🐍 吞噬修为的灵蛇
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/heatmap-dark.svg">
-  <img alt="iqapi/astrbot_plugin_xiuxian_promax commits since the first one" src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/heatmap.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline-dark.svg">
+  <img alt="iqapi/astrbot_plugin_xiuxian_promax commits since the first one" src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline.svg">
 </picture>
 
 ## 📜 许可证
