@@ -2312,7 +2312,7 @@ class XiuXianPlugin(Star):
             
         yield event.plain_result(res)
 
-        @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
+    @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
     @require_whitelist
     async def handle_admin_tool(self, event: AstrMessageEvent):
         if not self._check_boss_admin(event):
