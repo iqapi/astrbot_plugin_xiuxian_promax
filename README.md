@@ -23,6 +23,10 @@
 
 <p align="center">
   <b>⭐ 觉得不错就点个 Star 吧 —— 你的 Star 是我们持续更新的动力！</b><br>
+  <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline-dark.svg">
+  <img alt="iqapi/astrbot_plugin_xiuxian_promax commits since the first one" src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline.svg">
+  </picture>
 </p>
 
 ---
@@ -158,12 +162,6 @@ v6.16  情缘师徒     NPC仙灵道侣/师徒/火候/魔潮自动化
 v6.17  称号图鉴     110 称号六品阶加成体系
 v6.18  万象更新     前缀强制/自动上货/随机任务池
 ```
-## 🐍 吞噬修为的灵蛇
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline-dark.svg">
-  <img alt="iqapi/astrbot_plugin_xiuxian_promax commits since the first one" src="https://raw.githubusercontent.com/iqapi/astrbot_plugin_xiuxian_promax/output/skyline.svg">
-</picture>
-
 ## 📜 许可证
 
 [AGPL-3.0](LICENSE) · 原作与二改贡献同样遵循原许可证
