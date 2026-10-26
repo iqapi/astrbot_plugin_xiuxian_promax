@@ -41,48 +41,65 @@ class CombatHandlers:
             await self.db.conn.commit()
         except: pass
 
-    async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
-        """解析目标ID（修复抓到自己、CQ码兼容、正则污染）"""
+        async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
+        """解析目标ID（终极修复：排除发送者、排除机器人自身、多个@时优先取最后一个）"""
         sender_id = str(event.get_sender_id())
         
-        # 1. 优先从消息组件中提取 At 对象
+        # 尝试获取机器人自身的 ID
+        self_id = ""
+        try:
+            if hasattr(event, "get_self_id"):
+                self_id = str(event.get_self_id())
+            elif hasattr(event, "message_obj") and hasattr(event.message_obj, "self_id"):
+                self_id = str(event.message_obj.self_id)
+        except Exception:
+            pass
+
         message_chain = []
         if hasattr(event, "message_obj") and event.message_obj:
             message_chain = getattr(event.message_obj, "message", []) or []
-            
+
+        valid_at_ids = []
+        
+        # 1. 从消息组件中提取 At 对象
         for component in message_chain:
+            candidate_str = ""
             # 标准 At 组件
             if isinstance(component, At):
-                candidate = None
                 for attr in ("qq", "target", "uin", "user_id"):
-                    candidate = getattr(component, attr, None)
-                    if candidate: break
-                if candidate:
-                    candidate_str = str(candidate).lstrip("@")
-                    if candidate_str.isdigit() and candidate_str != sender_id:
-                        return candidate_str
-            
+                    val = getattr(component, attr, None)
+                    if val:
+                        candidate_str = str(val).lstrip("@")
+                        break
             # 兼容字符串形式的 CQ 码
-            if isinstance(component, str) and "[CQ:at,qq=" in component:
+            elif isinstance(component, str) and "[CQ:at,qq=" in component:
                 m = re.search(r"\[CQ:at,qq=(\d+)\]", component)
-                if m and m.group(1) != sender_id:
-                    return m.group(1)
+                if m:
+                    candidate_str = m.group(1)
+
+            if candidate_str and candidate_str.isdigit():
+                # 排除发送者自己和机器人自己
+                if candidate_str != sender_id and candidate_str != self_id:
+                    valid_at_ids.append(candidate_str)
+
+        # 优先取最后一个 At（通常是目标，因为前面可能是 @机器人）
+        if valid_at_ids:
+            return valid_at_ids[-1]
 
         # 2. 检查传入的 arg 参数
         if arg:
             cleaned = arg.strip().lstrip("@")
-            if cleaned.isdigit() and cleaned != sender_id:
+            if cleaned.isdigit() and cleaned != sender_id and cleaned != self_id:
                 return cleaned
         
-        # 3. 正则兜底（关键修复：排除自己，避免抓到发送者）
+        # 3. 正则兜底（排除自己、排除机器人）
         message_text = ""
         if hasattr(event, "message_str"): message_text = event.message_str or ""
         
-        # 提取文本中所有 5 位以上的数字
         numbers = re.findall(r'\d{5,}', message_text)
         for num in numbers:
-            # 只要不是发送者自己的 QQ 号，就当做目标
-            if num != sender_id:
+            # 只要不是发送者，也不是机器人，就当目标
+            if num != sender_id and num != self_id:
                 return num
                 
         return None

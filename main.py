@@ -2248,7 +2248,7 @@ class XiuXianPlugin(Star):
         success, msg = await self.rank_mgr.get_virtue_ranking()
         yield event.plain_result(msg)
 
-    # ===== v6.17 称号系统 =====
+        # ===== v6.17 称号系统 =====
     @filter.command("称号图鉴", "查看全部称号与收集进度")
     @require_whitelist
     async def handle_title_collection(self, event: AstrMessageEvent):
@@ -2256,12 +2256,23 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
+            
         try:
+            # 1. 触发历史称号校验补齐
+            sync_msg = await self.title_mgr.sync_missing_titles(player)
+            
+            # 2. 渲染图鉴
             text = self.title_mgr.collection_view(player)
+            
+            # 3. 如果有补发，附加提示
+            if sync_msg:
+                text += sync_msg
         except Exception as e:
             logger.exception(f"称号图鉴渲染失败 uid={player.user_id}: {e}")
             text = "❌ 称号图鉴读取失败，请稍后再试。"
-        yield event.plain_result(self.title_mgr.collection_view(player))
+            
+        # 修复了原代码这里重复调用 collection_view 导致兜底失效的 Bug
+        yield event.plain_result(text)
 
     @filter.command("佩戴称号", "更换展示的称号（加成自动按最高品阶生效）")
     @require_whitelist
@@ -2270,19 +2281,36 @@ class XiuXianPlugin(Star):
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        success, msg = self.title_mgr.equip_display(player, name.strip())
+            
+        # equip_display 内部已经做了去空格、去@符号、自动推荐最高品阶等容错处理
+        success, msg = self.title_mgr.equip_display(player, name)
         if success:
             await self.db.update_player(player)
         yield event.plain_result(msg)
 
-    @filter.command("我的称号", "查看当前生效的称号加成")
+    @filter.command("我的称号", "查看当前拥有的所有称号")
     @require_whitelist
     async def handle_my_title(self, event: AstrMessageEvent):
         player = await self.db.get_player_by_id(event.get_sender_id())
         if not player:
             yield event.plain_result("❌ 道友尚未踏入仙途。")
             return
-        yield event.plain_result("🏅 " + self.title_mgr.bonus_summary(player))
+            
+        try:
+            # 1. 触发历史称号校验补齐
+            sync_msg = await self.title_mgr.sync_missing_titles(player)
+            
+            # 2. 渲染拥有的全量称号面板
+            res = self.title_mgr.my_titles_summary(player)
+            
+            # 3. 如果有补发，附加提示
+            if sync_msg:
+                res += sync_msg
+        except Exception as e:
+            logger.exception(f"我的称号渲染失败 uid={player.user_id}: {e}")
+            res = "❌ 称号数据读取失败，请稍后再试。"
+            
+        yield event.plain_result(res)
 
     @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
     @require_whitelist

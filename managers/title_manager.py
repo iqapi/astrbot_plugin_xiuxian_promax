@@ -4,6 +4,7 @@ import json
 import time
 from typing import Tuple, Optional, Dict
 
+from astrbot.api import logger
 from ..data.data_manager import DataBase
 from ..models import Player
 from .title_data import TITLES, TIERS
@@ -13,7 +14,6 @@ __all__ = ["TitleManager"]
 # 称号档案存于 permanent_bonus["titles"]: {称号名: 获得时间戳}
 # 当前佩戴称号存于 player.title（展示用）；加成按图鉴内最高品阶自动生效
 
-
 class TitleManager:
     def __init__(self, db: DataBase):
         self.db = db
@@ -22,7 +22,7 @@ class TitleManager:
     def _load_owned(self, player: Player) -> Dict[str, float]:
         try:
             data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
-            if not isinstance(data, dict):  # 防御数据异常（如 null, []）
+            if not isinstance(data, dict):
                 return {}
             owned = data.get("titles", {})
             return owned if isinstance(owned, dict) else {}
@@ -77,6 +77,82 @@ class TitleManager:
                     msgs.append(msg)
         return "".join(msgs)
 
+    # ================= 新增：历史称号自动补齐 =================
+    async def sync_missing_titles(self, player: Player) -> str:
+        """玩家查询时自动校准历史数据，补发遗漏的称号"""
+        owned = self._load_owned(player)
+        if len(owned) >= len(TITLES):
+            return ""  # 全都有了，无需校验
+
+        newly_granted = []
+        
+        # 1. 提前获取需要查外部表的属性
+        pet_level = 0
+        land_level = 0
+        
+        try:
+            async with self.db.conn.execute("SELECT level FROM player_pets WHERE user_id = ?", (player.user_id,)) as cur:
+                row = await cur.fetchone()
+                if row: pet_level = row[0]
+        except Exception: pass
+        
+        try:
+            async with self.db.conn.execute("SELECT level FROM blessed_lands WHERE user_id = ?", (player.user_id,)) as cur:
+                row = await cur.fetchone()
+                if row: land_level = row[0]
+        except Exception: pass
+
+        # 2. 遍历所有称号，判断是否遗漏
+        for t in TITLES:
+            if t["name"] in owned: continue
+            how = t["how"]
+            cond = t.get("condition")
+            
+            # 无条件的（如手动授予、满级等）不参与自动补齐
+            if cond is None: continue
+            
+            met = False
+            try:
+                # 玩家自身属性类
+                if how == "breakthrough":
+                    met = getattr(player, "level_index", 0) >= cond
+                elif how == "karma":
+                    met = getattr(player, "karma", 0) >= cond
+                elif how == "karma_neg":
+                    met = getattr(player, "karma", 0) <= cond
+                elif how == "gold_reach":
+                    met = getattr(player, "gold", 0) >= cond
+                elif how == "reincarnation":
+                    met = getattr(player, "reincarnation_count", 0) >= cond
+                elif how == "pet_level":
+                    met = pet_level >= cond
+                elif how == "land_level":
+                    met = land_level >= cond
+                
+                # 外部事件累进类：读 system_config
+                elif how not in ("manual", "furnace_max"):
+                    ck = f"title_cnt_{how}_{player.user_id}"
+                    raw = await self.db.ext.get_system_config(ck)
+                    val = int(raw) if raw and raw.isdigit() else 0
+                    met = val >= cond
+                    
+            except Exception:
+                met = False
+                
+            if met:
+                ok, _ = self.grant(player, t["name"])
+                if ok:
+                    newly_granted.append(t["name"])
+
+        # 3. 如果有补发，落库并返回提示
+        if newly_granted:
+            await self.db.update_player(player)
+            msg = f"\n🔄 【天道纠察】检测到你历史满足条件但遗漏的称号，已自动为你补发 {len(newly_granted)} 个！"
+            return msg
+            
+        return ""
+    # =========================================================
+
     def get_active_bonus(self, player: Player) -> Dict:
         """计算当前生效的加成（最高品阶的一个称号）"""
         owned = self._load_owned(player)
@@ -93,27 +169,44 @@ class TitleManager:
         best = None
         for name in owned:
             t = self.titles.get(name)
-            if t and (best is None or t["tier"] >= best["tier"]):
+            if t and (best is None or t["tier"] > best["tier"]):
                 best = t
         return best
 
     def equip_display(self, player: Player, title_name: str) -> Tuple[bool, str]:
-        """佩戴称号（仅改展示名，加成始终按最高品阶自动生效）"""
+        """佩戴称号（支持空参数自动佩戴最高品阶，支持摘下）"""
         owned = self._load_owned(player)
-        if title_name == "" or title_name == "无":
+        
+        # 容错处理：去除首尾空格和 @ 符号
+        clean_name = title_name.strip().lstrip("@") if title_name else ""
+        
+        # 如果没填名字，自动佩戴最高品阶
+        if not clean_name:
+            best = self.get_active_title(player)
+            if not best:
+                return False, "❌ 你尚未拥有任何称号。"
+            player.title = best["name"]
+            return True, f"✅ 已自动为你佩戴最高品阶称号【{best['name']}】。"
+
+        if clean_name == "无" or clean_name == "摘下":
             player.title = ""
             return True, "已摘下称号。"
-        if title_name not in owned:
-            return False, f"❌ 你尚未拥有称号【{title_name}】。查看 /称号图鉴"
-        player.title = title_name
-        return True, f"已佩戴称号【{title_name}】。"
+
+        # 容错匹配
+        if clean_name not in owned:
+            matched = [k for k in owned if k == clean_name or k.strip() == clean_name]
+            if not matched:
+                return False, f"❌ 你尚未拥有称号【{clean_name}】。发送 /称号图鉴 查看图鉴"
+            clean_name = matched[0]
+
+        player.title = clean_name
+        return True, f"已佩戴称号【{clean_name}】。"
 
     def collection_view(self, player: Player) -> str:
         """称号图鉴"""
         owned = self._load_owned(player)
         active = self.get_active_title(player)
         
-        # ★ C2 修复：过滤掉不在当前版本 TITLES 中的残留称号，防止统计出错
         valid_owned_count = len([n for n in owned if n in self.titles])
         lines = [f"📜 称号图鉴（已收集 {valid_owned_count}/{len(TITLES)}）", "━━━━━━━━━━━━━━━"]
         
@@ -122,7 +215,6 @@ class TitleManager:
             by_tier.setdefault(t["tier"], []).append(t)
             
         for tier in sorted(by_tier):
-            # ★ C1 修复：增加 get 防御，未来若加新品阶忘记改 TIERS 也不会崩溃
             tier_name = TIERS.get(tier, (f"未知({tier})",))[0]
             lines.append(f"【{tier_name}】")
             for t in by_tier[tier]:
@@ -164,7 +256,6 @@ class TitleManager:
             "forge_count": f"强化/洗练共{cond}次",
             "pet_level": f"灵兽达到Lv.{cond}",
             "land_level": f"洞天达到Lv.{cond}",
-            # ★ A2 修复：配合 title_data 加入 condition=5
             "furnace_max": (f"丹炉达到Lv.{cond}" if cond is not None else "丹炉升至满级"),
             "reincarnation": f"飞升转生{cond}次",
             "rebirth": (f"弃道重修{cond}次" if cond is not None else "弃道重修"),
@@ -172,13 +263,16 @@ class TitleManager:
             "sect_battle_win": f"大比获胜{cond}场",
             "demon_catch": f"揪出天魔{cond}次",
             "tide_resist": f"参与抵御魔潮{cond}次",
-            # ★ 根因修复：防止 cond 为 None 时触发 {None:,} 格式化异常崩溃
             "gold_reach": (f"灵石达到{cond:,}" if isinstance(cond, int) else "灵石达到一定数额"),
             "manual": "特殊途径获得",
         }
         return texts.get(key, f"途径：{key} {cond if cond is not None else ''}")
 
+    # ==========================================
+    # 保留原方法名，防止其他文件调用报错
+    # ==========================================
     def bonus_summary(self, player: Player) -> str:
+        """【原有方法保留】返回当前生效的最高称号单行摘要（用于玩家面板等）"""
         stats = self.get_active_bonus(player)
         if not stats:
             return "当前无称号加成"
@@ -194,3 +288,61 @@ class TitleManager:
         active = self.get_active_title(player)
         tier_name = TIERS[active["tier"]][0] if active else ""
         return f"【{active['name']}】({tier_name})：{' '.join(parts)}" if active else "无"
+
+    def _format_stats(self, stats: dict) -> str:
+        """内部辅助：格式化属性字典为可读文本"""
+        if not stats: return "无加成"
+        parts = []
+        cn = {"atk": "物伤", "magic": "法伤", "phys_def": "物防", "magic_def": "法防",
+              "crit": "会心", "lifesteal": "吸血", "exp": "修为", "luck": "气运",
+              "gold_pct": "灵石"}
+        for k, v in stats.items():
+            if k in ("exp", "gold_pct", "lifesteal"):
+                parts.append(f"{cn.get(k, k)}+{v:.0%}" if isinstance(v, float) else f"{cn.get(k, k)}+{v}")
+            else:
+                parts.append(f"{cn.get(k, k)}+{v}")
+        return " | ".join(parts)
+
+    # ==========================================
+    # 新增方法：全量展示与推荐
+    # ==========================================
+    def my_titles_summary(self, player: Player) -> str:
+        """展示玩家已拥有的所有称号，按品阶降序排列"""
+        owned = self._load_owned(player)
+        if not owned:
+            return "📜 你目前尚未获得任何称号，快去探索仙途吧！"
+        
+        owned_titles = []
+        for name, timestamp in owned.items():
+            t = self.titles.get(name)
+            if t:
+                owned_titles.append((t, timestamp))
+        
+        # 按品阶（高->低）和获得时间（新->旧）排序
+        owned_titles.sort(key=lambda x: (x[0]["tier"], x[1]), reverse=True)
+        best_title = owned_titles[0][0] if owned_titles else None
+        
+        lines = [f"🏅 我的称号（已拥有 {len(owned_titles)} 个）", "━━━━━━━━━━━━━━━"]
+        for t, _ in owned_titles:
+            tier_name = TIERS.get(t["tier"], (f"未知",))[0]
+            stats_desc = self._format_stats(t["stats"])
+            
+            mark = ""
+            if player.title == t["name"]:
+                mark = " ⭐当前佩戴"
+            elif not player.title and best_title and t["name"] == best_title["name"]:
+                mark = " ⭐最高品阶"
+                
+            lines.append(f"【{tier_name}】{t['name']}{mark}")
+            lines.append(f"  └ {stats_desc}")
+            
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 称号加成自动按已拥有的最高品阶生效。")
+        
+        if best_title and player.title != best_title["name"]:
+            lines.append(f"💡 当前推荐佩戴：【{best_title['name']}】")
+            lines.append(f"💡 发送 /佩戴称号 {best_title['name']} 可佩戴展示，或直接发送 /佩戴称号 自动佩戴。")
+        elif not player.title:
+            lines.append(f"💡 发送 /佩戴称号 {best_title['name']} 佩戴展示（或直接发送 /佩戴称号 自动佩戴）。")
+            
+        return "\n".join(lines)
