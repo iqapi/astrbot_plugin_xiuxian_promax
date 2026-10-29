@@ -14,12 +14,10 @@ __all__ = ["EncounterManager"]
 
 class EncounterManager:
     """奇遇管理器：触发后在限时内回复 /奇遇选择 <编号> 结算
-    奖励随境界缩放：gold/exp × (1 + level_index × 0.12)，封顶4倍"""
+    奖励随境界双向缩放（低境界打折/高境界放大），封顶4倍"""
 
     CHOICE_EXPIRE = 180      # 选择有效期（秒）
     STORAGE_KEY_PREFIX = "encounter_"
-    REWARD_SCALE_PER_LEVEL = 0.12
-    REWARD_SCALE_MAX = 4.0
 
     def __init__(self, db: DataBase, storage_ring_mgr=None):
         self.db = db
@@ -29,13 +27,39 @@ class EncounterManager:
     def _storage_key(self, user_id: str) -> str:
         return f"{self.STORAGE_KEY_PREFIX}{user_id}"
 
+    # v3.18.4 数值平衡：奇遇奖励改为"低境界打折、高境界放大"的双向缩放。
+    # 旧公式 (1 + 0.12*lv, 下限1) 会让炼气期抽中 25,000 灵石级事件（数日历练收入）
+    REWARD_SCALE_PER_LEVEL = 0.08
+    REWARD_SCALE_MAX = 4.0
+    REWARD_SCALE_MIN = 0.2
+
     def _reward_scale(self, player: Player) -> float:
-        return min(self.REWARD_SCALE_MAX, 1.0 + (player.level_index or 0) * self.REWARD_SCALE_PER_LEVEL)
+        return max(self.REWARD_SCALE_MIN, min(
+            self.REWARD_SCALE_MAX,
+            self.REWARD_SCALE_MIN + (player.level_index or 0) * self.REWARD_SCALE_PER_LEVEL
+        ))
+
+    def _level_gold_cap(self, player: Player) -> int:
+        """单次奇遇灵石收益上限随境界增长（炼气 2,800 → 满级 30,000）"""
+        return 2000 + (player.level_index or 0) * 800
 
     async def maybe_trigger(self, player: Player, base_chance: int = 20) -> Optional[str]:
         """历练(20%)/秘境(25%)归来时调用，概率触发奇遇。返回提示文本（None 表示未触发）"""
         # 功德越高奇遇越容易触发（每点+2%，上限+20%）
         chance = base_chance + max(0, min(10, getattr(player, "karma", 0) or 0) * 2)
+        # v3.19.0 天象：魔风/大雾提升奇遇触发率（异常安全）
+        try:
+            from .weather_manager import WeatherManager
+            em = await WeatherManager(self.db).get_multiplier("encounter")
+            chance = int(chance * em)
+        except Exception:
+            pass
+        # v3.22.0 惊签：奇遇触发加成（异常安全）
+        try:
+            from .fortune_stick_manager import FortuneStickManager
+            chance = int(chance * (1 + await FortuneStickManager(self.db).get_adventure_bonus(player)))
+        except Exception:
+            pass
         if random.randint(1, 100) > chance:
             return None
 
@@ -133,18 +157,23 @@ class EncounterManager:
             lines.append("🎉 你的抉择带来了回报！")
 
         scale = self._reward_scale(player)
-        gold = int(outcome.get("gold", 0))
-        exp = int(outcome.get("exp", 0))
+        # lose 中的 gold/exp 数值语义是"损失量"，失败时必须取负发放，否则输局反而发钱
+        if fail:
+            gold = -abs(int(outcome.get("gold", 0)))
+            exp = -abs(int(outcome.get("exp", 0)))
+        else:
+            gold = int(outcome.get("gold", 0) * scale)
+            exp = int(outcome.get("exp", 0) * scale)
+            # 境界封顶：单次奇遇灵石收益不超过当前境界的水位（炼气 2,800 → 满级 30,000）
+            gold = min(gold, self._level_gold_cap(player))
         hp_pct = float(outcome.get("hp_pct", 0))
         karma = int(outcome.get("karma", 0))
         item = outcome.get("item")
 
         if gold:
-            gold = int(gold * scale)
             player.gold = max(0, player.gold + gold)
             lines.append(f"{'获得' if gold > 0 else '损失'}灵石：{gold:+,}")
         if exp:
-            exp = int(exp * scale)
             player.experience = max(0, player.experience + exp)
             lines.append(f"{'获得' if exp > 0 else '损失'}修为：{exp:+,}")
         if hp_pct:

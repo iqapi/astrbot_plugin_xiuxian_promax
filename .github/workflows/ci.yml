@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install aiosqlite Pillow
+      - name: Syntax check (all modules)
+        run: python -X utf8 scripts/check_syntax.py
+      - name: Core logic tests
+        run: python -X utf8 tests/test_core_logic.py
+      - name: Atomic primitive tests
+        run: python -X utf8 tests/test_atomic_primitives.py
+      - name: Final check (command coverage + metadata)
+        run: python -X utf8 scripts/_final_check.py

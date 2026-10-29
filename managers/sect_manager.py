@@ -7,6 +7,7 @@ import json
 import random
 import time
 from typing import Tuple, List, Optional, Dict
+from astrbot.api import logger
 from ..data.data_manager import DataBase
 from ..models_extended import Sect, UserStatus
 from ..models import Player
@@ -322,6 +323,9 @@ class SectManager:
             return False, f"❌ 宗门任务冷却中！还需 {(user_cd.scheduled_time - current_time)//60} 分钟。"
         elif user_cd.type == UserStatus.SECT_TASK:
             await self.db.ext.set_user_free(user_id)
+        elif user_cd.type != UserStatus.IDLE:
+            # 状态覆盖漏洞封堵：闭关/历练/秘境/押镖中不允许接宗门任务，否则原状态及进度被覆盖丢失
+            return False, f"❌ 你当前正{UserStatus.get_name(user_cd.type)}，无法接取宗门任务！"
 
         await self.db.ext.set_user_busy(user_id, UserStatus.SECT_TASK, current_time + 3600)
         return True, "✨ 你开始执行宗门任务！任务需要1小时完成，请在完成后使用 /完成宗门任务 领取奖励。"
@@ -343,6 +347,7 @@ class SectManager:
 
             # 演武场：宗门建筑，宗门任务奖励+10%/级
             arena_note = ""
+            sect = None  # 预置：下方 walrus 若在 try 内抛异常，避免 362 行 NameError
             try:
                 levels = self.get_buildings(sect) if (sect := await self.db.ext.get_sect_by_id(player.sect_id)) else {}
                 arena_lv = int(levels.get("演武场", 0))
@@ -362,8 +367,9 @@ class SectManager:
             await self.db.ext.set_user_free(user_id)
             return True, f"✨ 宗门任务完成！\n获得贡献：{contribution_gain}\n宗门资材：+{contribution_gain * 10}{arena_note}"
         else:
-            await self.db.ext.set_user_free(user_id)
-            return True, "✅ 状态异常已修复！你的状态已恢复正常。"
+            # 旁路封堵：此前任何非宗门任务状态调用完成指令都会被"顺手"置为空闲，
+            # 成为清除闭关/历练等状态的漏洞。现在只提示，不动状态。
+            return False, f"❌ 你当前不在宗门任务中（当前状态：{UserStatus.get_name(user_cd.type)}）。"
 
     async def handle_owner_death(self, sect_id: int, dead_owner_id: str) -> Tuple[bool, str]:
         """处理宗主死亡，自动传位或解散宗门"""
@@ -424,6 +430,17 @@ class SectManager:
             elif current_wins >= 3 and player.title not in ["一代宗师", "灭世魔神"]:
                 player.title = "一代宗师"
                 title_msg = "\n👑 恭喜你！累计胜场达到 3 场，获得荣誉称号【一代宗师】！"
+
+            # 图鉴双写：此前大比称号只写展示位，图鉴/加成拿不到
+            try:
+                from .title_manager import TitleManager
+                tm = TitleManager(self.db)
+                grant_msg = tm.grant_by_key(player, "sect_battle_win", current_wins)
+                if grant_msg:
+                    title_msg += grant_msg
+                    await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+            except Exception as e:
+                logger.warning(f"大比称号写入图鉴失败: {e}")
 
             player.sect_contribution += 100
             # 给宗门加积分

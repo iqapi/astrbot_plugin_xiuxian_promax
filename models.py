@@ -117,7 +117,7 @@ class Player:
 
     # 储物戒系统字段
     storage_ring: str = "基础储物戒"  # 当前装备的储物戒名称
-    storage_ring_items: str = "{}"  # 储物戒中的物品（JSON字符串，格式：{item_name: {count, bound}}）
+    storage_ring_items: str = "{}"  # 储物戒中的物品（JSON字符串，格式：{item_name: int数量}）
 
     # Phase 1: 每日限制系统
     daily_pill_usage: str = "{}"  # 每日丹药使用次数（JSON字符串，格式：{pill_id: count}）

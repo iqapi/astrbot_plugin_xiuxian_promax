@@ -11,7 +11,7 @@
         "comment": "战斗冷却（秒）和暴击配置"
     },
     "bank": {
-        "daily_interest_rate": 0.001,
+        "daily_interest_rate": 0.002,
         "max_deposit": 10000000,
         "loan_interest_rate": 0.005,
         "loan_duration_days": 7,
@@ -19,7 +19,7 @@
         "min_loan_amount": 1000,
         "breakthrough_loan_rate": 0.008,
         "breakthrough_loan_duration": 3,
-        "comment": "银行配置：日利率、存款上限、贷款配置"
+        "comment": "银行配置：日利率、存款上限、贷款配置（注意：此文件为内置默认，WebUI 的 VALUES.BANK_* 优先）"
     },
     "dual_cultivation": {
         "cooldown": 3600,

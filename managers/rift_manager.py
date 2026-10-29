@@ -238,6 +238,17 @@ class RiftManager:
             # 兼容旧数据，使用默认奖励
             exp_reward = random.randint(1000, 5000)
             gold_reward = random.randint(500, 2000)
+
+        # v3.19.0 每日秘境词缀（异常安全）
+        try:
+            from .rift_enhance import RiftEnhanceManager
+            mod = await RiftEnhanceManager(self.db).get_modifier()
+            if "exp_mult" in mod:
+                exp_reward = int(exp_reward * mod["exp_mult"])
+            if "gold_mult" in mod:
+                gold_reward = int(gold_reward * mod["gold_mult"])
+        except Exception:
+            pass
         
         # 随机事件
         events = [
@@ -279,6 +290,14 @@ class RiftManager:
         player.experience += exp_reward
         player.gold += gold_reward
         await self.db.update_player(player)
+
+        # v3.19.0 天骄榜：赛季修为增量（异常安全）
+        try:
+            from .season_manager import SeasonManager
+            if exp_reward > 0:
+                await SeasonManager(self.db).record_exp_gain(user_id, exp_reward)
+        except Exception:
+            pass
         
         # 8. 清除CD
         await self.db.ext.set_user_free(user_id)

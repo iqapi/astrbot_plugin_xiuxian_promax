@@ -10,9 +10,10 @@ class AuctionManager:
     
     TAX_RATE = 0.05 # 系统收取 5% 的交易税，用于回收灵石
 
-    def __init__(self, db: DataBase, storage_ring_mgr):
+    def __init__(self, db: DataBase, storage_ring_mgr, config_manager=None):
         self.db = db
         self.storage_ring_mgr = storage_ring_mgr
+        self.config_manager = config_manager  # v3.24.2：供坊市列表解析物品功效
 
     async def list_item(self, player: Player, item_name: str, count: int, price: int) -> Tuple[bool, str]:
         """上架物品"""
@@ -70,6 +71,17 @@ class AuctionManager:
             display_name = item['item_name'] if len(item['item_name']) <= 12 else item['item_name'][:12] + "..."
 
             msg.append(f"[{item['id']}] {display_name} x{item['count']}")
+            # v3.24.2 补功效简述（按名查配置；查不到的物品不显示功效行）
+            effect = ""
+            if self.config_manager:
+                try:
+                    from ..core.shop_manager import ShopManager
+                    helper = ShopManager(None, self.config_manager)
+                    effect = helper.describe_item_by_name(item['item_name'])
+                except Exception:
+                    effect = ""
+            if effect:
+                msg.append(f"  └ 功效: {effect[:40]}")
             msg.append(f"  └ 总价: {total_price:,} 灵石 | 卖家: {seller_name}")
 
         msg.append("━━━━━━━━━━━━━━━")

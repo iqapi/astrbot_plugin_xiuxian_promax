@@ -208,9 +208,33 @@ class DualCultivationManager:
         # 记录冷却
         await self._set_last_dual_time(initiator.user_id, now)
         await self._set_last_dual_time(acceptor.user_id, now)
-        
+
         # 清除请求
         await self._delete_request(request["id"])
+
+        # v3.19.0 道侣周任务：双修计数（双方各记一次，异常安全）
+        try:
+            from .couple_quest_manager import CoupleQuestManager
+            cq = CoupleQuestManager(self.db)
+            await cq.record_action(acceptor, "dual")
+            await cq.record_action(initiator, "dual")
+        except Exception:
+            pass
+        # v3.20.0 结契羁绊：玩家道侣双修 +2（NPC 道侣无结契关系则自动跳过）
+        try:
+            from .marriage_manager import MarriageManager
+            mm = MarriageManager(self.db)
+            await mm.add_bond(initiator.user_id, acceptor.user_id, 2)
+        except Exception:
+            pass
+        # 天骄榜：双修修为增量
+        try:
+            from .season_manager import SeasonManager
+            sm = SeasonManager(self.db)
+            await sm.record_exp_gain(initiator.user_id, init_exp_gain)
+            await sm.record_exp_gain(acceptor.user_id, accept_exp_gain)
+        except Exception:
+            pass
         
         return True, (
             f"💕 双修成功！\n"

@@ -83,8 +83,17 @@ class BreakthroughManager:
 
         final_rate = max(0.0, min(final_rate, max_rate))
         info_lines.append(f"最终成功率：{final_rate:.1%}")
-        
+
         return final_rate, "\n".join(info_lines)
+
+    def get_breakthrough_cost(self, player: Player) -> int:
+        """突破资费（显示与实扣共用此口径，避免两处公式漂移）：
+        境界基础费 + 下一境界门槛的 0.2%（后期主要经济回收）"""
+        level_data = self.config_manager.get_level_data(player.cultivation_type)
+        next_required = 0
+        if player.level_index + 1 < len(level_data):
+            next_required = level_data[player.level_index + 1].get("exp_needed", 0)
+        return 1000 + player.level_index * 800 + int(next_required * 0.002)
 
     async def execute_breakthrough(
         self,
@@ -99,8 +108,10 @@ class BreakthroughManager:
         if not can_breakthrough:
             return False, error_msg, False
 
-        # ===== 经济回收：突破需缴纳灵石（境界越高越贵）=====
-        breakthrough_cost = 1000 + player.level_index * 800
+        # ===== 经济回收：突破需缴纳灵石（境界越高越贵，口径见 get_breakthrough_cost）=====
+        # v3.18.4 数值平衡：资费与下一境界门槛挂钩（门槛的 0.2%）。
+        # 旧公式满级封顶 2.8 万，后期经济回收几乎停摆；新公式渡劫期突破约 26 万灵石
+        breakthrough_cost = self.get_breakthrough_cost(player)
         if player.gold < breakthrough_cost:
             return False, (
                 f"❌ 突破需要缴纳 {breakthrough_cost:,} 灵石作为闭关资费（当前持有 {player.gold:,}）。\n"
@@ -137,7 +148,10 @@ class BreakthroughManager:
         player.gold -= breakthrough_cost
         cost_note = f"\n💰 突破资费：-{breakthrough_cost:,} 灵石（剩余 {player.gold:,}）"
 
-        # ===== v6.20 连败保底：连续失败3次，下次+15%（永久累计直到成功）=====
+        # ===== v6.20 连败保底（v3.18.4 调整）：连败3次后成功率提升。
+        # 提升幅度随基础成功率衰减：≥5% 的境界固定 +15%；<5% 的境界 +3倍基础成功率
+        # （如混元 0.01% → 0.04%），避免保底把末期设计概率整体击穿为"4次必近成功"；
+        # 末期真正的兜底是渡劫道韵（满100必成）体系。 =====
         pity_data = {}
         try:
             pity_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
@@ -145,8 +159,27 @@ class BreakthroughManager:
             pity_data = {}
         fail_streak = int(pity_data.get("bt_fail_streak", 0))
         if fail_streak >= 3:
-            success_rate = min(0.98, success_rate + 0.15)
-            cost_note += f"\n🌟 道心磨砺（连败{fail_streak}次）：本次成功率+15%"
+            pity_bonus = 0.15 if success_rate >= 0.05 else success_rate * 3
+            success_rate = min(0.98, success_rate + pity_bonus)
+            cost_note += f"\n🌟 道心磨砺（连败{fail_streak}次）：本次成功率+{pity_bonus*100:.2f}%"
+
+        # v3.19.0 新玩法：轮回周目成功率加成 + 天象对突破的影响（异常安全）
+        try:
+            from ..managers.samsara_manager import SamsaraManager
+            sr_bonus = SamsaraManager.get_success_rate_bonus(player)
+            if sr_bonus > 0:
+                success_rate = min(0.98, success_rate + sr_bonus)
+                cost_note += f"\n🔄 周目神通：成功率+{sr_bonus:.0%}"
+        except Exception:
+            pass
+        try:
+            from ..managers.weather_manager import WeatherManager
+            wm = await WeatherManager(self.db).get_multiplier("breakthrough")
+            if wm != 1.0:
+                success_rate = min(0.98, success_rate * wm)
+                cost_note += f"\n🌦️ 天象{'助道' if wm > 1 else '晦暗'}：成功率{wm:.0%}倍"
+        except Exception:
+            pass
 
         # 渡劫必成符（道韵满100积累）：直接成功
         guarantee = int(pity_data.get("daoyun_guarantee", 0))
@@ -156,6 +189,17 @@ class BreakthroughManager:
         else:
             random_value = random.random()
             breakthrough_success = random_value < success_rate
+
+        # v3.23.0 渡劫观礼（密封信封模型）：先掷点再开池，结果封存进奖池不下发，
+        # 5 分钟下注窗口后由主控定时 tick() 揭晓开奖——保证下注时结果未公开
+        try:
+            from ..managers.tribulation_bet import TribulationBetManager
+            tribbet = TribulationBetManager(self.db)
+            tribbet_opened = await tribbet.open_pool(player, success_rate, breakthrough_success)
+            if tribbet_opened:
+                cost_note += "\n🎆【观礼开启】渡劫天威引来全服瞩目：5 分钟内 /观礼 可下注押成败！"
+        except Exception:
+            pass
 
         current_level_name = level_data[player.level_index]["level_name"]
         next_level_index = player.level_index + 1
@@ -281,6 +325,8 @@ class BreakthroughManager:
             except Exception:
                 pass
 
+            if tribbet_opened:
+                success_msg += "\n🎆 观礼奖池已封存，5 分钟后全服开奖，/观礼 查看下注情况！"
             return True, success_msg, False
 
         else:

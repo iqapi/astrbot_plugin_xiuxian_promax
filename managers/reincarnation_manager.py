@@ -40,6 +40,17 @@ class ReincarnationManager:
         bonus_points = player.reincarnation_count * 50
         earned_points = base_points + bonus_points
         old_level_name = level_data[player.level_index]["level_name"]
+        lifetime_exp = player.experience  # v3.19.0 轮回周目：按前世总修为发放轮回玉
+
+        # 轮回玉：前世修为的 1%（异常安全）
+        jade_msg = ""
+        try:
+            from .samsara_manager import SamsaraManager
+            jade = await SamsaraManager(self.db).grant_jade(player.user_id, lifetime_exp)
+            if jade > 0:
+                jade_msg = f"\n🎐 前世修为凝结为【轮回玉】x{jade}，/轮回宝阁 可兑换周目珍宝。"
+        except Exception:
+            pass
         
         # 读取旧有的永久加成（仙缘商店买的、传家宝等）
         try:
@@ -105,7 +116,8 @@ class ReincarnationManager:
             f"但你的修仙记忆化为了【仙缘】。{seal_msg}\n"
             f"获得仙缘点：{earned_points}\n"
             f"转生次数：{player.reincarnation_count}\n"
-            f"当前仙缘点：{player.fate_points}\n"
+            f"当前仙缘点：{player.fate_points}"
+            f"{jade_msg}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💡 使用 `/仙缘商店` 可兑换永久加成，重新踏上仙途吧！"
         )

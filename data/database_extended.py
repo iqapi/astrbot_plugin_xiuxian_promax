@@ -7,7 +7,7 @@ import aiosqlite
 import json
 from typing import List, Optional
 from ..models_extended import (
-    Sect, BuffInfo, Boss, Rift, ImpartInfo, UserCd
+    Sect, BuffInfo, Boss, Rift, ImpartInfo, UserCd, row_to_model
 )
 
 
@@ -22,7 +22,7 @@ class DatabaseExtended:
     
     async def create_sect(self, sect: Sect):
         """创建宗门"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """
             INSERT INTO sects (
                 sect_name, sect_owner, sect_scale, sect_used_stone,
@@ -36,11 +36,8 @@ class DatabaseExtended:
             )
         )
         await self.conn.commit()
-        
-        # 获取刚插入的sect_id
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
+        # 直接取 INSERT 游标的 lastrowid：commit 后再查 last_insert_rowid() 在并发下会拿到别人的行
+        return cursor.lastrowid
     
     async def get_sect_by_id(self, sect_id: int) -> Optional[Sect]:
         """根据ID获取宗门信息"""
@@ -50,7 +47,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Sect(**dict(row))
+                return row_to_model(Sect, row)
             return None
     
     async def get_sect_by_owner(self, owner_id: str) -> Optional[Sect]:
@@ -61,7 +58,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Sect(**dict(row))
+                return row_to_model(Sect, row)
             return None
     
     async def get_sect_by_name(self, sect_name: str) -> Optional[Sect]:
@@ -72,7 +69,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Sect(**dict(row))
+                return row_to_model(Sect, row)
             return None
     
     async def update_sect(self, sect: Sect):
@@ -104,7 +101,7 @@ class DatabaseExtended:
         """获取所有宗门"""
         async with self.conn.execute("SELECT * FROM sects ORDER BY sect_scale DESC") as cursor:
             rows = await cursor.fetchall()
-            return [Sect(**dict(row)) for row in rows]
+            return [row_to_model(Sect, row) for row in rows]
     
     async def update_sect_materials(self, sect_id: int, materials: int, operation: int = 1):
         """更新宗门资材
@@ -162,7 +159,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return BuffInfo(**dict(row))
+                return row_to_model(BuffInfo, row)
             return None
     
     async def update_buff_info(self, buff_info: BuffInfo):
@@ -202,7 +199,7 @@ class DatabaseExtended:
     
     async def create_boss(self, boss: Boss) -> int:
         """创建Boss"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """
             INSERT INTO boss (
                 boss_name, boss_level, hp, max_hp, atk, defense,
@@ -216,10 +213,7 @@ class DatabaseExtended:
             )
         )
         await self.conn.commit()
-        
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
+        return cursor.lastrowid
     
     async def get_active_boss(self) -> Optional[Boss]:
         """获取当前存活的Boss"""
@@ -228,7 +222,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Boss(**dict(row))
+                return row_to_model(Boss, row)
             return None
     
     async def get_boss_by_id(self, boss_id: int) -> Optional[Boss]:
@@ -239,7 +233,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Boss(**dict(row))
+                return row_to_model(Boss, row)
             return None
     
     async def update_boss(self, boss: Boss):
@@ -271,7 +265,7 @@ class DatabaseExtended:
     
     async def create_rift(self, rift: Rift) -> int:
         """创建秘境"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """
             INSERT INTO rifts (
                 rift_name, rift_level, required_level, rewards
@@ -280,11 +274,8 @@ class DatabaseExtended:
             (rift.rift_name, rift.rift_level, rift.required_level, rift.rewards)
         )
         await self.conn.commit()
-        
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
-    
+        return cursor.lastrowid
+
     async def get_rift_by_id(self, rift_id: int) -> Optional[Rift]:
         """根据ID获取秘境信息"""
         async with self.conn.execute(
@@ -293,7 +284,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return Rift(**dict(row))
+                return row_to_model(Rift, row)
             return None
     
     async def get_all_rifts(self) -> List[Rift]:
@@ -302,7 +293,7 @@ class DatabaseExtended:
             "SELECT * FROM rifts ORDER BY rift_level ASC"
         ) as cursor:
             rows = await cursor.fetchall()
-            return [Rift(**dict(row)) for row in rows]
+            return [row_to_model(Rift, row) for row in rows]
     
     # ===== 传承系统 CRUD =====
     
@@ -327,7 +318,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return ImpartInfo(**dict(row))
+                return row_to_model(ImpartInfo, row)
             return None
     
     async def update_impart_info(self, impart: ImpartInfo):
@@ -367,7 +358,7 @@ class DatabaseExtended:
         ) as cursor:
             row = await cursor.fetchone()
             if row:
-                return UserCd(**dict(row))
+                return row_to_model(UserCd, row)
             return None
     
     async def update_user_cd(self, user_cd: UserCd):
@@ -607,6 +598,139 @@ class DatabaseExtended:
             (key, value, int(time.time()), value, int(time.time()))
         )
         await self.conn.commit()
+
+    # ===== v3.23.0 原子 system_config 设施（CAS / 数值键 / 限次认领）=====
+    # 动机：新玩法大量使用"读快照→内存改→整体覆写"，跨 await 边界存在并发窗口。
+    # 以下原语让"检查+登记"成为单条 SQL，消除检查-发奖之间的竞态。
+
+    async def syscfg_cas(self, key: str, new_value: str, expect_old: str) -> bool:
+        """比较并交换：仅当 key 当前值等于 expect_old 时写入 new_value。
+        expect_old 为 None 时表示"仅当 key 不存在或为空时写入"（抢占语义）。
+        返回是否成功。"""
+        import time
+        await self.ensure_system_config_table()
+        now = int(time.time())
+        if expect_old is None:
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+                WHERE system_config.value = '' OR system_config.value IS NULL
+                """,
+                (key, new_value, now, new_value, now)
+            )
+        else:
+            cursor = await self.conn.execute(
+                "UPDATE system_config SET value = ?, updated_at = ? WHERE key = ? AND value = ?",
+                (new_value, now, key, expect_old)
+            )
+            if cursor.rowcount == 0:
+                # key 不存在视为空值；OR IGNORE 防并发下另一协程恰好已插入（此时视为失败）
+                cursor = await self.conn.execute(
+                    "INSERT OR IGNORE INTO system_config (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, new_value, now)
+                )
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
+    async def syscfg_adjust_number(self, key: str, delta: int) -> int:
+        """原子数值增减（值不存在视为 0）。返回调整后的新值。"""
+        import time
+        await self.ensure_system_config_table()
+        now = int(time.time())
+        await self.conn.execute(
+            """
+            INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = CAST(MAX(0, CAST(system_config.value AS INTEGER) + ?) AS TEXT),
+                updated_at = ?
+            """,
+            (key, str(max(0, delta)), now, delta, now)
+        )
+        await self.conn.commit()
+        async with self.conn.execute("SELECT value FROM system_config WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+        return int(row[0]) if row and str(row[0]).lstrip('-').isdigit() else 0
+
+    async def syscfg_spend(self, key: str, amount: int) -> bool:
+        """原子扣减数值键：仅当当前值 >= amount 时扣减成功（资金/次数托管语义）"""
+        import time
+        await self.ensure_system_config_table()
+        now = int(time.time())
+        await self.conn.execute(
+            "INSERT INTO system_config (key, value, updated_at) VALUES (?, '0', ?) ON CONFLICT(key) DO NOTHING",
+            (key, now)
+        )
+        cursor = await self.conn.execute(
+            """
+            UPDATE system_config SET value = CAST(CAST(value AS INTEGER) - ? AS TEXT), updated_at = ?
+            WHERE key = ? AND CAST(value AS INTEGER) >= ?
+            """,
+            (amount, now, key, amount)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
+    async def syscfg_claim_slot(self, key: str, limit: int) -> bool:
+        """原子限次认领：计数 +1，仅当计数 < limit 时成功（每日限次语义）"""
+        import time
+        await self.ensure_system_config_table()
+        now = int(time.time())
+        await self.conn.execute(
+            "INSERT INTO system_config (key, value, updated_at) VALUES (?, '0', ?) ON CONFLICT(key) DO NOTHING",
+            (key, now)
+        )
+        cursor = await self.conn.execute(
+            """
+            UPDATE system_config SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), updated_at = ?
+            WHERE key = ? AND CAST(value AS INTEGER) < ?
+            """,
+            (now, key, limit)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
+    async def syscfg_get_number(self, key: str) -> int:
+        """读取数值键（异常/缺失/非数字返回 0）"""
+        try:
+            raw = await self.get_system_config(key)
+            return int(raw) if raw and str(raw).lstrip('-').isdigit() else 0
+        except Exception:
+            return 0
+
+    async def purge_dated_config_keys(self, days: int = 8) -> int:
+        """清理 key 以 _YYYYMMDD 结尾且早于 N 天前的 system_config（防日键无限膨胀）"""
+        try:
+            import time as _t
+            cutoff = _t.strftime("%Y%m%d", _t.localtime(_t.time() - days * 86400))
+            cursor = await self.conn.execute(
+                """
+                DELETE FROM system_config
+                WHERE key GLOB '*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                  AND SUBSTR(key, -8) < ?
+                  AND SUBSTR(key, -8) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                """,
+                (cutoff,)
+            )
+            n = cursor.rowcount
+            # v3.25.1：月度键（_YYYYMM 后缀，如 ckms_claimed_）定向清理
+            month_cutoff = _t.strftime("%Y%m", _t.localtime(_t.time() - days * 86400))
+            cursor = await self.conn.execute(
+                """
+                DELETE FROM system_config
+                WHERE key GLOB 'ckms_claimed_*'
+                  AND SUBSTR(key, -6) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]'
+                  AND SUBSTR(key, -6) < ?
+                """,
+                (month_cutoff,)
+            )
+            n += cursor.rowcount
+            await self.conn.commit()
+            return n
+        except Exception as e:
+            logger.warning(f"清理日键异常: {e}")
+            return 0
+
     
     # ===== 赠予请求系统 CRUD =====
     
@@ -629,7 +753,7 @@ class DatabaseExtended:
         now = int(time.time())
         expires_at = now + expires_hours * 3600
         
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """
             INSERT INTO pending_gifts (
                 receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
@@ -638,10 +762,7 @@ class DatabaseExtended:
             (receiver_id, sender_id, sender_name, item_name, count, now, expires_at)
         )
         await self.conn.commit()
-        
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
+        return cursor.lastrowid
     
     async def get_pending_gift(self, receiver_id: str) -> Optional[dict]:
         """获取接收者的待处理赠予请求（最新的一个）"""
@@ -721,13 +842,40 @@ class DatabaseExtended:
         await self.conn.commit()
     
     async def cleanup_expired_gifts(self):
-        """清理过期的赠予请求"""
+        """清理过期的赠予请求，并将物品返还给发送者（物品已从发送者储物戒扣除，直接删除会蒸发）"""
+        import json
         import time
         now = int(time.time())
-        await self.conn.execute(
-            "DELETE FROM pending_gifts WHERE expires_at < ?",
+
+        async with self.conn.execute(
+            """SELECT id, sender_id, item_name, count FROM pending_gifts WHERE expires_at < ?""",
             (now,)
-        )
+        ) as cursor:
+            expired = await cursor.fetchall()
+        if not expired:
+            return
+
+        for gift_id, sender_id, item_name, count in expired:
+            async with self.conn.execute(
+                "SELECT storage_ring_items FROM players WHERE user_id = ?",
+                (sender_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                try:
+                    items = json.loads(row[0]) if row[0] else {}
+                except (json.JSONDecodeError, TypeError):
+                    items = {}
+                # 实际存储格式为 {物品名: int数量}；对历史 dict 条目做兼容合并，避免覆盖原有数量
+                old = items.get(item_name, 0)
+                if isinstance(old, dict):
+                    old = int(old.get("count", 0))
+                items[item_name] = int(old or 0) + count
+                await self.conn.execute(
+                    "UPDATE players SET storage_ring_items = ? WHERE user_id = ?",
+                    (json.dumps(items, ensure_ascii=False), sender_id)
+                )
+            await self.conn.execute("DELETE FROM pending_gifts WHERE id = ?", (gift_id,))
         await self.conn.commit()
     
     # ===== Phase 3: 银行贷款系统 CRUD =====
@@ -756,15 +904,13 @@ class DatabaseExtended:
     async def create_loan(self, user_id: str, principal: int, interest_rate: float, 
                           borrowed_at: int, due_at: int, loan_type: str = "normal") -> int:
         """创建贷款记录"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """INSERT INTO bank_loans (user_id, principal, interest_rate, borrowed_at, due_at, status, loan_type)
                VALUES (?, ?, ?, ?, ?, 'active', ?)""",
             (user_id, principal, interest_rate, borrowed_at, due_at, loan_type)
         )
         await self.conn.commit()
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
+        return cursor.lastrowid or 0
     
     async def close_loan(self, loan_id: int):
         """关闭贷款（标记为已还清）"""
@@ -870,37 +1016,26 @@ class DatabaseExtended:
     async def create_daily_task(self, user_id: str, task_level: str, title: str, 
                                 target_type: str, target_count: int, rewards_json: str, expire_time: int) -> int:
         """创建接取任务"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """INSERT INTO daily_tasks (user_id, task_level, title, target_type, target_count, rewards_json, expire_time)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (user_id, task_level, title, target_type, target_count, rewards_json, expire_time)
         )
         await self.conn.commit()
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
+        return cursor.lastrowid or 0
 
     async def add_task_progress(self, user_id: str, target_type: str, count: int = 1):
         """增加任务进度（供其他 Manager 调用的接口）"""
-        async with self.conn.execute(
-            "SELECT * FROM daily_tasks WHERE user_id = ? AND target_type = ? AND status = 1",
-            (user_id, target_type)
-        ) as cursor:
-            tasks = await cursor.fetchall()
-            
-        for task in tasks:
-            new_progress = min(task['target_count'], task['current_progress'] + count)
-            if new_progress >= task['target_count']:
-                # 任务完成
-                await self.conn.execute(
-                    "UPDATE daily_tasks SET current_progress = ?, status = 2 WHERE id = ?",
-                    (new_progress, task['id'])
-                )
-            else:
-                await self.conn.execute(
-                    "UPDATE daily_tasks SET current_progress = ? WHERE id = ?",
-                    (new_progress, task['id'])
-                )
+        # 原子增量更新：并发触发同一任务时进度不会互相覆盖（读-改-写模式会丢失更新）
+        await self.conn.execute(
+            """
+            UPDATE daily_tasks
+            SET current_progress = MIN(target_count, current_progress + ?),
+                status = CASE WHEN current_progress + ? >= target_count THEN 2 ELSE status END
+            WHERE user_id = ? AND target_type = ? AND status = 1
+            """,
+            (count, count, user_id, target_type)
+        )
         await self.conn.commit()
 
     async def complete_daily_task(self, task_id: int, user_id: str):

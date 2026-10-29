@@ -10,7 +10,12 @@ for f in files:
         issues.append(f"[语法] {f}:{e.lineno} {e.msg}")
 print(f"1. 语法检查：{len(files)} 个文件")
 
-main_t = open('main.py', encoding='utf-8').read()
+# v3.24.0：指令拆分至 commands/ 包后，扫描 main.py + commands/*.py
+_main_t = open('main.py', encoding='utf-8').read()
+_cmds_t = _main_t + "".join(
+    open(f, encoding='utf-8').read() for f in glob.glob('commands/*.py')
+)
+main_t = _cmds_t
 const_map = dict(re.findall(r'^(CMD_\w+)\s*=\s*"([^"]+)"', main_t, re.M))
 cmds = set()
 for m in re.finditer(r'@filter\.command\(\s*([^,\s]+)', main_t):

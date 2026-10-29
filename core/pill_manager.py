@@ -237,7 +237,11 @@ class PillManager:
     async def _use_exp_pill(self, player: Player, pill_name: str, pill_data: dict) -> Tuple[bool, str]:
         """使用修为丹"""
         exp_gain = pill_data.get("exp_gain", 0)
-        player.experience += exp_gain
+        # v3.18.4 数值平衡：修为丹实际收益随境界衰减（每境界 -15%，等效于后期丹药涨价），
+        # 否则"10 exp/灵石"的固定定价会让 60B 的满级需求与全服灵石产出差 4 个数量级
+        level_decay = 1 + (player.level_index or 0) * 0.15
+        effective_exp = max(1, int(exp_gain / level_decay))
+        player.experience += effective_exp
 
         inventory = player.get_pills_inventory()
         inventory[pill_name] -= 1
@@ -247,10 +251,13 @@ class PillManager:
 
         await self.db.update_player(player)
 
+        decay_note = ""
+        if effective_exp < exp_gain:
+            decay_note = f"\n🌫️ 境界渐高，丹药药力折损为 {level_decay:.2f} 倍逆（高境界修为丹收益递减）"
         return True, (
             f"✨ 服用【{pill_name}】成功！\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"📈 获得修为：{exp_gain}\n"
+            f"📈 获得修为：{effective_exp}{decay_note}\n"
             f"💫 当前修为：{player.experience}\n"
             f"━━━━━━━━━━━━━━━"
         )

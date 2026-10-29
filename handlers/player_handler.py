@@ -47,54 +47,56 @@ class PlayerHandler:
         self.tutorial_mgr = TutorialManager(self.db)
         
         # ===== 修仙界专属节日配置表 =====
+        # v3.18.4 数值平衡：节日福利从日常签到的 20-60 倍压缩到 10-20 倍
+        # （旧数值 5,200-30,000 会让全年收入的绝大部分集中在十几个节日里）
         self.FESTIVALS = {
             "01-01": {
-                "name": "问道节", "desc": "一元复始，感悟天地法则，闭关修炼效率大增。", 
-                "gold": 8888, "exp": 8888, "item": "洗练石", "item_count": 1
+                "name": "问道节", "desc": "一元复始，感悟天地法则，闭关修炼效率大增。",
+                "gold": 3000, "exp": 3000, "item": "洗练石", "item_count": 1
             },
             "02-14": {
-                "name": "结缘节", "desc": "红线牵缘，道侣情深，天地灵气化作祝福。", 
-                "gold": 5200, "exp": 5200, "item": "强化石", "item_count": 2
+                "name": "结缘节", "desc": "红线牵缘，道侣情深，天地灵气化作祝福。",
+                "gold": 2000, "exp": 2000, "item": "强化石", "item_count": 2
             },
             "03-03": {
-                "name": "蟠桃盛会", "desc": "瑶池金母设宴，三千年一开花，三千年一结果。", 
-                "gold": 30000, "exp": 50000, "item": "极品洗练石", "item_count": 2
+                "name": "蟠桃盛会", "desc": "瑶池金母设宴，三千年一开花，三千年一结果。",
+                "gold": 8000, "exp": 12000, "item": "极品洗练石", "item_count": 2
             },
             "05-04": {
-                "name": "百器争鸣", "desc": "天下炼器师齐聚，地火涌动，正是炼器好时节。", 
-                "gold": 10400, "exp": 10400, "item": "天外陨铁", "item_count": 3
+                "name": "百器争鸣", "desc": "天下炼器师齐聚，地火涌动，正是炼器好时节。",
+                "gold": 3500, "exp": 3500, "item": "天外陨铁", "item_count": 3
             },
             "06-06": {
-                "name": "镇魔日", "desc": "天狗食日，魔气肆虐，天道赐下护身法宝。", 
-                "gold": 6666, "exp": 6666, "item": "迷神香", "item_count": 2
+                "name": "镇魔日", "desc": "天狗食日，魔气肆虐，天道赐下护身法宝。",
+                "gold": 2500, "exp": 2500, "item": "迷神香", "item_count": 2
             },
             "07-07": {
-                "name": "双星会", "desc": "牛郎织女星交汇，此时双修可得双倍天地馈赠。", 
-                "gold": 7700, "exp": 7700, "item": "护府令", "item_count": 1
+                "name": "双星会", "desc": "牛郎织女星交汇，此时双修可得双倍天地馈赠。",
+                "gold": 2800, "exp": 2800, "item": "护府令", "item_count": 1
             },
             "08-15": {
-                "name": "太阴盛会", "desc": "月圆之夜，太阴之精最盛，适合吸收月华修炼。", 
-                "gold": 15000, "exp": 15000, "item": "九叶灵芝", "item_count": 1
+                "name": "太阴盛会", "desc": "月圆之夜，太阴之精最盛，适合吸收月华修炼。",
+                "gold": 5000, "exp": 5000, "item": "九叶灵芝", "item_count": 1
             },
             "09-09": {
-                "name": "重阳飞升日", "desc": "登高望远，触摸天门，各大宗门发放试炼奖励。", 
-                "gold": 9999, "exp": 9999, "item": "洗练石", "item_count": 3
+                "name": "重阳飞升日", "desc": "登高望远，触摸天门，各大宗门发放试炼奖励。",
+                "gold": 3200, "exp": 3200, "item": "洗练石", "item_count": 3
             },
             "10-01": {
-                "name": "万仙来朝", "desc": "普天同庆，仙界大开宝库，降下海量修行资源。", 
-                "gold": 19490, "exp": 19490, "item": "极品洗练石", "item_count": 1
+                "name": "万仙来朝", "desc": "普天同庆，仙界大开宝库，降下海量修行资源。",
+                "gold": 6500, "exp": 6500, "item": "极品洗练石", "item_count": 1
             },
             "11-11": {
-                "name": "清心寡欲日", "desc": "红尘滚滚，我自独行，极致的孤独带来极致的道心。", 
-                "gold": 11110, "exp": 11110, "item": "强化石", "item_count": 5
+                "name": "清心寡欲日", "desc": "红尘滚滚，我自独行，极致的孤独带来极致的道心。",
+                "gold": 3800, "exp": 3800, "item": "强化石", "item_count": 5
             },
             "12-22": {
-                "name": "阴极冬至", "desc": "阴极之至，阳气始生，天道赐下纯阳之气助你突破。", 
-                "gold": 12220, "exp": 12220, "item": "天阶·混元道果", "item_count": 1
+                "name": "阴极冬至", "desc": "阴极之至，阳气始生，天道赐下纯阳之气助你突破。",
+                "gold": 4200, "exp": 4200, "item": "天阶·混元道果", "item_count": 1
             },
             "12-25": {
-                "name": "瑞雪丰年", "desc": "天降祥瑞，灵石矿脉爆发，万物生机盎然。", 
-                "gold": 12250, "exp": 12250, "item": "极品洗练石", "item_count": 1
+                "name": "瑞雪丰年", "desc": "天降祥瑞，灵石矿脉爆发，万物生机盎然。",
+                "gold": 4200, "exp": 4200, "item": "极品洗练石", "item_count": 1
             },
         }
 
@@ -375,11 +377,28 @@ class PlayerHandler:
             yield event.plain_result("数据异常：未记录闭关开始时间。")
             return
 
+        # 原子占位：把闭关开始时间清零，并发出关的第二条并发请求会因 WHERE 不满足被拦下，防止双倍结算
+        start_time = player.cultivation_start_time
+        async with self.db.conn.execute(
+            "UPDATE players SET cultivation_start_time = 0 WHERE user_id = ? AND cultivation_start_time = ?",
+            (player.user_id, start_time)
+        ) as cursor:
+            claimed = cursor.rowcount > 0
+        if not claimed:
+            yield event.plain_result("道友当前并未闭关，无需出关。")
+            return
+
         end_time = int(time.time())
-        duration_seconds = end_time - player.cultivation_start_time
+        duration_seconds = end_time - start_time
         duration_minutes = duration_seconds // 60
 
         if duration_minutes < 1:
+            # 不足1分钟不结算，恢复闭关开始时间让玩家重新出关
+            await self.db.conn.execute(
+                "UPDATE players SET cultivation_start_time = ? WHERE user_id = ?",
+                (start_time, player.user_id)
+            )
+            await self.db.conn.commit()
             yield event.plain_result("道友闭关时间不足1分钟，未获得修为。")
             return
 
@@ -481,11 +500,86 @@ class PlayerHandler:
         except Exception:
             pass
 
+        # v3.19.0 新玩法：天象 / 轮回周目 / 图鉴收集（全部异常安全，静默降级）
+        try:
+            if getattr(self, "weather_ref", None):
+                wm = await self.weather_ref.get_multiplier("cultivate")
+                if wm != 1.0:
+                    gained_exp = int(gained_exp * wm)
+                    tide_note += f"\n🌦️ 天象加护：修炼收益{wm:.0%}倍" if wm > 1 else f"\n🌦️ 天象晦暗：修炼收益{wm:.0%}倍"
+        except Exception:
+            pass
+        try:
+            from ..managers.samsara_manager import SamsaraManager
+            from ..managers.collection_manager import CollectionManager
+            sams_bonus = SamsaraManager.get_exp_bonus(player)
+            coll_bonus = CollectionManager.get_exp_bonus(player)
+            if sams_bonus > 0:
+                gained_exp = int(gained_exp * (1 + sams_bonus))
+                tide_note += f"\n🔄 周目感悟：修炼收益+{sams_bonus:.0%}"
+            if coll_bonus > 0:
+                gained_exp = int(gained_exp * (1 + coll_bonus))
+                tide_note += f"\n📖 图鉴通明：修炼收益+{coll_bonus:.0%}"
+        except Exception:
+            pass
+        # v3.20.0 新玩法：玩家结契羁绊加成 / 灵宠出战加成（异常安全）
+        try:
+            from ..managers.marriage_manager import MarriageManager
+            bond = await MarriageManager(self.db).bond_bonus(player)
+            if bond > 0:
+                gained_exp = int(gained_exp * (1 + bond))
+                tide_note += f"\n💞 道侣同心：修炼收益+{bond:.0%}"
+        except Exception:
+            pass
+        try:
+            from ..managers.pet_battle_manager import PetBattleManager
+            petb = await PetBattleManager(self.db).get_exp_bonus(player.user_id)
+            if petb > 0:
+                gained_exp = int(gained_exp * (1 + petb))
+                tide_note += f"\n🐾 灵宠协修：修炼收益+{petb:.0%}"
+        except Exception:
+            pass
+        # v3.21.0 宗门科技·聚灵阵（全宗修炼加成，异常安全）
+        try:
+            if player.sect_id:
+                from ..managers.sect_tech_manager import SectTechManager
+                tech = await SectTechManager(self.db).get_cultivate_bonus(player.sect_id)
+                if tech > 0:
+                    gained_exp = int(gained_exp * (1 + tech))
+                    tide_note += f"\n🏛️ 宗门聚灵阵：修炼收益+{tech:.0%}"
+        except Exception:
+            pass
+        # v3.22.0 登仙台全服加成（异常安全）
+        try:
+            from ..managers.ascension_project_manager import AscensionProjectManager
+            asc = await AscensionProjectManager(self.db).get_bonus()
+            if asc > 0:
+                gained_exp = int(gained_exp * (1 + asc))
+                tide_note += f"\n⛩️ 登仙台仙泽：全服修炼收益+{asc:.0%}"
+        except Exception:
+            pass
+        # v3.22.0 每日求签（异常安全）
+        try:
+            from ..managers.fortune_stick_manager import FortuneStickManager
+            fm = await FortuneStickManager(self.db).get_exp_mult(player)
+            if fm != 1.0:
+                gained_exp = int(gained_exp * fm)
+                tide_note += f"\n🎋 运势{'亨通' if fm > 1 else '低迷'}：修炼收益{fm:.0%}倍"
+        except Exception:
+            pass
+
         player.experience += gained_exp
         player.state = "空闲"
         player.cultivation_start_time = 0
         await self.db.update_player(player)
         await self.db.ext.set_user_free(player.user_id)
+
+        # 天骄榜：记录赛季修为增量（异常安全）
+        try:
+            if getattr(self, "season_ref", None) and gained_exp > 0:
+                await self.season_ref.record_exp_gain(player.user_id, gained_exp)
+        except Exception:
+            pass
 
         await self.db.ext.add_task_progress(player.user_id, "cultivate", 1)
         tutorial_msg = await self.tutorial_mgr.check_and_advance(player, "cultivate")
@@ -553,8 +647,20 @@ class PlayerHandler:
             yield event.plain_result("📅 道友今日已经签到过了，请明日再来。")
             return
 
-        check_in_gold_min = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MIN", 50)
-        check_in_gold_max = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MAX", 500)
+        # 原子占位签到日期：并发的第二条 /签到 会因 WHERE 条件不满足（rowcount=0）被拦下，防止双领
+        async with self.db.conn.execute(
+            "UPDATE players SET last_check_in_date = ? WHERE user_id = ? AND (last_check_in_date IS NULL OR last_check_in_date != ?)",
+            (today, player.user_id, today)
+        ) as cursor:
+            claimed = cursor.rowcount > 0
+        if not claimed:
+            player.last_check_in_date = today
+            yield event.plain_result("📅 道友今日已经签到过了，请明日再来。")
+            return
+        player.last_check_in_date = today
+
+        check_in_gold_min = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MIN", 100)
+        check_in_gold_max = self.config.get("VALUES", {}).get("CHECK_IN_GOLD_MAX", 800)
         if check_in_gold_min > check_in_gold_max:
             check_in_gold_min, check_in_gold_max = check_in_gold_max, check_in_gold_min
 
@@ -587,6 +693,7 @@ class PlayerHandler:
         await self.db.update_player(player)
         await self.db.ext.add_task_progress(player.user_id, "check_in", 1)
         # 称号：累计签到
+        extra_msgs = ""
         try:
             self._last_checkin_title = await self.title_hooks.bump(player, "checkin_count") if getattr(self, "title_hooks", None) else ""
             try:
@@ -596,6 +703,17 @@ class PlayerHandler:
                 pass
         except Exception:
             self._last_checkin_title = ""
+        # v3.19.0 新玩法：签到里程碑 / 图鉴收集 / 道侣周任务 / 天骄榜
+        try:
+            if getattr(self, "ckms_ref", None):
+                extra_msgs += await self.ckms_ref.on_checkin(player)
+            if getattr(self, "collection_ref", None):
+                extra_msgs += await self.collection_ref.check_and_grant(player)
+            if getattr(self, "couple_quest_ref", None):
+                await self.couple_quest_ref.record_action(player, "checkin")
+        except Exception as e:
+            from astrbot.api import logger
+            logger.warning(f"签到新玩法钩子异常: {e}")
 
         reply_msg = (
             "✅ 签到成功！\n"
@@ -606,6 +724,7 @@ class PlayerHandler:
             "明日再来，莫要忘记哦~"
         )
         reply_msg += festival_msg
+        reply_msg += extra_msgs
 
         # ===== 签到卡片：成功只发图，失败/关闭降级为纯文本（节日自动切换背景）=====
         try:

@@ -15,7 +15,9 @@ class WorldBossManager:
         self.db = db
         self.config_manager = config_manager
         self.storage_ring_mgr = storage_ring_mgr
-        self.last_milestone_msg = None
+        self.last_challenge_ok = {}   # user_id -> bool，供任务进度判定（按用户隔离，防并发覆盖）
+        self.last_settle_msg = {}     # user_id -> 结算广播文本
+        self.last_milestone_msg = {}  # user_id -> 里程碑播报文本
 
     HP_RATIO = 0.60  # v6.19：Boss血量 = 全服玩家战力总和的 60%
 
@@ -64,13 +66,20 @@ class WorldBossManager:
 
     async def spawn_boss(self) -> Tuple[bool, str]:
         """生成世界Boss"""
+        # 先关闭已过期未击杀的Boss，否则 status=1 的死Boss会永久卡死生成
+        now = int(time.time())
+        await self.db.conn.execute(
+            "UPDATE world_boss SET status = 2 WHERE status = 1 AND expire_time < ?",
+            (now,)
+        )
+        await self.db.conn.commit()
+
         async with self.db.conn.execute("SELECT * FROM world_boss WHERE status = 1") as cursor:
             if await cursor.fetchone():
                 return False, "❌ 当前已有世界Boss存活！"
 
         max_hp, p_count = await self.calculate_dynamic_hp()
         boss_name = random.choice(self.BOSS_NAMES)
-        now = int(time.time())
         expire_time = now + 86400 # 存活 24 小时
 
         await self.db.conn.execute(
@@ -114,6 +123,12 @@ class WorldBossManager:
             boss = dict(row)
 
         if now > boss["expire_time"]:
+            # 过期Boss就地关闭，避免永久占用 status=1 卡死后续生成
+            await self.db.conn.execute(
+                "UPDATE world_boss SET status = 2 WHERE boss_id = ? AND status = 1",
+                (boss["boss_id"],)
+            )
+            await self.db.conn.commit()
             return False, "❌ Boss已逃遁，请等待下次降临。"
 
         # 2. 检查个人挑战次数与冷却（次数按自然日重置：跨日后当日次数清零）
@@ -144,11 +159,12 @@ class WorldBossManager:
             player.physical_damage, player.magic_damage, player.cultivation_type
         )
         base_damage = int(realtime_atk * 100 + player.experience * 0.1)
-        
+
         damage_percent = (base_damage / boss["max_hp"]) * 100
 
-        # 强制限制在 0.5% ~ 3.0% 之间
-        damage_percent = max(0.5, min(3.0, damage_percent))
+        # v3.18.4 数值平衡：去掉 0.5%~3.0% 的硬夹紧（旧夹紧让任何 Boss 都是 33-200 刀，
+        # 血量公式形同虚设）。仅保留 25% 单次上限防秒杀，伤害真正由玩家战力决定
+        damage_percent = min(25.0, damage_percent)
         final_damage = int(boss["max_hp"] * (damage_percent / 100))
         
         if final_damage > boss["current_hp"]:
@@ -157,21 +173,57 @@ class WorldBossManager:
         # 4. 开启事务进行并发扣血与记录
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            new_hp = boss["current_hp"] - final_damage
+            # 事务内复查每日次数与冷却：事务外的读-判-写可被并发请求绕过
+            if record:
+                async with self.db.conn.execute(
+                    "SELECT attack_count, last_attack_time FROM world_boss_damage WHERE id = ?",
+                    (rec.get("id", 0),)
+                ) as cursor:
+                    live_row = await cursor.fetchone()
+                if live_row:
+                    live_day = time.strftime("%Y%m%d", time.localtime(live_row[1])) if live_row[1] else ""
+                    live_count = 0 if live_day != today_str else live_row[0]
+                    if live_count >= 3:
+                        await self.db.conn.rollback()
+                        return False, "❌ 你今日的挑战次数已用尽（每日限3次，次日刷新）。"
+                    if now - live_row[1] < 300:
+                        await self.db.conn.rollback()
+                        return False, f"❌ 调息中，请 {300 - (now - live_row[1])} 秒后再来。"
+
+            # 事务内重读血量，用原子减法更新，避免并发挑战基于同一快照互相覆盖（伤害丢失/血量回升）
+            async with self.db.conn.execute(
+                "SELECT current_hp FROM world_boss WHERE boss_id = ? AND status = 1",
+                (boss["boss_id"],)
+            ) as cursor:
+                hp_row = await cursor.fetchone()
+            if not hp_row:
+                await self.db.conn.rollback()
+                return False, "❌ Boss已被其他道友击杀！"
+            live_hp = hp_row[0]
+            final_damage = min(final_damage, live_hp)
+            new_hp = live_hp - final_damage
             is_kill = False
+            await self.db.conn.execute(
+                "UPDATE world_boss SET current_hp = MAX(0, current_hp - ?), status = CASE WHEN current_hp - ? <= 0 THEN 2 ELSE status END WHERE boss_id = ?",
+                (final_damage, final_damage, boss["boss_id"])
+            )
             if new_hp <= 0:
                 new_hp = 0
                 is_kill = True
-                await self.db.conn.execute("UPDATE world_boss SET current_hp = ?, status = 2 WHERE boss_id = ?", (new_hp, boss["boss_id"]))
-            else:
-                await self.db.conn.execute("UPDATE world_boss SET current_hp = ? WHERE boss_id = ?", (new_hp, boss["boss_id"]))
 
-            # 记录伤害
+            # 记录伤害（跨天时原子重置次数，避免 DB 中 attack_count 无限膨胀且可被并发绕过）
             if record:
-                await self.db.conn.execute(
-                    "UPDATE world_boss_damage SET total_damage = total_damage + ?, attack_count = attack_count + 1, last_attack_time = ? WHERE id = ?",
-                    (final_damage, now, rec.get("id", 0))
-                )
+                last_day = time.strftime("%Y%m%d", time.localtime(rec["last_attack_time"])) if rec["last_attack_time"] else ""
+                if last_day != today_str:
+                    await self.db.conn.execute(
+                        "UPDATE world_boss_damage SET total_damage = total_damage + ?, attack_count = 1, last_attack_time = ? WHERE id = ?",
+                        (final_damage, now, rec.get("id", 0))
+                    )
+                else:
+                    await self.db.conn.execute(
+                        "UPDATE world_boss_damage SET total_damage = total_damage + ?, attack_count = attack_count + 1, last_attack_time = ? WHERE id = ?",
+                        (final_damage, now, rec.get("id", 0))
+                    )
             else:
                 await self.db.conn.execute(
                     "INSERT INTO world_boss_damage (boss_id, user_id, total_damage, attack_count, last_attack_time) VALUES (?, ?, ?, 1, ?)",
@@ -184,7 +236,7 @@ class WorldBossManager:
             logger.error(f"世界Boss战斗异常: {e}")
             return False, "❌ 战斗异常，请稍后再试。"
 
-        self.last_challenge_ok = True  # 真正打出伤害，供任务进度判定
+        self.last_challenge_ok[player.user_id] = True  # 真正打出伤害，供任务进度判定
 
         # v6.20 血量里程碑全服播报（25%/50%/75%，每档只播一次）
         try:
@@ -195,7 +247,7 @@ class WorldBossManager:
                     announced = await self.db.ext.get_system_config(key)
                     if not announced:
                         await self.db.ext.set_system_config(key, "1")
-                        self.last_milestone_msg = (
+                        self.last_milestone_msg[player.user_id] = (
                             f"📢【战况播报】【{boss['boss_name']}】血量已跌破 {label}！\n"
                             f"❤️ 剩余 {new_hp:,} / {boss['max_hp']:,}\n"
                             f"⚔️ 各位道友一鼓作气，尾刀奖励丰厚！"
@@ -243,43 +295,61 @@ class WorldBossManager:
             display_name = target_player.user_name or dmg['user_id']
 
             if dmg["user_id"] == killer_id:
-                # 发尾刀奖励
+                # 发尾刀奖励（灵石走 DB 原子加法；储物戒物品 store_item 内部自带事务落库）
+                # v3.18.4：适配压缩后的经济水位（满级押镖 30 分钟约 2 万）
                 await self.storage_ring_mgr.store_item(target_player, "洗练石", 2, silent=True)
-                await self.db.add_player_gold(target_player.user_id, 50000)
-                target_player.gold += 50000
+                await self.db.add_player_gold(target_player.user_id, 20000)
+                target_player.gold += 20000
 
-                # ===== 核心修复：实装尾刀称号 =====
+                # ===== 尾刀称号：展示位 + 图鉴双写（只写展示位拿不到加成） =====
                 if not target_player.title or target_player.title != "灭世魔神":
                     await self.db.update_player_fields(target_player.user_id, title="灭世魔神")
                     target_player.title = "灭世魔神"
+                    try:
+                        from .title_manager import TitleManager
+                        tm = TitleManager(self.db)
+                        ok, _ = tm.grant(target_player, "灭世魔神")
+                        if ok:
+                            await self.db.update_player_fields(target_player.user_id, permanent_bonus=target_player.permanent_bonus)
+                    except Exception as e:
+                        logger.warning(f"尾刀称号写入图鉴失败: {e}")
                     msg.append(f"👑 恭喜【{display_name}】斩杀世界Boss，获得唯一称号：【灭世魔神】！")
                 # 更新显示名（加上称号前缀）
                 display_name = f"【灭世魔神】{display_name}"
                 # ==================================
 
-                msg.append(f"🏆 {rank}. {display_name} - 尾刀大奖(洗练石x2, 5万灵石)")
+                msg.append(f"🏆 {rank}. {display_name} - 尾刀大奖(洗练石x2, 2万灵石)")
 
             elif rank <= 3:
                 await self.storage_ring_mgr.store_item(target_player, "洗练石", 1, silent=True)
-                await self.db.add_player_gold(target_player.user_id, 20000)
-                target_player.gold += 20000
+                await self.db.add_player_gold(target_player.user_id, 8000)
+                target_player.gold += 8000
                 # 显示带有称号的名字
                 if target_player.title:
                     display_name = f"【{target_player.title}】{display_name}"
-                msg.append(f"🥇 {rank}. {display_name} - 主力输出(洗练石x1, 2万灵石)")
+                msg.append(f"🥇 {rank}. {display_name} - 主力输出(洗练石x1, 8千灵石)")
 
             else:
-                await self.db.add_player_gold(target_player.user_id, 5000)
-                target_player.gold += 5000
+                await self.db.add_player_gold(target_player.user_id, 2000)
+                target_player.gold += 2000
                 # 显示带有称号的名字
                 if target_player.title:
                     display_name = f"【{target_player.title}】{display_name}"
-                msg.append(f"🥉 {rank}. {display_name} - 参与奖(5千灵石)")
+                msg.append(f"🥉 {rank}. {display_name} - 参与奖(2千灵石)")
 
         msg.append("━━━━━━━━━━━━━━━")
         msg.append("💡 奖励已发放至各位修士的储物戒/账户！")
 
+        # v3.21.0 战利品拍卖：Boss 击杀掉落稀有物进入全服竞拍（大额灵石回收口）
+        try:
+            from .loot_auction_manager import LootAuctionManager
+            ok, auction_msg = await LootAuctionManager(self.db).open_auction(boss_name, 1)
+            if ok and auction_msg:
+                msg.append("\n" + auction_msg)
+        except Exception as e:
+            logger.warning(f"战利品拍卖开启失败: {e}")
+
         # 缓存结算文本，由指令层负责全服广播
-        self.last_settle_msg = "\n".join(msg)
+        self.last_settle_msg[killer_id] = "\n".join(msg)
 
         return "\n".join(msg)

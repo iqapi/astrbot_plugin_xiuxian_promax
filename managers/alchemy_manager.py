@@ -317,10 +317,12 @@ class AlchemyManager:
                 # ============================================================
 
                 if not pill_ruined:
-                    # 炼制成功 - 存入丹药背包（极品丹产出双份，等效强化收益）
+                    # 炼制成功 - 存入丹药背包
+                    # v3.18.4 数值平衡：一炉产出 3 份（极品 5 份）。此前 1 份产出使原料成本高于
+                    # 商店同款售价（如炼气丹原料 100 vs 售价 50），炼丹在经济上永远亏本
                     pill_name = recipe["name"]
                     inventory = player.get_pills_inventory()
-                    inventory[pill_name] = inventory.get(pill_name, 0) + (2 if perfect else 1)
+                    inventory[pill_name] = inventory.get(pill_name, 0) + (5 if perfect else 3)
                     player.set_pills_inventory(inventory)
                     if perfect:
                         pill_name = recipe["name"] + "（极品）"
@@ -356,7 +358,7 @@ class AlchemyManager:
 
                 perfect_note = ""
                 if perfect:
-                    perfect_note = "\n🌟 天时地利！此丹竟是【极品】！额外多得一枚同款丹药"
+                    perfect_note = "\n🌟 天时地利！此丹竟是【极品】！一炉多得两枚同款丹药"
                 try:
                     from ..managers.flavor import flavor
                     perfect_note += flavor("craft_ok")

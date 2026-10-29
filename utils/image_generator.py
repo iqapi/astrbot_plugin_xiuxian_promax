@@ -91,7 +91,13 @@ def _load_font(size: int, style: str = "text"):
             f = ImageFont.truetype(str(cand), size)
             break
     if f is None:
+        # 所有候选字体缺失：降级到点阵默认字体（中文大字会渲染成豆腐块），必须留痕便于排查
         f = ImageFont.load_default()
+        try:
+            from astrbot.api import logger
+            logger.warning(f"字体加载失败，已降级为默认点阵字体（中文显示会异常）: style={style} size={size}")
+        except Exception:
+            pass
     _font_cache[key] = f
     return f
 
@@ -148,8 +154,29 @@ def _shadow(draw, xy, text, font, fill):
     draw.text((x, y), text, font=font, fill=fill)
 
 
+_GRAD_CACHE: Dict[int, Image.Image] = {}
+
+
+def _vgrad(w: int, h: int, top=(238, 206, 128), bottom=(176, 132, 62)) -> Image.Image:
+    """竖向鎏金渐变（v3.24.0：按高度缓存，替代逐像素 putpixel）"""
+    key = (w, h, top, bottom)
+    if key in _GRAD_CACHE:
+        return _GRAD_CACHE[key]
+    grad = Image.new("RGB", (1, h))
+    for yy in range(h):
+        t = yy / max(1, h - 1)
+        grad.putpixel((0, yy), tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
+    grad = grad.resize((w, h))
+    if len(_GRAD_CACHE) > 128:
+        _GRAD_CACHE.clear()
+    _GRAD_CACHE[key] = grad
+    return grad
+
+
 def _gold_gradient_text(canvas, xy, text, font) -> Tuple[int, int]:
-    """烫金渐变文字：上亮金下暗金，带墨色柔影与微光晕。返回 (宽, 高)"""
+    """烫金渐变文字：上亮金下暗金，带墨色柔影与微光晕。返回 (宽, 高)
+    v3.24.0：影/晕/金字合并进一个小图块，单次 alpha_composite(dest) 上屏
+    （旧实现每个文字建 3 个全画布图层，O(全卡尺寸) 内存开销）"""
     x, y = xy
     tw = int(_font_textlen(font, text)) + 8
     th = font.size + 14
@@ -163,29 +190,24 @@ def _gold_gradient_text(canvas, xy, text, font) -> Tuple[int, int]:
         return tw, th
     mask = mask.crop(bbox)
     w2, h2 = mask.size
-    # 竖向鎏金渐变
-    grad = Image.new("RGB", (1, h2))
-    top, bottom = (248, 218, 148), (176, 132, 62)
-    for yy in range(h2):
-        t = yy / max(1, h2 - 1)
-        grad.putpixel((0, yy), tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
-    grad = grad.resize((w2, h2))
-    # 墨影层
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    sd.text((x + 2, y + 3), text, font=font, fill=INK_SHADOW)
-    shadow = shadow.filter(ImageFilter.GaussianBlur(2))
-    # 金光晕
-    glow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    grad = _vgrad(w2, h2, (248, 218, 148), (176, 132, 62))
+    # 合成小图块：光晕 + 墨影 + 金字（pad 预留模糊溢出空间）
+    pad = 10
+    tile = Image.new("RGBA", (w2 + pad * 2, h2 + pad * 2), (0, 0, 0, 0))
+    glow = Image.new("RGBA", tile.size, (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    gd.text((x, y), text, font=font, fill=(230, 190, 110, 90))
+    gd.text((pad + bbox[0] - 4, pad + bbox[1] - 4), text, font=font, fill=(230, 190, 110, 90))
     glow = glow.filter(ImageFilter.GaussianBlur(6))
-    canvas.alpha_composite(glow)
-    canvas.alpha_composite(shadow)
-    # 贴上渐变金字
-    gold_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    gold_layer.paste(grad, (int(x + bbox[0] - 4), int(y + bbox[1] - 4)), mask)
-    canvas.alpha_composite(gold_layer)
+    tile.alpha_composite(glow)
+    shadow = Image.new("RGBA", tile.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    sd.text((pad + bbox[0] - 2, pad + bbox[1] - 1), text, font=font, fill=INK_SHADOW)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(2))
+    tile.alpha_composite(shadow)
+    glyph = Image.new("RGBA", (w2, h2), (0, 0, 0, 0))
+    glyph.paste(grad, (0, 0), mask)
+    tile.alpha_composite(glyph, (pad, pad))
+    canvas.alpha_composite(tile, (int(x + bbox[0] - 4 - pad), int(y + bbox[1] - 4 - pad)))
     return tw, th
 
 
@@ -252,26 +274,18 @@ def _draw_mixed(canvas_draw_image, xy, text, font, emoji_px: int, fill,
             tmp = tmp.crop(bbox)
             scale = emoji_px / tmp.height
             tmp = tmp.resize((max(1, int(tmp.width * scale)), emoji_px), Image.LANCZOS)
-            # 镀金：剪影作为蒙版填金色渐变 + 柔影
-            gold = Image.new('RGBA', canvas_draw_image.size, (0, 0, 0, 0))
-            # 竖向金渐变
-            grad = Image.new('RGB', (1, tmp.height))
-            for yy in range(tmp.height):
-                t = yy / max(1, tmp.height - 1)
-                grad.putpixel((0, yy), tuple(int(238 + (176 - 238) * t) if i == 0 else
-                                             int(206 + (150 - 206) * t) if i == 1 else
-                                             int(128 + (74 - 128) * t) for i in range(3)))
-            grad = grad.resize((tmp.width, tmp.height))
+            # v3.24.0：镀金 + 柔影合并进小图块，单次 alpha_composite(dest) 上屏
+            # （旧实现每个 emoji 建 2 个全画布图层，O(全卡尺寸) 开销）
+            grad = _vgrad(tmp.width, tmp.height, (238, 206, 128), (176, 150, 74))
             glyph = Image.new('RGBA', tmp.size, (0, 0, 0, 0))
             glyph.paste(grad, (0, 0), tmp)
             gx, gy = int(x), int(y + emoji_px * 0.12)
+            pad_l, pad_t = (2 if shadow else 0), (3 if shadow else 0)
+            tile = Image.new('RGBA', (glyph.width + pad_l + 1, glyph.height + pad_t + 1), (0, 0, 0, 0))
             if shadow:
-                sh = Image.new('RGBA', canvas_draw_image.size, (0, 0, 0, 0))
-                sh.paste(Image.new('RGBA', tmp.size, (0, 0, 0, 150)), (gx + 1, gy + 2), tmp)
-                canvas_draw_image.alpha_composite(sh.filter(ImageFilter.GaussianBlur(1.5)))
-            gold_layer = Image.new('RGBA', canvas_draw_image.size, (0, 0, 0, 0))
-            gold_layer.paste(glyph, (gx, gy), glyph)
-            canvas_draw_image.alpha_composite(gold_layer)
+                tile.paste((0, 0, 0, 150), (pad_l + 1, pad_t + 2), tmp)
+            tile.alpha_composite(glyph, (pad_l, pad_t))
+            canvas_draw_image.alpha_composite(tile, (gx - pad_l, gy - pad_t))
             x += tmp.width + emoji_px * 0.18
         else:
             if shadow:
@@ -292,6 +306,89 @@ def _mixed_width(text: str, font, emoji_px: int) -> float:
     return w
 
 
+# ===== v3.25.0 仙侠视觉：水墨远山 / 朱红印章 / 金角饰 / 粒子 =====
+
+def _draw_ink_mountains(canvas, width, height, seed: int):
+    """层叠远山剪影（低透明度，营造水墨意境）"""
+    import random as _r
+    rng = _r.Random(seed)
+    layers = [
+        (int(height * 0.42), 90, 42, (70, 84, 112)),
+        (int(height * 0.55), 120, 32, (55, 66, 90)),
+        (int(height * 0.70), 150, 24, (42, 51, 70)),
+    ]
+    for base_y, amp, alpha, color in layers:
+        layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        pts = [(0, height)]
+        x = 0
+        phase = rng.uniform(0, 6.28)
+        while x <= width:
+            y = base_y + amp * 0.4 * abs(((x * 0.011 + phase) % 6.28) - 3.14) \
+                + amp * 0.25 * (((x * 0.037 + phase * 2) % 6.28) - 3.14) / 3.14
+            pts.append((x, y))
+            x += 14
+        pts.append((width, height))
+        d.polygon(pts, fill=color + (alpha,))
+        canvas.alpha_composite(layer)
+
+
+def _draw_gold_particles(canvas, width, height, seed: int, count: int = 46):
+    """飘散金尘粒子（顶部密、往下疏）"""
+    import random as _r
+    rng = _r.Random(seed)
+    layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    for _ in range(count):
+        x = rng.uniform(10, width - 10)
+        y = rng.uniform(10, height * 0.75)
+        r = rng.uniform(1.0, 2.8)
+        a = int(150 * (1 - y / height) + 30)
+        d.ellipse([x - r, y - r, x + r, y + r], fill=(238, 206, 128, a))
+    canvas.alpha_composite(layer)
+
+
+def _draw_seal(canvas, x: int, y: int, char: str, size: int = 64):
+    """朱红印章（圆角方、白字、微旋转、描边微糙）"""
+    tile = Image.new("RGBA", (size + 12, size + 12), (0, 0, 0, 0))
+    d = ImageDraw.Draw(tile)
+    d.rounded_rectangle([6, 6, size + 6, size + 6], radius=10, fill=(172, 42, 36, 235),
+                        outline=(238, 206, 128, 180), width=2)
+    f = _load_font(int(size * 0.62), "heavy")
+    w = d.textlength(char, font=f)
+    d.text(((size + 12 - w) / 2, size * 0.14), char, font=f, fill=(248, 238, 220, 255))
+    tile = tile.rotate(-4, expand=True, resample=Image.BICUBIC)
+    canvas.alpha_composite(tile, (x, y))
+
+
+def _draw_cloud_divider(draw, cx: int, y: int, half_span: int, color):
+    """云头纹分隔线：中菱形 + 两侧弧形云头 + 细线"""
+    d = draw
+    d.polygon([(cx - 7, y), (cx, y - 6), (cx + 7, y), (cx, y + 6)], fill=color)
+    for sgn in (-1, 1):
+        x0 = cx + sgn * 16
+        xa, xb = sorted((x0, x0 + sgn * 44))
+        d.arc([xa, y - 8, xb, y + 8], start=270 if sgn > 0 else 90, end=90 if sgn > 0 else 270, fill=color, width=2)
+        x1 = cx + sgn * 56
+        xa2, xb2 = sorted((x1, x1 + sgn * 70))
+        d.arc([xa2, y - 6, xb2, y + 6], start=270 if sgn > 0 else 90, end=90 if sgn > 0 else 270, fill=color, width=1)
+        d.line([(x1 + sgn * 70, y), (cx + sgn * (half_span - 20), y)], fill=color, width=1)
+
+
+def _draw_corner_ornaments(draw, width, height, color, pad: int = 26, arm: int = 46):
+    """四角金饰：L 形双线 + 端点菱形（color 支持 3/4 元组）"""
+    rgb = tuple(color[:3])
+    base_a = color[3] if len(color) > 3 else 255
+    for cx, cy, dx, dy in ((pad, pad, 1, 1), (width - pad, pad, -1, 1),
+                           (pad, height - pad, 1, -1), (width - pad, height - pad, -1, -1)):
+        draw.line([(cx, cy + dy * arm), (cx, cy), (cx + dx * arm, cy)], fill=rgb + (base_a,), width=3)
+        draw.line([(cx + dx * 8, cy + dy * (arm - 10)), (cx + dx * 8, cy + dy * 8), (cx + dx * (arm - 10), cy + dy * 8)],
+                  fill=rgb + (150,), width=1)
+        d = 5
+        tx, ty = cx + dx * arm, cy
+        draw.polygon([(tx + dx * d, ty), (tx, ty - d), (tx - dx * d, ty), (tx, ty + d)], fill=rgb + (base_a,))
+
+
 def render_card(
     bg_name: str,
     title: str,
@@ -307,8 +404,7 @@ def render_card(
     bg_path = BG_DIR / f"{bg_name}.jpg"
     if not bg_path.exists():
         bg_path = BG_DIR / "default.jpg"
-    if not bg_path.exists():
-        return None
+    # v3.25.0：背景已程序化绘制，bg 图缺失亦可渲染（图仅作低透明纹理）
 
     sections = sections or []
 
@@ -340,7 +436,7 @@ def render_card(
                 max_value_w = max(max_value_w, vw, lw + 30)
             body_height += row_h * len(sec.get("rows", []))
             body_height += row_h * len(sec.get("lines", []))
-            body_height += section_gap
+            body_height += section_gap + 44   # v3.25.0：每个区块独立子面板的上下留白
         # 数值列宽 = min(最长数值, 上限)，且保证字段列 >= 最低占比
         value_col = int(min(max(max_value_w, content_w * 0.40), content_w * VALUE_RATIO_MAX))
         value_col = max(value_col, int(content_w * (1 - LABEL_RATIO_MIN)) - 0)
@@ -350,46 +446,66 @@ def render_card(
         footer_h = 70 if footer else 30
         height = max(640, header_h + inner + body_height + inner + footer_h + pad)
 
-        # ===== 背景 =====
-        bg = Image.open(bg_path).convert("RGB")
-        canvas = _cover_resize(bg, width, height)
-        canvas = ImageEnhance.Brightness(canvas).enhance(0.45)
-        canvas = ImageEnhance.Color(canvas).enhance(0.85).convert("RGBA")
+        # ===== 背景：水墨夜空 + 层叠远山 + 金尘（bg 图降级为低透明纹理叠层）=====
+        if bg_path.exists():
+            bg = Image.open(bg_path).convert("RGB")
+            tex = _cover_resize(bg, width, height)
+            tex = ImageEnhance.Brightness(tex).enhance(0.35).convert("RGBA")
+            tex.putalpha(52)
+            canvas = Image.new("RGBA", (width, height), (14, 17, 26, 255))
+            canvas.alpha_composite(tex)
+        else:
+            canvas = Image.new("RGBA", (width, height), (14, 17, 26, 255))
+        # 顶部月华光晕
+        moon = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        md = ImageDraw.Draw(moon)
+        md.ellipse([width * 0.58, -height * 0.22, width * 1.25, height * 0.30], fill=(96, 110, 150, 70))
+        moon = moon.filter(ImageFilter.GaussianBlur(60))
+        canvas.alpha_composite(moon)
+        # 墨色纵向渐变（上浅下深）
         grad = Image.new("L", (1, height))
         for y in range(height):
-            grad.putpixel((0, y), int(200 - 60 * y / height))
-        dark = Image.new("RGBA", (width, height), INK_BG_TOP + (0,))
+            grad.putpixel((0, y), int(30 + 70 * y / height))
+        dark = Image.new("RGBA", (width, height), (8, 10, 16, 0))
         dark.putalpha(grad.resize((width, height)))
         canvas = Image.alpha_composite(canvas, dark)
+        _draw_ink_mountains(canvas, width, height, seed=abs(hash(title)) % 99991)
+        _draw_gold_particles(canvas, width, height, seed=abs(hash(subtitle or title)) % 99991)
 
-        # ===== 绢帛面板 + 金边 =====
+        # ===== 主面板：深色毛玻璃 + 双层金边 =====
         px0, py0, px1, py1 = pad, header_h - 26, width - pad, height - footer_h
         overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        ImageDraw.Draw(overlay).rounded_rectangle([px0 - 3, py0 - 3, px1 + 3, py1 + 3], radius=30, fill=INK_ACCENT + (46,))
-        canvas = Image.alpha_composite(canvas, overlay.filter(ImageFilter.GaussianBlur(8)))
+        ImageDraw.Draw(overlay).rounded_rectangle([px0 - 3, py0 - 3, px1 + 3, py1 + 3], radius=30, fill=(10, 12, 20, 150))
+        canvas = Image.alpha_composite(canvas, overlay.filter(ImageFilter.GaussianBlur(10)))
         panel = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-        ImageDraw.Draw(panel).rounded_rectangle([px0, py0, px1, py1], radius=26, fill=INK_PANEL)
+        ImageDraw.Draw(panel).rounded_rectangle([px0, py0, px1, py1], radius=26, fill=(20, 23, 34, 175))
         canvas = Image.alpha_composite(canvas, panel)
 
         draw = ImageDraw.Draw(canvas)
-        draw.rounded_rectangle([px0, py0, px1, py1], radius=26, outline=INK_PANEL_EDGE, width=3)
-        draw.rounded_rectangle([px0 + 7, py0 + 7, px1 - 7, py1 - 7], radius=20, outline=INK_ACCENT + (120,), width=1)
-        _draw_corner_clouds(draw, width, height)
+        draw.rounded_rectangle([px0, py0, px1, py1], radius=26, outline=INK_PANEL_EDGE, width=2)
+        draw.rounded_rectangle([px0 + 6, py0 + 6, px1 - 6, py1 - 6], radius=21, outline=(232, 196, 122, 90), width=1)
+        # 面板底缘鎏金渐变细线
+        for i, a in enumerate(range(150, 20, -10)):
+            draw.line([(px0 + 40 + i * 2, py1 - 3), (px1 - 40 - i * 2, py1 - 3)], fill=(232, 196, 122, a), width=1) if i == 0 else None
+        _draw_corner_ornaments(draw, width, height, (232, 196, 122, 220))
 
-        # ===== 鎏金大标题 =====
+        # ===== 鎏金大标题 + 朱红印章 =====
         title_s = _trunc(draw, title, f_title, width - pad * 2 - 60)
-        # 混排量宽（emoji 镀金位图 + 中文）
         emoji_px_title = 46
         tw = _mixed_width(title_s, f_title, emoji_px_title)
-        _draw_mixed(canvas, ((width - tw) / 2, 38), title_s, f_title, emoji_px_title, None)
+        title_end_x = _draw_mixed(canvas, ((width - tw) / 2, 38), title_s, f_title, emoji_px_title, None)
         draw = ImageDraw.Draw(canvas)
-        # 两侧卷轴金线
-        line_y = 40 + 40
-        gap = tw / 2 + 26
-        draw.line([(width / 2 - gap - 150, line_y), (width / 2 - gap, line_y)], fill=INK_ACCENT, width=2)
-        draw.line([(width / 2 + gap, line_y), (width / 2 + gap + 150, line_y)], fill=INK_ACCENT, width=2)
-        draw.ellipse([width / 2 - gap - 5, line_y - 4, width / 2 - gap + 3, line_y + 4], outline=INK_ACCENT, width=2)
-        draw.ellipse([width / 2 + gap - 3, line_y - 4, width / 2 + gap + 5, line_y + 4], outline=INK_ACCENT, width=2)
+        seal_char = "仙"
+        for _ch in title_s:
+            if _ch.strip() and not _EMOJI_RE.match(_ch) and _ch not in "\uFE0F":
+                seal_char = _ch
+                break
+        # v3.25.0：印章锚定混排真实结束坐标 + 安全边距（防止压住标题末字）
+        seal_x = min(int(title_end_x) + 18, px1 - 100)
+        _draw_seal(canvas, seal_x, 30, seal_char, 58)
+        # 两侧云头纹
+        _draw_cloud_divider(draw, width // 2, 42 + 42, int(width * 0.40), (232, 196, 122, 200))
+        draw = ImageDraw.Draw(canvas)
 
         # ===== 行楷副标题（emoji 镀金点缀）=====
         y_cursor = py0 + inner
@@ -401,27 +517,38 @@ def render_card(
             _draw_mixed(canvas, ((width - sw) / 2, 112), sub_s, f_xing_sub, emoji_px_sub, INK_GOLD_DIM)
             draw = ImageDraw.Draw(canvas)
 
-        # ===== 区块与行（智能列宽版 + emoji 混排）=====
+        # ===== 区块子面板（独立毛玻璃 + 金色渐变侧条）=====
         label_x = pad + inner + 16
         value_right = width - pad - inner - 10
         emoji_px_val = 30
+        panel_x0, panel_x1 = px0 + 14, px1 - 14
 
         for sec in sections:
+            sec_top = y_cursor - 10
             name = _trunc(draw, sec.get("name", ""), f_section, width - pad * 2 - inner * 2 - 40)
-            # 区块名金箔底衬
-            nw = draw.textlength(name, font=f_section)
-            bx0, by0 = label_x + 14, y_cursor - 2
-            draw.rounded_rectangle([bx0, by0, bx0 + nw + 18, by0 + 42], radius=8,
-                                   fill=INK_ACCENT + (52,), outline=INK_ACCENT + (150,), width=1)
-            cx = label_x + 4
-            draw.polygon([(cx - 9, y_cursor + 19), (cx, y_cursor + 10), (cx + 9, y_cursor + 19), (cx, y_cursor + 28)],
-                         outline=INK_SECTION, width=2)
+            rows = sec.get("rows", [])
+            lines_list = sec.get("lines", [])
+            sec_h = 44 + row_h * len(rows) + row_h * len(lines_list) + 26
+            # 子面板
+            sub = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+            sd = ImageDraw.Draw(sub)
+            sd.rounded_rectangle([panel_x0, sec_top, panel_x1, sec_top + sec_h], radius=16,
+                                 fill=(255, 250, 240, 10), outline=(232, 196, 122, 42), width=1)
+            # 左侧金色渐变竖条
+            for i in range(4):
+                sd.line([(panel_x0 + 10 + i, sec_top + 12), (panel_x0 + 10 + i, sec_top + sec_h - 12)],
+                        fill=(232, 196, 122, 160 - i * 35), width=1)
+            canvas = Image.alpha_composite(canvas, sub)
+            draw = ImageDraw.Draw(canvas)
+
+            # 区块名 + 尾部序号
             draw.text((label_x + 22, y_cursor + 1), name, font=f_section, fill=INK_SECTION)
-            draw.line([(label_x + 22 + nw + 26, y_cursor + 19), (width - pad - inner, y_cursor + 19)],
+            nw = draw.textlength(name, font=f_section)
+            draw.line([(label_x + 22 + nw + 26, y_cursor + 19), (panel_x1 - 20, y_cursor + 19)],
                       fill=INK_DIVIDER, width=1)
             y_cursor += row_h + 8
 
-            for label, value in sec.get("rows", []):
+            for label, value in rows:
                 label_s = _trunc(draw, str(label), f_label, label_col)
                 value_s = _trunc(draw, str(value), f_value, value_col)
                 draw.text((label_x + 6, y_cursor + 3), label_s, font=f_label, fill=INK_LABEL)
@@ -435,22 +562,22 @@ def render_card(
                         draw.ellipse([dx, y_cursor + 27, dx + 3, y_cursor + 29], fill=INK_DIVIDER + (110,))
                 y_cursor += row_h
 
-            for line in sec.get("lines", []):
+            for line in lines_list:
                 line_s = _trunc(draw, str(line), f_value, width - pad * 2 - inner * 2 - 10)
                 _draw_mixed(canvas, (label_x + 6, y_cursor), line_s, f_value, emoji_px_val, INK_TEXT)
                 draw = ImageDraw.Draw(canvas)
                 y_cursor += row_h
 
-            y_cursor += section_gap
+            y_cursor += section_gap + 30
 
-        # ===== 行楷脚注（emoji 镀金点缀）=====
+        # ===== 行楷脚注（emoji 镀金点缀 + 菱形分隔）=====
         if footer:
             f_foot = _xing_font_for(footer, 26)
             foot_s = _trunc(draw, footer, f_foot, width - pad * 2)
             fw = _mixed_width(foot_s, f_foot, 26)
-            draw.line([(pad + 60, height - footer_h + 8), (width - pad - 60, height - footer_h + 8)],
-                      fill=INK_DIVIDER + (140,), width=1)
-            _draw_mixed(canvas, ((width - fw) / 2, height - footer_h + 14), foot_s, f_foot, 26, INK_FOOTER)
+            fy = height - footer_h + 14
+            _draw_cloud_divider(draw, width // 2, fy + 4, int(width * 0.36), (110, 94, 72, 160))
+            _draw_mixed(canvas, ((width - fw) / 2, fy + 8), foot_s, f_foot, 26, INK_FOOTER)
 
         # ===== 落盘 =====
         CARD_TEMP_DIR.mkdir(parents=True, exist_ok=True)

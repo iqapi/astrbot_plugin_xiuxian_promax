@@ -9,7 +9,7 @@ from ..models import Player
 __all__ = ["BankManager"]
 
 # 银行配置默认值
-DEFAULT_DAILY_INTEREST_RATE = 0.001  # 存款日利率 0.1%
+DEFAULT_DAILY_INTEREST_RATE = 0.002  # 存款日利率 0.2%（v3.18.4 上调：存贷利差从 8 倍压到 2.5-4 倍的合理区间）
 DEFAULT_MAX_DEPOSIT = 10000000  # 最大存款上限 1000万
 DEFAULT_LOAN_INTEREST_RATE = 0.005  # 贷款日利率 0.5%
 DEFAULT_LOAN_DURATION_DAYS = 7  # 贷款期限 7天
@@ -25,17 +25,23 @@ class BankManager:
     def __init__(self, db: DataBase, config: dict = None):
         self.db = db
         self.config = config or {}
-        
-        # 从配置读取，使用默认值作为后备
-        bank_config = self.config.get("BANK", {})
-        self.daily_interest_rate = bank_config.get("DAILY_INTEREST_RATE", DEFAULT_DAILY_INTEREST_RATE)
-        self.max_deposit = bank_config.get("MAX_DEPOSIT", DEFAULT_MAX_DEPOSIT)
-        self.loan_interest_rate = bank_config.get("LOAN_INTEREST_RATE", DEFAULT_LOAN_INTEREST_RATE)
-        self.loan_duration_days = bank_config.get("LOAN_DURATION_DAYS", DEFAULT_LOAN_DURATION_DAYS)
-        self.max_loan_amount = bank_config.get("MAX_LOAN_AMOUNT", DEFAULT_MAX_LOAN_AMOUNT)
-        self.min_loan_amount = bank_config.get("MIN_LOAN_AMOUNT", DEFAULT_MIN_LOAN_AMOUNT)
-        self.breakthrough_loan_rate = bank_config.get("BREAKTHROUGH_LOAN_RATE", DEFAULT_BREAKTHROUGH_LOAN_RATE)
-        self.breakthrough_loan_duration = bank_config.get("BREAKTHROUGH_LOAN_DURATION", DEFAULT_BREAKTHROUGH_LOAN_DURATION)
+
+        # 从配置读取，使用默认值作为后备。
+        # v3.18.4 修复：game_config.json 中银行键是小写（daily_interest_rate），
+        # 旧代码只按全大写读，配置文件从未生效过——现在两种键名都兼容
+        bank_config = self.config.get("BANK", {}) or self.config.get("bank", {})
+        # 第三优先级：_conf_schema.json VALUES 分组（WebUI 可调，v3.18.4 新增暴露）
+        values = self.config.get("VALUES", {}) or {}
+        def _cfg(upper: str, lower: str, default):
+            return values.get(upper, bank_config.get(upper, bank_config.get(lower, default)))
+        self.daily_interest_rate = _cfg("BANK_DAILY_INTEREST_RATE", "daily_interest_rate", DEFAULT_DAILY_INTEREST_RATE)
+        self.max_deposit = _cfg("BANK_MAX_DEPOSIT", "max_deposit", DEFAULT_MAX_DEPOSIT)
+        self.loan_interest_rate = _cfg("BANK_LOAN_INTEREST_RATE", "loan_interest_rate", DEFAULT_LOAN_INTEREST_RATE)
+        self.loan_duration_days = _cfg("LOAN_DURATION_DAYS", "loan_duration_days", DEFAULT_LOAN_DURATION_DAYS)
+        self.max_loan_amount = _cfg("BANK_MAX_LOAN_AMOUNT", "max_loan_amount", DEFAULT_MAX_LOAN_AMOUNT)
+        self.min_loan_amount = _cfg("MIN_LOAN_AMOUNT", "min_loan_amount", DEFAULT_MIN_LOAN_AMOUNT)
+        self.breakthrough_loan_rate = _cfg("BREAKTHROUGH_LOAN_RATE", "breakthrough_loan_rate", DEFAULT_BREAKTHROUGH_LOAN_RATE)
+        self.breakthrough_loan_duration = _cfg("BREAKTHROUGH_LOAN_DURATION", "breakthrough_loan_duration", DEFAULT_BREAKTHROUGH_LOAN_DURATION)
     
     # ===== 存款相关 =====
     
@@ -61,22 +67,23 @@ class BankManager:
         return bank_info
     
     def _calculate_interest(self, balance: int, last_time: int) -> int:
-        """计算待领利息（使用Decimal精确计算）"""
+        """计算待领利息（使用Decimal精确计算；复利天数封顶365天，防止长年不领无限滚存突破存款上限）"""
         if balance <= 0 or last_time <= 0:
             return 0
-        
+
         now = int(time.time())
         days_passed = (now - last_time) // 86400
-        
+
         if days_passed < 1:
             return 0
-        
+        days_passed = min(days_passed, 365)
+
         balance_d = Decimal(str(balance))
         rate_d = Decimal(str(self.daily_interest_rate))
-        
+
         compound = (1 + rate_d) ** days_passed - 1
         interest = balance_d * compound
-        
+
         return int(interest.quantize(Decimal('1'), rounding=ROUND_DOWN))
     
     async def deposit(self, player: Player, amount: int) -> Tuple[bool, str]:
@@ -349,37 +356,63 @@ class BankManager:
             await self.db.conn.rollback()
             raise
     
+    GRACE_PERIOD = 7 * 86400  # 逾期宽限期 7 天，宽限期内只催收不删号
+
     async def check_and_process_overdue_loans(self) -> List[dict]:
-        """检查并处理逾期贷款 - 逾期玩家将被银行追杀致死"""
+        """检查并处理逾期贷款：逾期先标记并催收，宽限期（7天）满仍未处理才注销角色"""
         now = int(time.time())
         overdue_loans = await self.db.ext.get_overdue_loans(now)
         processed = []
-        
+
         for loan in overdue_loans:
             player = await self.db.get_player_by_id(loan["user_id"])
             if not player:
                 await self.db.ext.mark_loan_overdue(loan["id"])
                 continue
-            
+
             player_name = player.user_name or f"道友{player.user_id[:6]}"
-            
+            overdue_days = (now - loan["due_at"]) // 86400
+
+            if overdue_days < self.GRACE_PERIOD // 86400:
+                # 宽限期内：保持 active（下轮检查会重新评估），只按天限流寄信催收，不动角色
+                mail_key = f"loan_grace_mail_{loan['id']}_{time.strftime('%Y%m%d')}"
+                if not await self.db.ext.get_system_config(mail_key):
+                    await self.db.ext.set_system_config(mail_key, "1")
+                    try:
+                        from .enhance_systems import MailboxManager
+                        await MailboxManager(self.db).send(
+                            loan["user_id"], "银行催收函",
+                            f"你的贷款已逾期 {overdue_days} 天！请在 {self.GRACE_PERIOD // 86400 - overdue_days} 天内 /还款，"
+                            f"逾期超过 {self.GRACE_PERIOD // 86400} 天将被银行注销修籍！"
+                        )
+                    except Exception:
+                        pass
+                    # 仅当天首次催收时计入 processed，避免日志每小时重复计数
+                    processed.append({
+                        **loan,
+                        "player_name": player_name,
+                        "death": False,
+                        "overdue_days": overdue_days
+                    })
+                continue
+
             await self.db.delete_player_cascade(player.user_id)
             await self.db.ext.mark_loan_overdue(loan["id"])
-            
-            # 写流水
-            now = int(time.time())
+
+            # 写流水（角色已注销，流水保留作审计记录）
             await self.db.conn.execute(
                 "INSERT INTO bank_transactions (user_id, trans_type, amount, balance_after, description, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (loan["user_id"], "bank_kill", 0, 0, "逾期未还款，被银行追杀致死", now)
+                (loan["user_id"], "bank_kill", 0, 0, f"逾期 {overdue_days} 天未还款，被银行注销修籍", int(time.time()))
             )
             await self.db.conn.commit()
-            
+
             processed.append({
                 **loan,
                 "player_name": player_name,
-                "death": True
+                "death": True,
+                "overdue_days": overdue_days
             })
-        
+
         return processed
     
     # ===== 流水相关 =====

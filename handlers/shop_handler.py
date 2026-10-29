@@ -43,6 +43,10 @@ class ShopHandler:
             for user_id in access_control.get("SHOP_MANAGERS", [])
         }
 
+    def _cfg(self, key: str, default):
+        """读取 VALUES 分组下的配置（schema 中 PAVILION_*/SHOP_* 嵌套在 VALUES 下），兼容顶层旧写法"""
+        return self.config.get("VALUES", {}).get(key, self.config.get(key, default))
+
     async def _ensure_pavilion_refreshed(self, pavilion_id: str, item_getter, count: int) -> None:
         """确保阁楼已刷新"""
         last_refresh_time, current_items = await self.db.get_shop_data(pavilion_id)
@@ -50,7 +54,7 @@ class ShopHandler:
             updated = self.shop_manager.ensure_items_have_stock(current_items)
             if updated:
                 await self.db.update_shop_data(pavilion_id, last_refresh_time, current_items)
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = self._cfg("PAVILION_REFRESH_HOURS", 1)
         if not current_items or self.shop_manager.should_refresh_shop(last_refresh_time, refresh_hours):
             new_items = self.shop_manager.generate_pavilion_items(item_getter, count)
             await self.db.update_shop_data(pavilion_id, int(time.time()), new_items)
@@ -63,14 +67,14 @@ class ShopHandler:
         restocked = 0
         details = []
         jobs = [
-            ("pill_pavilion", "丹阁", self.shop_manager.get_pills_for_display, self.config.get("PAVILION_PILL_COUNT", 20)),
-            ("weapon_pavilion", "器阁", self.shop_manager.get_weapons_for_display, self.config.get("PAVILION_WEAPON_COUNT", 20)),
-            ("treasure_pavilion", "百宝阁", self.shop_manager.get_all_items_for_display, self.config.get("PAVILION_TREASURE_COUNT", 25)),
+            ("pill_pavilion", "丹阁", self.shop_manager.get_pills_for_display, self._cfg("PAVILION_PILL_COUNT", 20)),
+            ("weapon_pavilion", "器阁", self.shop_manager.get_weapons_for_display, self._cfg("PAVILION_WEAPON_COUNT", 20)),
+            ("treasure_pavilion", "百宝阁", self.shop_manager.get_all_items_for_display, self._cfg("PAVILION_TREASURE_COUNT", 25)),
         ]
         for pavilion_id, name, getter, cnt in jobs:
             try:
                 last_refresh, items = await self.db.get_shop_data(pavilion_id)
-                refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+                refresh_hours = self._cfg("PAVILION_REFRESH_HOURS", 1)
                 due = self.shop_manager.should_refresh_shop(last_refresh, refresh_hours)
                 if not items:
                     # 空货架（从未初始化）：立即上货
@@ -100,13 +104,13 @@ class ShopHandler:
 
     async def handle_pill_pavilion(self, event: AstrMessageEvent):
         """处理丹阁命令 - 展示丹药列表"""
-        count = self.config.get("PAVILION_PILL_COUNT", 20)
+        count = self._cfg("PAVILION_PILL_COUNT", 20)
         await self._ensure_pavilion_refreshed("pill_pavilion", self.shop_manager.get_pills_for_display, count)
         last_refresh, items = await self.db.get_shop_data("pill_pavilion")
         if not items:
             yield event.plain_result("丹阁暂无丹药出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = self._cfg("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("丹阁", items, refresh_hours, last_refresh)
         # 卡片成功只发图，失败/关闭降级为文本
         card = await self._pavilion_card("丹阁", items)
@@ -117,13 +121,13 @@ class ShopHandler:
 
     async def handle_weapon_pavilion(self, event: AstrMessageEvent):
         """处理器阁命令 - 展示武器列表"""
-        count = self.config.get("PAVILION_WEAPON_COUNT", 20)
+        count = self._cfg("PAVILION_WEAPON_COUNT", 20)
         await self._ensure_pavilion_refreshed("weapon_pavilion", self.shop_manager.get_weapons_for_display, count)
         last_refresh, items = await self.db.get_shop_data("weapon_pavilion")
         if not items:
             yield event.plain_result("器阁暂无武器出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = self._cfg("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("器阁", items, refresh_hours, last_refresh)
         card = await self._pavilion_card("器阁", items)
         if card:
@@ -133,13 +137,13 @@ class ShopHandler:
 
     async def handle_treasure_pavilion(self, event: AstrMessageEvent):
         """处理百宝阁命令 - 展示所有物品"""
-        count = self.config.get("PAVILION_TREASURE_COUNT", 25)
+        count = self._cfg("PAVILION_TREASURE_COUNT", 25)
         await self._ensure_pavilion_refreshed("treasure_pavilion", self.shop_manager.get_all_items_for_display, count)
         last_refresh, items = await self.db.get_shop_data("treasure_pavilion")
         if not items:
             yield event.plain_result("百宝阁暂无物品出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = self._cfg("PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("百宝阁", items, refresh_hours, last_refresh)
         card = await self._pavilion_card("百宝阁", items)
         if card:
@@ -164,7 +168,10 @@ class ShopHandler:
                     price_tag += f"({round(discount * 10, 1)}折)"
                 element = item.get('element', '')
                 elem_tag = f"[{element}]" if element else ""
-                lines.append(f"{item['name']}{elem_tag} - {price_tag} · 库存{stock}")
+                # v3.24.2 卡片补功效简述（此前卡片只有名字/品阶/价格）
+                effect = self.shop_manager._get_item_effect_short(item)
+                effect_tag = f" · {effect[:26]}" if effect else ""
+                lines.append(f"{item['name']}{elem_tag} - {price_tag} · 库存{stock}{effect_tag}")
             if not lines:
                 return None
             card_path = await render_card_async(

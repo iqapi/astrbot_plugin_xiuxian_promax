@@ -120,6 +120,11 @@ class SectHandlers:
             yield event.plain_result("❌ 请指定目标（At或输入ID）")
             return
 
+        # 职位范围校验（0宗主 1副宗主 2长老 3内门 4外门）
+        if position < 0 or position > 4:
+            yield event.plain_result("❌ 职位编号需为 0-4（0宗主 1副宗主 2长老 3内门 4外门）。")
+            return
+
         success, msg = await self.sect_mgr.change_position(user_id, target_id, position)
         yield event.plain_result(msg)
 

@@ -62,8 +62,8 @@ class EscortManager:
         if user_cd.type != UserStatus.IDLE:
             return False, f"❌ 你当前正{UserStatus.get_name(user_cd.type)}，无法押镖！", {}
 
-        # 镖银与修为按境界浮动（v6.12 上调收益，匹配被劫风险）；绯烟（押镖仙灵）加镖银
-        base = 4000 + player.level_index * 1500
+        # 镖银与修为按境界浮动（v3.18.4 数值平衡：押镖收益对历练的风险溢价压缩到合理区间）
+        base = 2000 + player.level_index * 500
         escort_bonus = await self._companion_bonus(user_id, "escort")
         if escort_bonus > 0:
             base = int(base * (1 + escort_bonus))
@@ -131,12 +131,6 @@ class EscortManager:
             f"获得酬劳：+{escort_exp:,} 修为\n"
             f"✨ 护镖有功，功德 +1（当前 {player.karma}）"
         )
-        try:
-            from ..managers.flavor import flavor
-            msg += flavor("escort_ok")
-        except Exception:
-            pass
-        return True, msg
 
     async def quit_escort(self, player: Player) -> Tuple[bool, str]:
         """放弃押镖（无收益）"""
@@ -201,10 +195,24 @@ class EscortManager:
         log = "\n".join(result["combat_log"][-8:])  # 只展示最后8行战报，防刷屏
 
         if result["winner"] == attacker.user_id:
-            robbed = int(escort_gold * self.ROB_WIN_CUT)
-            extra["escort_gold"] = escort_gold - robbed
-            target_cd.extra_data = json.dumps(extra, ensure_ascii=False)
-            await self.db.ext.update_user_cd(target_cd)
+            # 事务内重读镖银并原子扣减：并发劫镖各自按原始镖银算 30% 会重复扣款
+            await self.db.conn.execute("BEGIN IMMEDIATE")
+            try:
+                fresh_cd = await self.db.ext.get_user_cd(target_id)
+                fresh_extra = fresh_cd.get_extra_data() if hasattr(fresh_cd, "get_extra_data") else {}
+                fresh_gold = int(fresh_extra.get("escort_gold", 2000))
+                robbed = min(int(fresh_gold * self.ROB_WIN_CUT), fresh_gold)
+                fresh_extra["escort_gold"] = fresh_gold - robbed
+                fresh_cd.extra_data = json.dumps(fresh_extra, ensure_ascii=False)
+                # 裸 SQL 而非 ext.update_user_cd()：后者内部 commit 会击穿本事务，导致并发劫镖丢更新
+                await self.db.conn.execute(
+                    "UPDATE user_cd SET extra_data = ? WHERE user_id = ?",
+                    (fresh_cd.extra_data, target_id)
+                )
+                await self.db.conn.commit()
+            except Exception:
+                await self.db.conn.rollback()
+                raise
 
             # 信箱：通知受害者
             try:
@@ -229,17 +237,21 @@ class EscortManager:
                 f"🌑 劫镖为恶行，业力 +1；劫镖调息 10 分钟"
             )
         else:
-            # 劫镖失败：赔偿押镖人（随境界提升）
-            compensation = 2000 + attacker.level_index * 200
-            await self.db.add_player_gold(attacker.user_id, -compensation)
-            attacker.gold = max(0, attacker.gold - compensation)
-            await self.db.add_player_gold(target.user_id, compensation)
-            target.gold += compensation
+            # 劫镖失败：赔偿押镖人。取"境界标准赔偿"与"镖银 60%"的较高者，
+            # 保证失败方代价随镖银水涨船高（此前满级劫镖期望收益为正）
+            compensation = max(2000 + attacker.level_index * 200, int(escort_gold * 0.6))
+            paid = min(compensation, max(0, attacker.gold))
+            if paid > 0:
+                await self.db.add_player_gold(attacker.user_id, -paid)
+                await self.db.add_player_gold(target.user_id, paid)
+                attacker.gold -= paid
+                target.gold += paid
 
+            short_note = f"\n💸 灵石不足，实际赔付 {paid:,}（应赔 {compensation:,}）。" if paid < compensation else ""
             return True, (
                 f"{log}\n\n"
                 f"💀 劫镖失败！\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"你被护镖人反杀，赔偿 {compensation:,} 灵石给对方。\n"
+                f"你被护镖人反杀，赔偿 {paid:,} 灵石给对方。{short_note}\n"
                 f"❗ 劫镖调息 10 分钟"
             )

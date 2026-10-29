@@ -108,13 +108,13 @@
       "CHECK_IN_GOLD_MIN": {
         "description": "签到灵石奖励（最小值）",
         "type": "int",
-        "default": 50,
+        "default": 100,
         "hint": "每日签到获得的最少灵石数量。"
       },
       "CHECK_IN_GOLD_MAX": {
         "description": "签到灵石奖励（最大值）",
         "type": "int",
-        "default": 500,
+        "default": 800,
         "hint": "每日签到获得的最多灵石数量。"
       },
       "BREAKTHROUGH_DEATH_PROBABILITY": {
@@ -167,6 +167,30 @@
         "type": "int",
         "default": 100,
         "hint": "库存=物品权重/基数。基数越大，库存越少。"
+      },
+      "BANK_DAILY_INTEREST_RATE": {
+        "description": "存款日利率",
+        "type": "float",
+        "default": 0.002,
+        "hint": "存款每日利率（0.002=0.2%）。复利按天计，封顶365天。"
+      },
+      "BANK_LOAN_INTEREST_RATE": {
+        "description": "贷款日利率",
+        "type": "float",
+        "default": 0.005,
+        "hint": "普通贷款每日利率（0.005=0.5%）。建议保持存款利率的2-4倍。"
+      },
+      "BANK_MAX_DEPOSIT": {
+        "description": "存款上限",
+        "type": "int",
+        "default": 10000000,
+        "hint": "单个玩家银行存款上限（灵石）。"
+      },
+      "BANK_MAX_LOAN_AMOUNT": {
+        "description": "贷款额度上限",
+        "type": "int",
+        "default": 1000000,
+        "hint": "单笔普通贷款上限（灵石）。"
       }
     }
   },

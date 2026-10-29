@@ -102,6 +102,22 @@ class TitleManager:
                 if row: land_level = row[0]
         except Exception: pass
 
+        # v3.24.0：一次性批量读取该玩家全部行为计数（此前每个称号一条 SELECT，最多 30+ 次）
+        counters = {}
+        try:
+            async with self.db.conn.execute(
+                "SELECT key, value FROM system_config WHERE key LIKE ?",
+                (f"title_cnt_%_{player.user_id}",)
+            ) as cur:
+                async for k, v in cur:
+                    # key 形如 title_cnt_<how>_<uid>；uid 不含下划线无法切分前缀，
+                    # 因此剥掉已知前缀与 uid 尾部
+                    if k.startswith("title_cnt_") and k.endswith(f"_{player.user_id}"):
+                        how = k[len("title_cnt_"):-len(f"_{player.user_id}")]
+                        counters[how] = int(v) if str(v).isdigit() else 0
+        except Exception:
+            pass
+
         # 2. 遍历所有称号，判断是否遗漏
         for t in TITLES:
             if t["name"] in owned: continue
@@ -129,12 +145,9 @@ class TitleManager:
                 elif how == "land_level":
                     met = land_level >= cond
                 
-                # 外部事件累进类：读 system_config
+                # 外部事件累进类：读批量计数缓存
                 elif how not in ("manual", "furnace_max"):
-                    ck = f"title_cnt_{how}_{player.user_id}"
-                    raw = await self.db.ext.get_system_config(ck)
-                    val = int(raw) if raw and raw.isdigit() else 0
-                    met = val >= cond
+                    met = counters.get(how, 0) >= cond
                     
             except Exception:
                 met = False
@@ -153,23 +166,35 @@ class TitleManager:
         return ""
     # =========================================================
 
+    @staticmethod
+    def _better_title(candidate, current) -> bool:
+        """同品阶时按加成总量确定性选择，不再依赖 dict 迭代顺序"""
+        if current is None:
+            return True
+        if candidate["tier"] != current["tier"]:
+            return candidate["tier"] > current["tier"]
+
+        def stat_total(t):
+            return sum(v for v in t.get("stats", {}).values() if isinstance(v, (int, float)))
+        return stat_total(candidate) > stat_total(current)
+
     def get_active_bonus(self, player: Player) -> Dict:
-        """计算当前生效的加成（最高品阶的一个称号）"""
+        """计算当前生效的加成（最高品阶的一个称号；同品阶取加成总量最高者）"""
         owned = self._load_owned(player)
         best = None
         for name in owned:
             t = self.titles.get(name)
-            if t and (best is None or t["tier"] > best["tier"]):
+            if t and self._better_title(t, best):
                 best = t
         return best["stats"] if best else {}
 
     def get_active_title(self, player: Player) -> Optional[dict]:
-        """当前提供加成的称号（最高品阶）"""
+        """当前提供加成的称号（最高品阶；同品阶取加成总量最高者）"""
         owned = self._load_owned(player)
         best = None
         for name in owned:
             t = self.titles.get(name)
-            if t and (best is None or t["tier"] > best["tier"]):
+            if t and self._better_title(t, best):
                 best = t
         return best
 

@@ -8,6 +8,9 @@ class AlchemyHandlers:
     def __init__(self, db: DataBase, alchemy_mgr: AlchemyManager):
         self.db = db
         self.alchemy_mgr = alchemy_mgr
+        # 按 user_id 记录炼制结果，防止并发炼丹互相覆盖
+        self.last_craft_success = {}
+        self.last_perfect = {}
 
     async def handle_recipes(self, event: AstrMessageEvent):
         """丹药配方"""
@@ -45,6 +48,6 @@ class AlchemyHandlers:
         
         success, msg, result_data = await self.alchemy_mgr.craft_pill(user_id, pill_id_int)
         # 记录本次是否真正炼成（丹劫毁丹/失败不算），供任务进度判定
-        self.last_craft_success = bool(result_data and result_data.get("success"))
-        self.last_perfect = bool(result_data and result_data.get("perfect"))
+        self.last_craft_success[user_id] = bool(result_data and result_data.get("success"))
+        self.last_perfect[user_id] = bool(result_data and result_data.get("perfect"))
         yield event.plain_result(msg)

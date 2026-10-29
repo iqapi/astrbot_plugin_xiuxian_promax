@@ -89,7 +89,8 @@ class TestBankInterest(unittest.TestCase):
         now = int(time.time())
         interest = self.bank._calculate_interest(10_000, now - 86400)
         self.assertGreater(interest, 0)
-        self.assertLessEqual(interest, 10)
+        # v3.18.4 存款日利率上调为 0.2%：1万×1天 = 20
+        self.assertLessEqual(interest, 20)
 
     def test_zero_balance_no_interest(self):
         self.assertEqual(self.bank._calculate_interest(0, 0), 0)

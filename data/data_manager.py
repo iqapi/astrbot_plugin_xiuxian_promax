@@ -22,9 +22,31 @@ class DataBase:
 
     async def connect(self):
         """连接数据库"""
-        self.conn = await aiosqlite.connect(self.db_path)
+        # isolation_level=None = 真 autocommit：单条写自动原子提交，显式 BEGIN IMMEDIATE 事务段
+        # 才能正常开启（legacy 隐式事务模式下与显式 BEGIN 叠加会报 "transaction within a transaction"）
+        self.conn = await aiosqlite.connect(self.db_path, isolation_level=None)
         self.conn.row_factory = aiosqlite.Row
+        # WAL 模式 + busy_timeout：降低读写互斥，写锁竞争时等待而非立即抛 database is locked
+        await self.conn.execute("PRAGMA journal_mode=WAL")
+        await self.conn.execute("PRAGMA busy_timeout=5000")
+        await self.conn.execute("PRAGMA synchronous=NORMAL")
         self.ext = DatabaseExtended(self.conn)  # 初始化扩展操作
+
+    async def ensure_performance_indexes(self):
+        """v3.24.0 高频查询索引（必须在迁移建表之后调用；
+        v3.23 曾放在 connect() 中导致全新安装因 players 表不存在而启动崩溃）"""
+        indexes = [
+            ("idx_player_sect", "players(sect_id)"),
+            ("idx_player_name", "players(user_name)"),
+            ("idx_wbd_user", "world_boss_damage(user_id)"),
+            ("idx_tasks_user_type", "daily_tasks(user_id, target_type)"),
+        ]
+        for name, cols in indexes:
+            try:
+                await self.conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {cols}")
+            except Exception as e:
+                logger.warning(f"[database] 创建索引 {name} 失败（表可能未建）: {e}")
+        await self.conn.commit()
 
     async def close(self):
         """关闭数据库连接"""
@@ -41,16 +63,23 @@ class DataBase:
         await self.connect()
 
     def _connection_alive(self) -> bool:
-        """检测底层aiosqlite连接是否仍然可用"""
+        """检测底层aiosqlite连接是否仍然可用（依赖 aiosqlite 的 _connection 私有属性，仅作快速预判；
+        真正的可用性由 ensure_connection 中的 SELECT 1 探活兜底）"""
         if not self.conn:
             return False
         return getattr(self.conn, "_connection", None) is not None
 
     async def ensure_connection(self):
         """确保数据库连接可用，必要时自动重连"""
-        if self._connection_alive():
-            return
-        logger.warning("[database] 检测到数据库连接断开，正在自动重连...")
+        if self.conn and self._connection_alive():
+            # 私有属性仍在时再做一次真实探活，捕获底层已断开的情况
+            try:
+                await self.conn.execute("SELECT 1")
+                return
+            except Exception:
+                logger.warning("[database] 数据库探活失败，正在自动重连...")
+        elif self.conn:
+            logger.warning("[database] 检测到数据库连接断开，正在自动重连...")
         await self.reconnect()
 
     async def create_player(self, player: Player):
@@ -112,7 +141,7 @@ class DataBase:
                 player.blessed_spot_name,
                 player.active_pill_effects,
                 player.permanent_pill_gains,
-                player.has_resurrection_pill,
+                int(player.has_resurrection_pill),
                 int(player.has_debuff_shield),
                 player.pills_inventory,
                 player.storage_ring,
@@ -251,7 +280,7 @@ class DataBase:
                 player.blessed_spot_name,
                 player.active_pill_effects,
                 player.permanent_pill_gains,
-                player.has_resurrection_pill,
+                int(player.has_resurrection_pill),
                 int(player.has_debuff_shield),
                 player.pills_inventory,
                 player.storage_ring,
@@ -337,12 +366,29 @@ class DataBase:
             ("DELETE FROM buff_info WHERE user_id = ?", (user_id,)),
             ("DELETE FROM impart_info WHERE user_id = ?", (user_id,)),
             ("DELETE FROM combat_cooldowns WHERE user_id = ?", (user_id,)),
+            # 赠予：返还给对方侧处理——直接删除会导致物品蒸发，先退款式的物归原主太复杂，
+            # 这里统一退化为"删除请求"，但只删该用户相关的（过期返还逻辑会兜住 sender 侧物品）
             ("DELETE FROM pending_gifts WHERE sender_id = ? OR receiver_id = ?", (user_id, user_id)),
-            ("DELETE FROM player_pets WHERE user_id = ?", (user_id,)), 
+            ("DELETE FROM player_pets WHERE user_id = ?", (user_id,)),
+            # 补全：此前遗漏的关联表，删除后留下孤儿数据
+            ("DELETE FROM daily_tasks WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM world_boss_damage WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM npc_partners WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM master_relations WHERE disciple_id = ? OR master_id = ?", (user_id, user_id)),
+            ("DELETE FROM auction_items WHERE seller_id = ?", (user_id,)),
+            ("DELETE FROM escort_records WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM reincarnation_records WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM system_config WHERE key LIKE ?", (f"firstweek_{user_id}",)),
         ]
 
         for sql, params in statements:
             await safe_execute(sql, params)
+
+        # 其所建宗门转给系统（避免宗门悬空指向已删除玩家）
+        await safe_execute(
+            "UPDATE sects SET sect_owner = 'system' WHERE sect_owner = ?", (user_id,)
+        )
+        # 其他玩家在该宗门/师徒里的引用由各自逻辑按 ID 容错（找不到玩家即忽略）
 
         await self.conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
         await self.conn.commit()
@@ -352,6 +398,12 @@ class DataBase:
         async with self.conn.execute("SELECT * FROM players") as cursor:
             rows = await cursor.fetchall()
             return [Player(**{k: v for k, v in dict(row).items() if k in PLAYER_FIELDS}) for row in rows]
+
+    async def get_all_player_ids(self) -> List[str]:
+        """v3.24.0 轻量查询：全服玩家 ID 列表（不发整行对象，供全服发奖/统计场景）"""
+        async with self.conn.execute("SELECT user_id FROM players") as cursor:
+            rows = await cursor.fetchall()
+        return [row[0] for row in rows]
 
     # ===== 商店数据操作 =====
 

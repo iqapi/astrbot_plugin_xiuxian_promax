@@ -20,17 +20,21 @@ class CombatHandlers:
         self.config_manager = config_manager
         self.equipment_mgr = EquipmentManager(db, config_manager)
         self.pill_mgr = PillManager(db, config_manager)
-        self.last_duel_result = None
-        self.last_spar_fought = False
+        # 按 user_id 记录战斗结果：并发对战时互相独立，防止 A 的结果覆盖 B 导致任务记错人
+        self.last_duel_result = {}
+        self.last_spar_fought = {}
     
     async def _get_combat_cooldown(self, user_id: str) -> dict:
         try:
             async with self.db.conn.execute("SELECT last_duel_time, last_spar_time FROM combat_cooldowns WHERE user_id = ?", (user_id,)) as cursor:
                 row = await cursor.fetchone()
                 if row: return {"last_duel_time": row[0], "last_spar_time": row[1]}
-        except: pass
+        except Exception as e:
+            # 冷却读取失败若静默按"无冷却"处理，防刷机制即失效；必须留痕
+            from astrbot.api import logger
+            logger.error(f"读取战斗冷却失败（按无冷却降级）: {e}")
         return {"last_duel_time": 0, "last_spar_time": 0}
-    
+
     async def _update_combat_cooldown(self, user_id: str, combat_type: str):
         now = int(time.time())
         try:
@@ -39,7 +43,9 @@ class CombatHandlers:
             else:
                 await self.db.conn.execute("INSERT INTO combat_cooldowns (user_id, last_duel_time, last_spar_time) VALUES (?, 0, ?) ON CONFLICT(user_id) DO UPDATE SET last_spar_time = ?", (user_id, now, now))
             await self.db.conn.commit()
-        except: pass
+        except Exception as e:
+            from astrbot.api import logger
+            logger.error(f"写入战斗冷却失败: {e}")
 
     async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
         """解析目标ID（终极修复）"""
@@ -205,7 +211,7 @@ class CombatHandlers:
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=2)
-        self.last_duel_result = result
+        self.last_duel_result[user_id] = result
         
         await self.db.ext.update_player_hp_mp(user_id, p1_stats.max_hp, p1_stats.max_mp)
         await self.db.ext.update_player_hp_mp(target_id, p2_stats.max_hp, p2_stats.max_mp)
@@ -257,7 +263,7 @@ class CombatHandlers:
             return
 
         result = self.combat_mgr.player_vs_player(p1_stats, p2_stats, combat_type=1)
-        self.last_spar_fought = True
+        self.last_spar_fought[user_id] = True
         
         await self.db.ext.update_player_hp_mp(user_id, p1_stats.max_hp, p1_stats.max_mp)
         await self.db.ext.update_player_hp_mp(target_id, p2_stats.max_hp, p2_stats.max_mp)

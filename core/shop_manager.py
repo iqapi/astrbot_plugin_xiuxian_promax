@@ -148,12 +148,16 @@ class ShopManager:
             库存数量（最小为1）
         """
         # 获取库存计算基数，默认100
-        stock_divisor = self.config.get("SHOP_STOCK_DIVISOR", 100)
+        stock_divisor = self._cfg("SHOP_STOCK_DIVISOR", 100)
 
         # 库存 = 权重 / 基数，向上取整，最小为1
         stock = max(1, (weight + stock_divisor - 1) // stock_divisor)
 
         return stock
+
+    def _cfg(self, key: str, default):
+        """读取 VALUES 分组下的配置（schema 中 SHOP_* 嵌套在 VALUES 下），兼容顶层旧写法"""
+        return self.config.get("VALUES", {}).get(key, self.config.get(key, default))
 
     def ensure_items_have_stock(self, shop_items: List[Dict]) -> bool:
         """确保已有商店物品列表包含库存字段（用于兼容旧数据）
@@ -197,8 +201,8 @@ class ShopManager:
         selected_items = self._weighted_random_choice(all_items, count)
 
         # 获取折扣配置
-        discount_min = self.config.get("SHOP_DISCOUNT_MIN", 0.8)
-        discount_max = self.config.get("SHOP_DISCOUNT_MAX", 1.2)
+        discount_min = self._cfg("SHOP_DISCOUNT_MIN", 0.8)
+        discount_max = self._cfg("SHOP_DISCOUNT_MAX", 1.2)
 
         # 生成商店物品
         shop_items = []
@@ -238,8 +242,8 @@ class ShopManager:
         selected = self._weighted_random_choice(
             [{'weight': i.get('data', {}).get('shop_weight', 100), **i} for i in base_items], count
         )
-        discount_min = self.config.get("SHOP_DISCOUNT_MIN", 0.8)
-        discount_max = self.config.get("SHOP_DISCOUNT_MAX", 1.2)
+        discount_min = self._cfg("SHOP_DISCOUNT_MIN", 0.8)
+        discount_max = self._cfg("SHOP_DISCOUNT_MAX", 1.2)
         result = []
         for item in selected:
             discount = random.uniform(discount_min, discount_max)
@@ -393,12 +397,54 @@ class ShopManager:
         lines.append(f"\n提示: 使用 '购买 [物品名]' 购买物品")
         return "".join(lines)
 
+    # v3.24.2：功法/饰品通用 effects 词条表（键 → 中文标签）
+    _EFFECT_LABELS = {
+        "crit_rate": ("会心+", "%"),
+        "crit_damage": ("会心伤害", "x"),
+        "combo_rate": ("连击+", "%"),
+        "lifesteal": ("吸血+", "%"),
+        "counter_damage": ("反伤+", "%"),
+    }
+
+    @classmethod
+    def _effects_dict_text(cls, effect_data: Dict, limit: int = 2) -> List[str]:
+        """把 effects 字典转成简短中文词条"""
+        out = []
+        if not isinstance(effect_data, dict):
+            return out
+        for key, label in cls._EFFECT_LABELS.items():
+            val = effect_data.get(key, 0)
+            if not val:
+                continue
+            name = label[0]
+            if label[1] == "%":
+                out.append(f"{name}{val}%")
+            elif label[1] == "x":
+                out.append(f"{name}{val:.1f}倍")
+            else:
+                out.append(f"{name}+{val}")
+        return out[:limit]
+
     def _get_item_effect_short(self, item: Dict) -> str:
-        """获取物品效果的简短描述"""
+        """获取物品效果的简短描述（v3.24.2 增强：补修为丹/功法词条/五行/容量/境界门槛）"""
         data = item.get('data', {})
         item_type = item.get('type', '')
         effects = []
-        
+
+        # 五行属性（武器/功法名带金木水火土即有克制关系，值得展示）
+        element = data.get('element')
+        if not element and self.config_manager:
+            _elem_fn = getattr(self.config_manager, 'get_element_from_name', None)
+            if callable(_elem_fn):
+                element = _elem_fn(item.get('name', ''))
+        if element:
+            effects.append(f"[{element}]")
+
+        # 境界门槛
+        req_lv = data.get('required_level_index', 0)
+        if req_lv:
+            effects.append(f"需境界{req_lv}")
+
         # 武器/装备属性
         if item_type in ['weapon', 'armor', 'accessory']:
             if data.get('physical_damage', 0) > 0:
@@ -411,8 +457,14 @@ class ShopManager:
                 effects.append(f"法防+{data['magic_defense']}")
             if data.get('mental_power', 0) > 0:
                 effects.append(f"精神力+{data['mental_power']}")
-        
-        # 功法属性
+
+        # 储物戒
+        elif item_type == 'storage_ring':
+            cap = data.get('capacity', 0)
+            if cap:
+                effects.append(f"容量{cap}")
+
+        # 功法属性（v3.24.2：补 effects 词条）
         elif item_type in ['main_technique', 'technique', '功法']:
             if data.get('exp_multiplier', 0) > 0:
                 effects.append(f"修炼效率+{int(data['exp_multiplier']*100)}%")
@@ -420,7 +472,8 @@ class ShopManager:
                 effects.append(f"物伤+{data['physical_damage']}")
             if data.get('magic_damage', 0) > 0:
                 effects.append(f"法伤+{data['magic_damage']}")
-        
+            effects.extend(self._effects_dict_text(data.get('effects'), 2))
+
         # 丹药效果
         elif item_type in ['pill', 'exp_pill', 'utility_pill', 'legacy_pill']:
             # 尝试从 effect 字段获取
@@ -436,16 +489,19 @@ class ShopManager:
                     effects.append(f"攻击+{effect_data['add_attack']}")
                 if effect_data.get('add_defense', 0) > 0:
                     effects.append(f"防御+{effect_data['add_defense']}")
-            
+                effects.extend(self._effects_dict_text(effect_data, 1))
+
             # 破境丹特殊处理
             if data.get('subtype') == 'breakthrough':
                 bonus = data.get('breakthrough_bonus', 0)
                 if bonus > 0:
                     effects.append(f"突破成功率+{int(bonus*100)}%")
-            
-            # 修为丹
+
+            # 修为丹（v3.24.2：补 exp_gain 字段——exp_pills.json 用的是这个键，此前被漏掉）
             if data.get('exp_boost', 0) > 0:
                 effects.append(f"修为+{data['exp_boost']}")
+            if data.get('exp_gain', 0) > 0:
+                effects.append(f"修为+{data['exp_gain']}")
         
         # 材料
         elif item_type == 'material':
@@ -456,8 +512,50 @@ class ShopManager:
         if not effects and data.get('description'):
             desc = data['description']
             return desc[:25] + "..." if len(desc) > 25 else desc
-        
-        return ", ".join(effects[:3]) if effects else ""
+
+        return ", ".join(effects[:4]) if effects else ""
+
+    def describe_item_by_name(self, item_name: str) -> str:
+        """v3.24.2 按名查配置并生成功效简述（供坊市等只有物品名的场景使用）
+        注意：items_data 以 id 为键，统一遍历 values() 按名称匹配"""
+        try:
+            cm = self.config_manager
+            if not cm:
+                return ""
+
+            def _scan(source, itype):
+                # v3.24.2：兼容 list 与 dict 两种配置装载形态
+                vals = source.values() if isinstance(source, dict) else source
+                for data in vals:
+                    if isinstance(data, dict) and data.get('name') == item_name:
+                        return (itype, data)
+                return None
+
+            found = (
+                _scan(cm.weapons_data, 'weapon')
+                or _scan(cm.pills_data, 'pill')
+                or _scan(cm.exp_pills_data, 'exp_pill')
+                or _scan(cm.utility_pills_data, 'utility_pill')
+                or _scan(cm.techniques_data, 'technique')
+                or _scan(cm.storage_rings_data, 'storage_ring')
+                or _scan(cm.items_data, None)
+            )
+            if not found:
+                return ""
+            itype, data = found
+            if itype is None:
+                raw_type = str(data.get('type', ''))
+                if raw_type in ('武器', '法器') or data.get('physical_damage'):
+                    itype = 'weapon'
+                elif raw_type == '防具' or data.get('physical_defense') or data.get('magic_defense'):
+                    itype = 'armor'
+                elif raw_type == '材料':
+                    itype = 'material'
+                else:
+                    itype = 'accessory'
+            return self._get_item_effect_short({'type': itype, 'name': item_name, 'data': data})
+        except Exception:
+            return ""
 
     def get_item_details(self, item_data: Dict) -> str:
         """获取物品详细信息

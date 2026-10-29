@@ -57,6 +57,15 @@ def player_required(func: Callable[..., Coroutine[any, any, AsyncGenerator[any, 
             yield event.plain_result(f"道友尚未踏入仙途，请发送「{CMD_START_XIUXIAN}」开启你的旅程。")
             return
 
+        # v3.24.0 管理员封禁检查（/仙界管理 封禁 写入 admin_ban_{uid}）
+        try:
+            banned = await self.db.ext.get_system_config(f"admin_ban_{player.user_id}")
+            if banned == "1":
+                yield event.plain_result("⛔ 你的账号已被天道封禁，如有异议请联系管理员。")
+                return
+        except Exception:
+            pass
+
         # 检查贷款状态并处理逾期
         loan_warning = await _check_loan_status(self.db, player)
         if loan_warning:

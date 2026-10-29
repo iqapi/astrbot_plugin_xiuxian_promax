@@ -19,6 +19,11 @@ class TitleHooks:
             self.tm = TitleManager(self.db)
         return self.tm
 
+    @property
+    def title_manager(self):
+        """公开访问器：外部组件不应调用私有方法 _tm()"""
+        return self._tm()
+
     async def bump(self, player: Player, key: str, count: int = 1) -> str:
         """行为计数 +1 并检查颁发。返回提示文本"""
         try:

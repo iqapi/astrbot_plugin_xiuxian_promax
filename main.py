@@ -2,6 +2,7 @@ import asyncio
 import time
 import random
 import json
+import re
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -31,18 +32,10 @@ from .managers import (
     AuctionManager, EscortManager, EncounterManager, LifeSkillManager, CalamityManager
 )
 from .models_extended import UserStatus
+# v3.24.0：指令装饰器与新玩法指令拆分至 commands/ 包
+from .commands.base import require_whitelist
+from .commands.feature_commands import FeatureCommandsMixin
 
-
-def require_whitelist(func):
-    """装饰器：检查群聊白名单权限 + 强制指令前缀（/ 或 #）"""
-    @wraps(func)
-    async def wrapper(self, event: AstrMessageEvent, *args, **kwargs):
-        if not self._check_access(event):
-            await self._send_access_denied_message(event)
-            return
-        async for result in func(self, event, *args, **kwargs):
-            yield result
-    return wrapper
 
 # 指令定义
 CMD_HELP = "修仙帮助"
@@ -139,7 +132,7 @@ CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
 CMD_REBIRTH = "弃道重修"
 
 
-class XiuXianPlugin(Star):
+class XiuXianPlugin(FeatureCommandsMixin, Star):
     """修仙插件 - 文字修仙游戏"""
 
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -149,7 +142,15 @@ class XiuXianPlugin(Star):
         self.config_manager = ConfigManager(_current_dir)
 
         files_config = self.config.get("FILES", {})
-        db_filename = files_config.get("DATABASE_FILE", "xiuxian_data_v2.db")
+        db_filename = files_config.get("DATABASE_FILE", "")
+        if not db_filename:
+            plugin_data_path = Path(StarTools.get_data_dir("astrbot_plugin_xiuxian_promax"))
+            plugin_data_path.mkdir(parents=True, exist_ok=True)
+            # 未配置时向后兼容：优先沿用旧默认库名（数据目录/插件目录/cwd 任一存在即视为老库），否则用 schema 默认
+            if any((d / "xiuxian_data_v2.db").exists() for d in (plugin_data_path, _current_dir, Path("."))):
+                db_filename = "xiuxian_data_v2.db"
+            else:
+                db_filename = "xiuxian_data_lite.db"
         plugin_data_path = StarTools.get_data_dir("astrbot_plugin_xiuxian_promax")
         plugin_data_path.mkdir(parents=True, exist_ok=True)
 
@@ -242,7 +243,7 @@ class XiuXianPlugin(Star):
         self.pet_handlers = PetHandlers(self.db, self.pet_mgr)
 
         # v6.6 交易坊市
-        self.auction_mgr = AuctionManager(self.db, self.storage_ring_mgr)
+        self.auction_mgr = AuctionManager(self.db, self.storage_ring_mgr, self.config_manager)
         self.auction_handlers = AuctionHandlers(self.db, self.auction_mgr)
 
         # v6.8 押镖劫道 & 奇遇
@@ -257,13 +258,12 @@ class XiuXianPlugin(Star):
         from .managers.social_manager import SocialManager
         self.social_mgr = SocialManager(self.db)
         self.player_handler.social_mgr_ref = self.social_mgr
-        self.player_handler.first_week_ref = self.first_week if hasattr(self, 'first_week') else None
         self.player_handler.sect_coop_ref = None
 
         # v6.17 称号系统
         from .managers.title_hooks import TitleHooks
         self.title_hooks = TitleHooks(self.db)
-        self.title_mgr = self.title_hooks._tm()
+        self.title_mgr = self.title_hooks.title_manager
         self.player_handler.title_hooks = self.title_hooks
 
         # v6.18 提前退出
@@ -289,6 +289,66 @@ class XiuXianPlugin(Star):
         from .managers.enhance_systems import EquipSetManager, MailboxManager
         self.equip_sets = EquipSetManager(self.db)
         self.mailbox = MailboxManager(self.db)
+
+        # v3.19.0 十一大新玩法
+        from .managers.weather_manager import WeatherManager
+        from .managers.collection_manager import CollectionManager
+        from .managers.checkin_milestone import CheckinMilestoneManager
+        from .managers.season_manager import SeasonManager
+        from .managers.tribulation_bet import TribulationBetManager
+        from .managers.samsara_manager import SamsaraManager
+        from .managers.group_garden_manager import GroupGardenManager
+        from .managers.couple_quest_manager import CoupleQuestManager
+        from .managers.stronghold_manager import StrongholdManager
+        from .managers.rift_enhance import RiftEnhanceManager
+        from .managers.player_bounty_manager import PlayerBountyManager
+        self.weather_mgr = WeatherManager(self.db)
+        self.collection_mgr = CollectionManager(self.db, self.title_mgr)
+        self.ckms_mgr = CheckinMilestoneManager(self.db)
+        self.season_mgr = SeasonManager(self.db)
+        self.tribbet_mgr = TribulationBetManager(self.db)
+        self.samsara_mgr = SamsaraManager(self.db)
+        self.garden_mgr = GroupGardenManager(self.db)
+        self.couple_quest_mgr = CoupleQuestManager(self.db)
+        self.stronghold_mgr = StrongholdManager(self.db)
+        self.rift_enhance_mgr = RiftEnhanceManager(self.db)
+        self.pblty_mgr = PlayerBountyManager(self.db)
+        # v3.20.0 第二批新玩法
+        from .managers.quiz_manager import QuizManager
+        from .managers.lucky_wheel_manager import LuckyWheelManager
+        from .managers.marriage_manager import MarriageManager
+        from .managers.achievement_manager import AchievementManager
+        from .managers.pet_battle_manager import PetBattleManager
+        from .managers.treasure_hunt_manager import TreasureHuntManager
+        self.quiz_mgr = QuizManager(self.db)
+        self.wheel_mgr = LuckyWheelManager(self.db)
+        self.marriage_mgr = MarriageManager(self.db)
+        self.achievement_mgr = AchievementManager(self.db)
+        self.petbattle_mgr = PetBattleManager(self.db)
+        self.treasure_mgr = TreasureHuntManager(self.db)
+        # v3.21.0 第三批新玩法
+        from .managers.sect_tech_manager import SectTechManager
+        from .managers.tournament_manager import TournamentManager
+        from .managers.loot_auction_manager import LootAuctionManager
+        self.sect_tech_mgr = SectTechManager(self.db)
+        self.tournament_mgr = TournamentManager(self.db)
+        self.loot_auction_mgr = LootAuctionManager(self.db)
+        # v3.22.0 第四批新玩法
+        from .managers.ascension_project_manager import AscensionProjectManager
+        self.ascension_mgr = AscensionProjectManager(self.db)
+        from .managers.group_chronicle_manager import GroupChronicleManager
+        self.chronicle_mgr = GroupChronicleManager(self.db)
+        from .managers.title_forge_manager import TitleForgeManager
+        from .managers.fortune_stick_manager import FortuneStickManager
+        self.title_forge_mgr = TitleForgeManager(self.db, self.title_mgr)
+        self.fortune_mgr = FortuneStickManager(self.db)
+        # 挂引用给 handler 层（沿用 social_mgr_ref 模式）
+        self.player_handler.weather_ref = self.weather_mgr
+        self.player_handler.collection_ref = self.collection_mgr
+        self.player_handler.ckms_ref = self.ckms_mgr
+        self.player_handler.couple_quest_ref = self.couple_quest_mgr
+        self.player_handler.samsara_ref = self.samsara_mgr
+        self.player_handler.season_ref = self.season_mgr
 
         # 后台任务句柄
         self.boss_task = None
@@ -327,6 +387,20 @@ class XiuXianPlugin(Star):
         migration_manager = MigrationManager(self.db.conn, self.config_manager)
         await migration_manager.migrate()
         await self.db.ext.ensure_system_config_table()
+        # v3.24.0：建表完成后再补性能索引（connect 阶段表尚不存在）
+        await self.db.ensure_performance_indexes()
+
+        # 接线图片卡片开关：读取 IMAGE_CARDS 配置并下发给渲染器（此前配置从未被消费）
+        try:
+            from .utils.image_generator import set_card_flags
+            card_cfg = self.config.get("IMAGE_CARDS", {}) or {}
+            flags = {"__enabled__": bool(card_cfg.get("ENABLED", True))}
+            for key, val in card_cfg.items():
+                if key.startswith("CARD_"):
+                    flags[key] = bool(val)
+            set_card_flags(flags)
+        except Exception as e:
+            logger.warning(f"【修仙插件】图片卡片开关初始化失败（默认全开）: {e}")
 
         self.boss_task = asyncio.create_task(self._schedule_boss_spawn())
         self.loan_check_task = asyncio.create_task(self._schedule_loan_check())
@@ -340,10 +414,14 @@ class XiuXianPlugin(Star):
         logger.info("【修仙插件】已加载。")
 
     async def terminate(self):
-        for task in (self.boss_task, self.loan_check_task, self.spirit_eye_task,
-                     self.bounty_check_task, self.demon_check_task,
-                     getattr(self, "tide_check_task", None), getattr(self, "restock_task", None)):
-            if task: task.cancel()
+        tasks = [t for t in (self.boss_task, self.loan_check_task, self.spirit_eye_task,
+                             self.bounty_check_task, self.demon_check_task,
+                             getattr(self, "tide_check_task", None), getattr(self, "restock_task", None)) if t]
+        for task in tasks:
+            task.cancel()
+        # 等待后台任务真正退出后再关库，避免任务停在半途事务时连接被关闭导致写入丢失
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await self.db.close()
         logger.info("【修仙插件】已卸载。")
 
@@ -572,29 +650,106 @@ class XiuXianPlugin(Star):
                     logger.info(f"【修仙插件】魔潮事件：{msg.splitlines()[0]}")
                     await self._broadcast_world_boss_spawn(msg)
 
+                # v3.19.0 新玩法定时钩子：天骄榜赛季结算 / 灵脉周结 / 每日天象首播
+                try:
+                    season_summary = await self.season_mgr.ensure_season()
+                    if season_summary:
+                        await self._broadcast_world_boss_spawn(season_summary)
+                except Exception as e:
+                    logger.warning(f"天骄榜赛季检查异常: {e}")
+                try:
+                    stronghold_summary = await self.stronghold_mgr.weekly_settle()
+                    if stronghold_summary:
+                        await self._broadcast_world_boss_spawn(stronghold_summary)
+                except Exception as e:
+                    logger.warning(f"灵脉周结异常: {e}")
+                try:
+                    weather_data = await self.weather_mgr.ensure_today()
+                    today = time.strftime("%Y%m%d")
+                    bc_key = f"weather_bc_{today}"
+                    if weather_data.get("date") == today and not await self.db.ext.get_system_config(bc_key):
+                        await self.db.ext.set_system_config(bc_key, "1")
+                        text = await self.weather_mgr.get_weather_text()
+                        if text:
+                            await self._broadcast_world_boss_spawn(text)
+                except Exception as e:
+                    logger.warning(f"每日天象播报异常: {e}")
+                # v3.20.0 天材地宝定时刷新（30% 概率，刷新即全服广播）
+                try:
+                    spawned, treasure_text = await self.treasure_mgr.try_spawn()
+                    if spawned and treasure_text:
+                        await self._broadcast_world_boss_spawn(treasure_text)
+                except Exception as e:
+                    logger.warning(f"天材地宝刷新异常: {e}")
+                # v3.21.0 斗法台周五自动开赛 + 拍卖行到期落槌
+                try:
+                    tnm_text = await self.tournament_mgr.run()
+                    if tnm_text:
+                        await self._broadcast_world_boss_spawn(tnm_text)
+                except Exception as e:
+                    logger.warning(f"斗法台开赛异常: {e}")
+                try:
+                    auction_text = await self.loot_auction_mgr.settle()
+                    if auction_text:
+                        await self._broadcast_world_boss_spawn(auction_text)
+                except Exception as e:
+                    logger.warning(f"拍卖行落槌异常: {e}")
+                # v3.23.0 渡劫观礼密封开奖 + 日键清理
+                try:
+                    tribbet_text = await self.tribbet_mgr.tick()
+                    if tribbet_text:
+                        await self._broadcast_world_boss_spawn(tribbet_text)
+                except Exception as e:
+                    logger.warning(f"观礼开奖异常: {e}")
+                try:
+                    purge_key = f"purge_done_{time.strftime('%Y%m%d')}"
+                    if time.strftime("%H%M") >= "0400" and not await self.db.ext.get_system_config(purge_key):
+                        n = await self.db.ext.purge_dated_config_keys(8)
+                        await self.db.ext.set_system_config(purge_key, "1")
+                        if n:
+                            logger.info(f"【修仙插件】清理过期日键 {n} 条")
+                except Exception as e:
+                    logger.warning(f"日键清理异常: {e}")
+                # v3.22.0 修仙群史：每日首次循环广播昨日大事记
+                try:
+                    if await self.chronicle_mgr.mark_broadcast():
+                        chronicle_text = await self.chronicle_mgr.build_daily()
+                        if chronicle_text:
+                            await self._broadcast_world_boss_spawn(chronicle_text)
+                except Exception as e:
+                    logger.warning(f"修仙群史播报异常: {e}")
+
                 # v6.21 月度称号：每月1日自动颁发全服之最
                 try:
                     month_key = time.strftime("%Y%m")
-                    done = await self.db.ext.get_system_config(f"month_title_{month_key}")
+                    month_cfg_key = f"month_title_{month_key}"
+                    done = await self.db.ext.get_system_config(month_cfg_key)
                     if not done and time.localtime().tm_mday == 1:
-                        await self.db.ext.set_system_config(f"month_title_{month_key}", "1")
                         players = await self.db.get_all_players()
                         if players:
                             from .managers.title_manager import TitleManager
                             tm = TitleManager(self.db)
                             top_exp = max(players, key=lambda p: p.experience)
                             top_karma = max(players, key=lambda p: (p.karma or 0))
+                            granted_any = False
                             for p, title in ((top_exp, "月度人杰"), (top_karma, "月度大善")):
-                                tm.grant(p, title)
-                            broadcast = (
-                                f"🏆【月度盛典】新的一月，天道册封上月之最：\n"
-                                f"  · 修为至尊：【{top_exp.user_name or top_exp.user_id[:8]}】\n"
-                                f"  · 第一大善：【{top_karma.user_name or top_karma.user_id[:8]}】\n"
-                                f"获得月度限定称号，全服敬仰！"
-                            )
-                            await self._broadcast_world_boss_spawn(broadcast)
-                except Exception:
-                    pass
+                                ok, _ = tm.grant(p, title)
+                                if ok:
+                                    # grant 只改内存对象，必须落库，否则称号随临时对象一起丢失
+                                    await self.db.update_player_fields(p.user_id, permanent_bonus=p.permanent_bonus)
+                                    granted_any = True
+                            if granted_any:
+                                broadcast = (
+                                    f"🏆【月度盛典】新的一月，天道册封上月之最：\n"
+                                    f"  · 修为至尊：【{top_exp.user_name or top_exp.user_id[:8]}】\n"
+                                    f"  · 第一大善：【{top_karma.user_name or top_karma.user_id[:8]}】\n"
+                                    f"获得月度限定称号，全服敬仰！"
+                                )
+                                await self._broadcast_world_boss_spawn(broadcast)
+                            # 颁发成功后才写当月标记，失败时下轮可重试
+                            await self.db.ext.set_system_config(month_cfg_key, "1")
+                except Exception as e:
+                    logger.error(f"月度称号颁发异常: {e}")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -688,10 +843,10 @@ class XiuXianPlugin(Star):
 
     # ================= 指令注册区 =================
 
-    @filter.command(CMD_HELP, "显示帮助信息")
+    @filter.command(CMD_HELP, "显示帮助信息（可带关键字过滤：/修仙帮助 签到）")
     @require_whitelist
-    async def handle_help(self, event: AstrMessageEvent):
-        async for r in self.misc_handler.handle_help(event): yield r
+    async def handle_help(self, event: AstrMessageEvent, keyword: str = ""):
+        async for r in self.misc_handler.handle_help(event, keyword): yield r
 
     @filter.command(CMD_START_XIUXIAN, "开始你的修仙之路")
     @require_whitelist
@@ -916,7 +1071,9 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_SECT_LIST, "查看宗门列表")
     @require_whitelist
     async def handle_sect_list(self, event: AstrMessageEvent):
-        async for r in self.sect_handlers.handle_sect_list(event): yield r
+        buf = []
+        async for r in self.sect_handlers.handle_sect_list(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "sect", "🏯 宗门列表", "仙盟林立 · 强者为尊"): yield r
 
     @filter.command(CMD_SECT_DONATE, "宗门捐献")
     @require_whitelist
@@ -952,36 +1109,48 @@ class XiuXianPlugin(Star):
             return
         async for r in self.sect_handlers.handle_position_change(event, target, pos_int): yield r
 
-    # ===== 排行榜 =====
+    # ===== 排行榜（v3.25.0 全部升级仙侠卡片）=====
     @filter.command(CMD_RANK_LEVEL, "境界排行")
     @require_whitelist
     async def handle_rank_level(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_level(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_level(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏔️ 境界排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_POWER, "战力排行")
     @require_whitelist
     async def handle_rank_power(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_power(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_power(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "⚔️ 战力排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_WEALTH, "财富排行")
     @require_whitelist
     async def handle_rank_wealth(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_wealth(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_wealth(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "💰 灵石排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_SECT, "宗门排行")
     @require_whitelist
     async def handle_rank_sect(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_sect(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_sect(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏯 宗门排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_DEPOSIT, "存款排行")
     @require_whitelist
     async def handle_rank_deposit(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_deposit(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_deposit(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏦 存款排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_CONTRIBUTION, "贡献排行")
     @require_whitelist
     async def handle_rank_contribution(self, event: AstrMessageEvent):
-        async for r in self.ranking_handlers.handle_rank_sect_contribution(event): yield r
+        buf = []
+        async for r in self.ranking_handlers.handle_rank_sect_contribution(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rank", "✨ 贡献排行", "修行界风云榜"): yield r
 
     # ===== 战斗 =====
     @filter.command(CMD_DUEL, "决斗")
@@ -990,8 +1159,8 @@ class XiuXianPlugin(Star):
         user_id = event.get_sender_id()
         async for r in self.combat_handlers.handle_duel(event, target):
             yield r
-        # 只有获胜才计入 win_pvp 任务进度
-        last_result = getattr(self.combat_handlers, "last_duel_result", None)
+        # 只有获胜才计入 win_pvp 任务进度（结果按 user_id 隔离，取后即清）
+        last_result = self.combat_handlers.last_duel_result.pop(user_id, None)
         if last_result and last_result.get("winner") == user_id:
             await self.db.ext.add_task_progress(user_id, "win_pvp", 1)
 
@@ -1002,8 +1171,7 @@ class XiuXianPlugin(Star):
         async for r in self.combat_handlers.handle_spar(event, target):
             yield r
         # 真正开打（非冷却被拒）才计入 spar 任务进度
-        if getattr(self.combat_handlers, "last_spar_fought", False):
-            self.combat_handlers.last_spar_fought = False
+        if self.combat_handlers.last_spar_fought.pop(user_id, False):
             await self.db.ext.add_task_progress(user_id, "spar", 1)
             await self._title_bump(user_id, "spar_count")
         # 悬赏联动（spar/pvp tag）
@@ -1016,7 +1184,10 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_RIFT_LIST, "秘境列表")
     @require_whitelist
     async def handle_rift_list(self, event: AstrMessageEvent):
-        async for r in self.rift_handlers.handle_rift_list(event): yield r
+        buf = []
+        async for r in self.rift_handlers.handle_rift_list(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "rift", "🌀 秘境列表", "天开异境 · 机缘所在",
+                                           footer="探索秘境 <ID> · /秘境词缀 看今日天时"): yield r
 
     @filter.command(CMD_RIFT_EXPLORE, "探索秘境")
     @require_whitelist
@@ -1149,16 +1320,14 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_ALCHEMY_CRAFT, "炼制丹药")
     @require_whitelist
     async def handle_alchemy_craft(self, event: AstrMessageEvent, pill_id: str = ""):
+        user_id = event.get_sender_id()
         async for r in self.alchemy_handlers.handle_craft(event, pill_id):
             yield r
-        # 任务要求"成功炼制"：失败/丹劫毁丹不计进度
-        if getattr(self.alchemy_handlers, "last_craft_success", False):
-            self.alchemy_handlers.last_craft_success = False
-            user_id = event.get_sender_id()
+        # 任务要求"成功炼制"：失败/丹劫毁丹不计进度（结果按 user_id 隔离，取后即清）
+        if self.alchemy_handlers.last_craft_success.pop(user_id, False):
             await self.db.ext.add_task_progress(user_id, "craft_pill", 1)
             await self._title_bump(user_id, "craft_count")
-            if getattr(self.alchemy_handlers, "last_perfect", False):
-                self.alchemy_handlers.last_perfect = False
+            if self.alchemy_handlers.last_perfect.pop(user_id, False):
                 await self._title_bump(user_id, "craft_perfect")
             # 悬赏联动（craft tag）
             player = await self.db.get_player_by_id(user_id)
@@ -1181,7 +1350,10 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_BANK_INFO, "查看银行信息")
     @require_whitelist
     async def handle_bank_info(self, event: AstrMessageEvent):
-        async for r in self.bank_handlers.handle_bank_info(event): yield r
+        buf = []
+        async for r in self.bank_handlers.handle_bank_info(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "bank", "🏦 灵石银行", "存取 · 复利 · 贷款",
+                                           footer="贷款逾期将被追杀 · 谨慎借贷"): yield r
 
     @filter.command(CMD_BANK_DEPOSIT, "存入灵石")
     @require_whitelist
@@ -1238,7 +1410,10 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_BOUNTY_LIST, "查看悬赏任务")
     @require_whitelist
     async def handle_bounty_list(self, event: AstrMessageEvent):
-        async for r in self.bounty_handlers.handle_bounty_list(event): yield r
+        buf = []
+        async for r in self.bounty_handlers.handle_bounty_list(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "bounty", "📜 悬赏令", "今日悬赏 · 童叟无欺",
+                                           footer="接取悬赏 <编号> · 完成得灵石功德"): yield r
 
     @filter.command(CMD_BOUNTY_ACCEPT, "接取悬赏任务")
     @require_whitelist
@@ -1343,8 +1518,7 @@ class XiuXianPlugin(Star):
         async for r in self.spirit_farm_handlers.handle_harvest(event):
             yield r
         # 真正收获成功（有成熟作物）才计任务进度
-        if getattr(self.spirit_farm_handlers, "last_harvest_ok", False):
-            self.spirit_farm_handlers.last_harvest_ok = False
+        if self.spirit_farm_handlers.last_harvest_ok.pop(event.get_sender_id(), False):
             await self.db.ext.add_task_progress(event.get_sender_id(), "harvest", 1)
             await self._title_bump(event.get_sender_id(), "harvest_count")
 
@@ -1398,7 +1572,10 @@ class XiuXianPlugin(Star):
     @filter.command("任务榜", "查看日常任务")
     @require_whitelist
     async def handle_task_board(self, event: AstrMessageEvent):
-        async for r in self.daily_task_handlers.handle_task_board(event): yield r
+        buf = []
+        async for r in self.daily_task_handlers.handle_task_board(event): buf.append(str(r))
+        async for r in self.send_text_card(event, "\n".join(buf), "task", "📋 任务榜", "今日随机任务",
+                                           footer="接取任务 <黄/玄/地/天> · 完成领奖"): yield r
 
     @filter.command("接取任务", "接取日常任务")
     @require_whitelist
@@ -1416,9 +1593,8 @@ class XiuXianPlugin(Star):
     async def handle_challenge_world_boss(self, event: AstrMessageEvent):
         user_id = event.get_sender_id()
         async for r in self.world_boss_handlers.handle_challenge(event): yield r
-        # 挑战成功（真正打出伤害）计入 boss_damage 任务进度
-        if getattr(self.world_boss_mgr, "last_challenge_ok", False):
-            self.world_boss_mgr.last_challenge_ok = False
+        # 挑战成功（真正打出伤害）计入 boss_damage 任务进度（结果按 user_id 隔离）
+        if self.world_boss_mgr.last_challenge_ok.pop(user_id, False):
             await self.db.ext.add_task_progress(user_id, "boss_damage", 1)
             # 悬赏联动（boss_damage/tide tag）
             player = await self.db.get_player_by_id(user_id)
@@ -1426,14 +1602,12 @@ class XiuXianPlugin(Star):
                 await self.bounty_mgr.add_bounty_progress(player, "boss_damage", 1)
                 await self.bounty_mgr.add_bounty_progress(player, "tide", 1)
         # 击杀结算全服广播（排名奖励公示）
-        settle_msg = getattr(self.world_boss_mgr, "last_settle_msg", None)
+        settle_msg = self.world_boss_mgr.last_settle_msg.pop(user_id, None)
         if settle_msg:
-            self.world_boss_mgr.last_settle_msg = None
             await self._broadcast_world_boss_spawn(settle_msg)
         # 血量里程碑播报
-        milestone = getattr(self.world_boss_mgr, "last_milestone_msg", None)
+        milestone = self.world_boss_mgr.last_milestone_msg.pop(user_id, None)
         if milestone:
-            self.world_boss_mgr.last_milestone_msg = None
             await self._broadcast_world_boss_spawn(milestone)
 
     @filter.command("世界Boss状态", "查看动态世界Boss信息")
@@ -2301,6 +2475,7 @@ class XiuXianPlugin(Star):
         total = len(all_players)
         # 注册序
         reg_rank = "未知"
+        pct_text = ""
         try:
             sorted_by_exp = sorted(all_players, key=lambda p: p.experience, reverse=True)
             my_idx = next((i for i, p in enumerate(sorted_by_exp, 1) if p.user_id == player.user_id), None)
@@ -2318,13 +2493,15 @@ class XiuXianPlugin(Star):
             f"全服在册修士：{total} 位",
             f"修为排名：{reg_rank}" + (f" / {total}" if reg_rank != "未知" else ""),
         ]
-        if 'pct_text' in dir() and pct_text:
+        if pct_text:
             lines.append(f"📊 {pct_text}")
         lines.append(f"⛰️ 境界高于你的修士：{higher} 位")
         lines.append(f"🧭 当前境界：{player.get_level(self.config_manager)}")
         lines.append("━━━━━━━━━━━━━━━")
         lines.append("💡 仙路漫漫，与其仰望他人，不如低头赶路")
-        yield event.plain_result("\n".join(lines))
+        # v3.25.0 仙谱升级卡片
+        async for r in self.send_text_card(event, "\n".join(lines), "info", "📖 仙谱", "全服修士名鉴"):
+            yield r
 
     @filter.command("宗门丹会", "宗主开启丹会，全宗免费领丹（需炼丹房3级，每周一次）")
     @require_whitelist
@@ -2539,7 +2716,6 @@ class XiuXianPlugin(Star):
             res = "❌ 称号数据读取失败，请稍后再试。"
             
         yield event.plain_result(res)
-
     @filter.command("仙界管理", "管理员工具：查玩家/发灵石/重置状态/公告")
     @require_whitelist
     async def handle_admin_tool(self, event: AstrMessageEvent):
@@ -2657,6 +2833,10 @@ class XiuXianPlugin(Star):
             except ValueError:
                 yield event.plain_result("❌ 灵石数量必须是整数。")
                 return
+            # 钳制：负数发全体会把全服灵石清零，超大数据会破坏经济；单次上限 10 亿
+            if amount == 0 or abs(amount) > 1_000_000_000:
+                yield event.plain_result("❌ 灵石数量需为非零且绝对值不超过 10 亿的整数。")
+                return
 
             # --- 全体发放逻辑 ---
             if target_id == "全体":
@@ -2691,12 +2871,30 @@ class XiuXianPlugin(Star):
             if not target:
                 yield event.plain_result(f"❌ 未找到玩家 {tid}。")
                 return
-            ok, tmsg = self.title_hooks.grant_manual(target, title_name)
-            if ok:
-                await self.db.update_player(target)
+            # grant_manual 返回提示文本（str），内部已自行落库
+            tmsg = await self.title_hooks.grant_manual(target, title_name)
+            if tmsg:
                 yield event.plain_result(f"✅ 已授予玩家 {tid} 称号{tmsg}")
             else:
                 yield event.plain_result(f"❌ 称号【{title_name}】不存在于称号库或已拥有。/称号图鉴 查看全部")
+            return
+
+        elif sub == "运营":
+            # v3.24.0 参与度面板：今日指令调用 Top20（玩法调参的数据依据）
+            today = time.strftime("%Y%m%d")
+            async with self.db.conn.execute(
+                "SELECT key, value FROM system_config WHERE key LIKE ? ORDER BY CAST(value AS INTEGER) DESC LIMIT 20",
+                (f"stats_cmd_%_{today}",)
+            ) as cursor:
+                rows = await cursor.fetchall()
+            if not rows:
+                yield event.plain_result("📊 今日暂无指令调用数据。")
+                return
+            lines = [f"📊【今日指令热度 Top{len(rows)}】", "━━━━━━━━━━━━━━━"]
+            for key, val in rows:
+                name = key[len("stats_cmd_"):-len(f"_{today}")]
+                lines.append(f"  {val} 次 · {name}")
+            yield event.plain_result("\n".join(lines))
             return
 
         elif sub == "清冷却":
@@ -2706,8 +2904,16 @@ class XiuXianPlugin(Star):
                 return
             cleaned = 0
             async with self.db.conn.execute(
-                "SELECT key FROM system_config WHERE key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ?",
-                (f"adv_cd_{arg1}_%", f"escort_cd_{arg1}", f"duel_pair_{arg1}_%", f"duel_pair_%_{arg1}")
+                "SELECT key FROM system_config WHERE key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ? "
+                "OR key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ? OR key LIKE ?",
+                (
+                    f"adv_cd_{arg1}_%", f"escort_cd_{arg1}", f"duel_pair_{arg1}_%", f"duel_pair_%_{arg1}",
+                    f"escort_rob_cd_{arg1}",          # 劫镖冷却
+                    f"sect_battle_cd_{arg1}",         # 大比冷却
+                    f"sect_battle_daily_{arg1}",      # 大比每日次数
+                    f"bounty_abandon_cd_{arg1}",      # 放弃悬赏冷却
+                    f"rebirth_last_{arg1}",           # 弃道重修冷却
+                )
             ) as cursor:
                 rows = await cursor.fetchall()
             for (k,) in rows:
@@ -2733,6 +2939,229 @@ class XiuXianPlugin(Star):
             return
 
         # ================= 公告 =================
+        elif sub == "封禁":
+            # /仙界管理 封禁 <ID/道号/@玩家> —— 写入 admin_ban_{uid}，player_required 全局拦截
+            ban_target = at_id or (arg1.lstrip("@") if arg1 and (arg1.isdigit() or arg1.startswith("@")) else None)
+            if not ban_target:
+                t = await self.db.get_player_by_name(arg1) if arg1 else None
+                ban_target = t.user_id if t else None
+            if not ban_target:
+                yield event.plain_result("用法：/仙界管理 封禁 <ID/道号/@玩家>")
+                return
+            await self.db.ext.set_system_config(f"admin_ban_{ban_target}", "1")
+            yield event.plain_result(f"⛔ 已封禁玩家 {ban_target}（所有玩家指令将被拦截）。/仙界管理 解封 可解除。")
+            return
+
+        elif sub == "解封":
+            unban_target = at_id or (arg1.lstrip("@") if arg1 and (arg1.isdigit() or arg1.startswith("@")) else None)
+            if not unban_target:
+                t = await self.db.get_player_by_name(arg1) if arg1 else None
+                unban_target = t.user_id if t else None
+            if not unban_target:
+                yield event.plain_result("用法：/仙界管理 解封 <ID/道号/@玩家>")
+                return
+            await self.db.ext.set_system_config(f"admin_ban_{unban_target}", "")
+            yield event.plain_result(f"✅ 已解除玩家 {unban_target} 的封禁。")
+            return
+
+        elif sub == "深查":
+            # /仙界管理 深查 <ID/道号/@玩家> —— 跨系统深度画像
+            deep_target = None
+            if at_id and not arg1:
+                deep_target = await self.db.get_player_by_id(at_id)
+            elif arg1:
+                deep_target = (
+                    await self.db.get_player_by_id(arg1.lstrip("@"))
+                    if (arg1.isdigit() or arg1.startswith("@"))
+                    else await self.db.get_player_by_name(arg1)
+                )
+            if not deep_target:
+                yield event.plain_result("❌ 未找到该玩家。")
+                return
+            uid = deep_target.user_id
+            try:
+                owned_titles = await self.title_mgr._load_owned(deep_target)
+            except Exception:
+                owned_titles = {}
+            partner = await self.marriage_mgr.get_partner_id(uid)
+            partner_name = ""
+            if partner:
+                pp = await self.db.get_player_by_id(partner)
+                partner_name = (pp.user_name if pp else "") or partner[:8]
+            jade = await self.samsara_mgr.get_jade(uid)
+            banned = await self.db.ext.get_system_config(f"admin_ban_{uid}") == "1"
+            import json as _dj
+            try:
+                ring = list(_dj.loads(deep_target.storage_ring_items or "{}").items())[:5]
+                ring_txt = "、".join(f"{k}x{v}" for k, v in ring) or "空"
+            except Exception:
+                ring_txt = "?"
+            yield event.plain_result(
+                f"🔬 深度档案 · {deep_target.user_name or uid[:8]}\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"境界/修为：{deep_target.get_level(self.config_manager)} / {deep_target.experience:,}\n"
+                f"灵石/转生：{deep_target.gold:,} / {deep_target.reincarnation_count} 周\n"
+                f"称号图鉴：{len(owned_titles)} 个\n"
+                f"结契道侣：{partner_name or '无'}\n"
+                f"轮回玉：{jade:,}\n"
+                f"储物戒（前5）：{ring_txt}\n"
+                f"封禁状态：{'⛔ 已封禁' if banned else '正常'}\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"ID：{uid}"
+            )
+            return
+
+        elif sub == "补偿":
+            # /仙界管理 补偿 <灵石> <修为> [全体|ID|道号/@] —— 附信箱通知
+            try:
+                c_gold = int(arg1) if arg1.isdigit() else -1
+                c_exp = int(arg2) if arg2.isdigit() else -1
+            except ValueError:
+                c_gold = c_exp = -1
+            if c_gold <= 0 or c_exp < 0:
+                yield event.plain_result("用法：/仙界管理 补偿 <灵石> <修为> [全体|ID/@/道号]（灵石>0）")
+                return
+            rest_parts = clean_parts[3:]
+            tgt = rest_parts[0] if rest_parts else "全体"
+            reason = " ".join(rest_parts[1:]) or "管理员补偿"
+            if tgt == "全体":
+                ids = await self.db.get_all_player_ids()
+                await self.db.conn.execute(
+                    "UPDATE players SET gold = gold + ?, experience = experience + ?",
+                    (c_gold, c_exp)
+                )
+                await self.db.conn.commit()
+                yield event.plain_result(f"✅ 已向全服 {len(ids)} 名玩家补偿：{c_gold:,} 灵石 + {c_exp:,} 修为（理由：{reason}）。")
+                return
+            if tgt.startswith("@"):
+                tgt = tgt[1:]
+            tp = await self.db.get_player_by_id(tgt) if tgt.isdigit() else await self.db.get_player_by_name(tgt)
+            if not tp:
+                yield event.plain_result("❌ 未找到该玩家。")
+                return
+            await self.db.add_player_gold(tp.user_id, c_gold)
+            await self.db.add_player_exp(tp.user_id, c_exp)
+            try:
+                from .managers.enhance_systems import MailboxManager
+                await MailboxManager(self.db).send(tp.user_id, "天道补偿", f"你收到补偿：{c_gold:,} 灵石 + {c_exp:,} 修为（{reason}）。")
+            except Exception:
+                pass
+            yield event.plain_result(f"✅ 已补偿 {tp.user_name or tp.user_id}：{c_gold:,} 灵石 + {c_exp:,} 修为（已寄信通知）。")
+            return
+
+        elif sub == "玩法状态":
+            # 一键总览全部周期玩法的关键状态（只读）
+            lines = ["🎛️【玩法状态总览】", "━━━━━━━━━━━━━━━"]
+            try:
+                st = await self.season_mgr._load_state()
+                if st:
+                    remain = max(0, int((float(st.get("end_ts", 0)) - time.time()) // 86400))
+                    lines.append(f"🏆 天骄榜：第 {st.get('season_no', 1)} 届 · 剩 {remain} 天")
+            except Exception:
+                pass
+            try:
+                a_stage = await self.db.ext.syscfg_get_number("ascension_stage")
+                a_funds = await self.db.ext.syscfg_get_number("ascension_funds")
+                lines.append(f"⛩️ 登仙台：第 {a_stage}/6 阶 · 累计 {a_funds:,} 灵石")
+            except Exception:
+                pass
+            try:
+                au = await self.db.ext.get_system_config("loot_auction_state")
+                if au:
+                    import json as _aj
+                    aud = _aj.loads(au)
+                    lines.append(f"🔨 拍卖行：{'进行中（截止 ' + time.strftime('%H:%M', time.localtime(aud.get('end_ts', 0))) + '）' if aud.get('open') else '空闲'}")
+                else:
+                    lines.append("🔨 拍卖行：空闲")
+            except Exception:
+                pass
+            try:
+                tr = await self.db.ext.get_system_config("treasure_active")
+                if tr:
+                    import json as _aj2
+                    trd = _aj2.loads(tr)
+                    lines.append(f"🌈 天材地宝：{trd.get('name')}（{'已被夺' if trd.get('claimed') else '现世中'}）")
+                else:
+                    lines.append("🌈 天材地宝：无现世")
+            except Exception:
+                pass
+            try:
+                tnm = await self.tournament_mgr._load_state()
+                if tnm:
+                    lines.append(f"⚔️ 斗法台：{tnm.get('phase')} · 报名 {len(tnm.get('players', []))} 人")
+            except Exception:
+                pass
+            try:
+                tide = await self.db.ext.get_system_config("tide_active")
+                lines.append(f"🌑 魔潮：{'肆虐中' if tide == '1' else '平静'}")
+            except Exception:
+                pass
+            lines.append("━━━━━━━━━━━━━━━")
+            lines.append("💡 发送 /仙界管理 查看 全部管理指令")
+            yield event.plain_result("\n".join(lines))
+            return
+
+        elif sub == "经济面板":
+            # SQL 聚合：全服经济与活跃度一览
+            async with self.db.conn.execute(
+                "SELECT COUNT(*), SUM(gold), MAX(gold) FROM players"
+            ) as cursor:
+                total_players, total_gold, max_gold = await cursor.fetchone()
+            try:
+                async with self.db.conn.execute("SELECT SUM(balance) FROM bank_accounts") as cursor:
+                    bank_sum = await cursor.fetchone()
+                bank_sum = bank_sum[0] or 0
+            except Exception:
+                bank_sum = 0
+            today = time.strftime("%Y%m%d")
+            try:
+                async with self.db.conn.execute(
+                    "SELECT SUM(CAST(value AS INTEGER)) FROM system_config WHERE key LIKE ?",
+                    (f"stats_cmd_%_{today}",)
+                ) as cursor:
+                    active_cmds = await cursor.fetchone()
+                active_cmds = active_cmds[0] or 0
+            except Exception:
+                active_cmds = 0
+            yield event.plain_result(
+                f"💰【经济面板】\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"注册修士：{total_players or 0}\n"
+                f"流通灵石：{(total_gold or 0):,}\n"
+                f"首富持有：{(max_gold or 0):,}\n"
+                f"银行存款：{bank_sum:,}\n"
+                f"今日指令调用：{active_cmds:,} 次\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💡 通胀预警线：流通灵石接近全服日产出×30 时应收紧回收口"
+            )
+            return
+
+        elif sub == "设境界":
+            # /仙界管理 设境界 <ID/道号/@> <境界等级> —— 直接改写 level_index（谨慎使用）
+            lv_target = at_id or (arg1.lstrip("@") if arg1 and (arg1.isdigit() or arg1.startswith("@")) else None)
+            if not lv_target and arg1:
+                tp = await self.db.get_player_by_name(arg1)
+                lv_target = tp.user_id if tp else None
+            lv_num = int(arg2) if arg2.isdigit() else -1
+            level_data = self.config_manager.get_level_data("灵修")
+            if not lv_target or not (0 <= lv_num < len(level_data)):
+                yield event.plain_result(f"用法：/仙界管理 设境界 <ID/道号/@> <0-{len(level_data) - 1}>")
+                return
+            tp2 = await self.db.get_player_by_id(lv_target)
+            if not tp2:
+                yield event.plain_result("❌ 未找到该玩家。")
+                return
+            old_name = tp2.get_level(self.config_manager)
+            # 修为同步到该境界门槛，避免立即被突降的判定卡住
+            need_exp = level_data[lv_num].get("exp_needed", 0)
+            await self.db.update_player_fields(
+                lv_target, level_index=lv_num,
+                experience=max(tp2.experience, need_exp),
+            )
+            new_name = level_data[lv_num]["level_name"]
+            yield event.plain_result(f"✅ 已将 {tp2.user_name or lv_target} 从【{old_name}】改为【{new_name}】（修为已补至门槛）。")
+            return
+
         elif sub == "公告":
             # 公告直接把后面的所有内容拼接
             text = " ".join(clean_parts[1:]).strip()
@@ -2746,8 +3175,20 @@ class XiuXianPlugin(Star):
         yield event.plain_result(
             "🛠️ 仙界管理工具\n"
             "━━━━━━━━━━━━━━━\n"
+            "【玩家管理】\n"
             "/仙界管理 查玩家 <ID/道号/@玩家>\n"
-            "/仙界管理 发灵石 <ID/道号/@玩家/全体> <数量>\n"
+            "/仙界管理 深查 <ID/道号/@玩家> (跨系统深度档案)\n"
+            "/仙界管理 封禁 <ID/道号/@玩家> / 解封 <...>\n"
+            "/仙界管理 设境界 <ID/道号/@玩家> <0-35>\n"
+            "/仙界管理 清冷却 <ID>\n"
             "/仙界管理 重置状态 <ID/@玩家>\n"
+            "【经济与运营】\n"
+            "/仙界管理 发灵石 <ID/道号/@玩家/全体> <数量>\n"
+            "/仙界管理 发称号 <ID/@玩家> <称号名>\n"
+            "/仙界管理 补偿 <灵石> <修为> [全体|ID|@|道号] (附信箱通知)\n"
+            "/仙界管理 运营 (今日指令热度Top20)\n"
+            "/仙界管理 经济面板 (全服流通/存款/活跃)\n"
+            "/仙界管理 玩法状态 (赛季/登仙台/拍卖/Boss/魔潮一览)\n"
+            "【全服】\n"
             "/仙界管理 公告 <文本>"
         )

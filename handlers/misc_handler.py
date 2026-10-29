@@ -14,8 +14,8 @@ class MiscHandler:
     def __init__(self, db: DataBase):
         self.db = db
 
-    async def handle_help(self, event: AstrMessageEvent):
-        """显示 v6.1 版本的修仙指令大全"""
+    async def handle_help(self, event: AstrMessageEvent, keyword: str = ""):
+        """显示修仙指令大全（v3.24.0：支持 /修仙帮助 <关键字> 过滤相关指令行）"""
         help_text = (
             "📖 修仙指令大全 v6.20 (天命可期版)\n"
             "💡 提示：所有指令均可带 / 前缀使用\n"
@@ -40,8 +40,7 @@ class MiscHandler:
             "\n"
             "【💊 丹药与炼丹】\n"
             "  /丹药背包 (含分类说明) /丹药信息 <名> /服用丹药 <名>\n"
-            "  /丹药配方 /炼制丹药 <ID> (火候/丹劫)\n"
-            "  /丹药配方 /炼丹 <ID> (投料后 /火候 <1-3> 控火)\n"
+            "  /丹药配方 /炼制丹药 <ID> (火候/丹劫，投料后 /火候 <1-3> 控火)\n"
             "\n"
             "【⚔️ 战斗与竞技】(功法/武器带五行克制)\n"
             "  /切磋 @人 /决斗 @人 (均有冷却)\n"
@@ -107,12 +106,61 @@ class MiscHandler:
             "  /飞升 [封印装备名] /解封传家宝\n"
             "  /仙缘商店 /仙缘兑换 <编号>\n"
             "\n"
+            "【🎴 新玩法（v3.19.0）】\n"
+            "  /修仙天气 (每日天象: 闭关/历练/奇遇/突破加成)\n"
+            "  /天骄榜 (90天赛季, 按修为增量排名)\n"
+            "  /观礼 /观礼下注 <金额> [败] (渡劫期突破全服下注)\n"
+            "  /轮回信息 /轮回宝阁 /轮回兑换 <编号> (周目加成+轮回玉)\n"
+            "  /灵植园 [/灵植园 种下 <名>] /照料灵园 /收取灵园 (群聊共建)\n"
+            "  /道侣试炼 (与仙灵道侣的每周共同任务)\n"
+            "  /灵脉战 /进攻灵脉 <编号1-5> <灵石> (宗门据点战)\n"
+            "  /扫荡秘境 <编号> /秘境词缀 (碾压扫荡+每日词缀)\n"
+            "  /悬赏行会 /发布悬赏 <描述> <赏金> /接玩家悬赏 <编号>\n"
+            "  /玩家悬赏完成 <编号> /玩家悬赏取消 <编号>\n"
+            "  /收集图鉴 /签到里程碑 (收集与月度签到奖励)\n"
+            "\n"
+            "【🎴 新玩法·贰（v3.20.0）】\n"
+            "  /科举 (每日3次答题) /答题 <题号> <A-D>\n"
+            "  /罗盘 (每日免费1抽) /罗盘 抽 <N> (付费连抽)\n"
+            "  /结契 @道友 /接受结契 /解除结契 /结契信息 (玩家道侣)\n"
+            "  /成就 /成就领取 <编号> (19条成就一次性奖励)\n"
+            "  /灵兽出战 /灵兽休战 /出战信息 (灵兽协修加成)\n"
+            "  /夺宝 /天材地宝 (全服限时抢夺)\n"
+            "\n"
+            "【🎴 新玩法·叁（v3.21.0）】\n"
+            "  /斗法台 [/斗法台 报名] (周五自动开赛的天道压制淘汰赛)\n"
+            "  /宗门科技 /宗门研科技 <名称> <灵石> (全宗被动加成)\n"
+            "  /拍卖行 /竞拍 <金额> (Boss掉落全服竞拍,托管竞价)\n"
+            "\n"
+            "【🎴 新玩法·肆（v3.22.0）】\n"
+            "  /登仙台 /助登仙台 <灵石> (全服世界工程,进阶全服有奖)\n"
+            "  /称号熔炼 [名1 名2 名3] (3同阶熔炼高一品阶)\n"
+            "  /求签 /今日运势 (每日运势影响当日收益)\n"
+            "  /修仙群史 (昨日修仙界大事记)\n"
+            "\n"
             "━━━━━━━━━━━━━━━\n"
             "🛠️【管理员】(需配置BOSS_ADMINS)\n"
-            "  /仙界管理 (查玩家/发灵石/重置状态/公告)\n"
+            "  /仙界管理 (查玩家/深查/封禁/设境界/发灵石/补偿/发称号/清冷却/重置状态)\n"
+            "  /仙界管理 运营 / 经济面板 / 玩法状态 (运营数据一览)\n"
+            "  /仙界管理 公告 <文本>\n"
             "  /开启魔潮 (Boss每周自动降临3次,无需手动)\n"
             "  /开启天魔入侵 /开启宗门大比 /结束宗门大比"
         )
+        # v3.24.0 关键字过滤：220+ 指令太长，/修仙帮助 <词> 只显示相关行
+        kw = (keyword or "").strip()
+        if kw:
+            lines = help_text.splitlines()
+            hits = [
+                ln for ln in lines
+                if kw.lower() in ln.lower() and ln.strip() and not ln.startswith("📖")
+            ]
+            if not hits:
+                yield event.plain_result(f"🔍 没找到包含「{kw}」的指令。试试：签到 / 历练 / 宗门 / 丹药 / Boss / 结婚 / 罗盘")
+                return
+            out = [f"🔍 包含「{kw}」的指令（{len(hits)} 条，发 /修仙帮助 看全部）：", "━━━━━━━━━━━━━━━"]
+            out.extend(hits[:40])
+            yield event.plain_result("\n".join(out))
+            return
         yield event.plain_result(help_text)
 
     @player_required
@@ -152,12 +200,8 @@ class MiscHandler:
         player.cultivation_start_time = 0
         await self.db.update_player(player)
         
-        # 3. 暴力清理：取消正在进行中的赠予
-        try:
-            await self.db.conn.execute("DELETE FROM pending_gifts WHERE sender_id = ? OR receiver_id = ?", (player.user_id, player.user_id))
-            await self.db.conn.commit()
-        except:
-            pass
+        # 3. 不再删除 pending_gifts：待接收/待发送的赠予物品既不在储物戒也不在请求表里，
+        #    删掉会让物品永久蒸发（发送方已扣物品）。过期时会自动返还发送者。
 
         yield event.plain_result(
             "🔓 状态已强制重置！\n"

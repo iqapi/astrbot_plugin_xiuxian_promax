@@ -71,10 +71,10 @@ class MigrationManager:
                 await self.conn.execute("BEGIN")
                 # 使用最新的建表函数
                 await _create_all_tables_v2(self.conn)
+                # 先补齐最新增量列再写版本号：若先写版本后崩溃，会留下"声称 v29 却缺列"的坏库
+                await _ensure_latest_columns(self.conn)
                 await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 await self.conn.commit()
-                # 全新建表的 SQL 可能未包含最新增量列，统一补齐
-                await _ensure_latest_columns(self.conn)
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
                 return
 
@@ -135,9 +135,23 @@ async def _create_all_tables_v1(conn: aiosqlite.Connection):
 
 @migration(2)
 async def _migrate_to_v2(conn: aiosqlite.Connection, config_manager: ConfigManager):
-    """迁移到v2 - 新属性系统（灵修/体修）"""
-    await conn.execute("DROP TABLE IF EXISTS players")
+    """迁移到v2 - 新属性系统（灵修/体修）
+    旧表结构不兼容需要重建，但绝不能直接 DROP：先把旧玩家数据整表备份，可手动迁移/找回。"""
+    await conn.execute("DROP TABLE IF EXISTS players_v1_backup")
+    await conn.execute("ALTER TABLE players RENAME TO players_v1_backup")
+    # RENAME 会把 idx_player_level 索引一起带走（索引名全局唯一），先删除以便新表重建同名索引
+    await conn.execute("DROP INDEX IF EXISTS idx_player_level")
     await _create_all_tables_v2(conn)
+    # 尽力把能对上的基础字段拷回（列名差异由各列默认值兜底）
+    try:
+        await conn.execute("""
+            INSERT OR IGNORE INTO players (user_id, user_name, level_index, experience, gold, hp)
+            SELECT user_id, user_name, level_index, experience, gold, hp FROM players_v1_backup
+        """)
+        logger.warning("v2 迁移：旧版玩家基础数据已尽量拷贝，完整旧表保留在 players_v1_backup 供人工恢复")
+    except Exception as e:
+        logger.error(f"v2 迁移：旧数据拷贝失败，旧表已保留为 players_v1_backup: {e}")
+    logger.warning("v2 迁移完成：旧 players 表已备份为 players_v1_backup（不再直接丢弃）")
 
 @migration(3)
 async def _migrate_to_v3(conn: aiosqlite.Connection, config_manager: ConfigManager):

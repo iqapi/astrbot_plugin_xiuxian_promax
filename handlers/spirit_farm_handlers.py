@@ -15,6 +15,7 @@ class SpiritFarmHandlers:
     def __init__(self, db: DataBase, farm_mgr: SpiritFarmManager):
         self.db = db
         self.mgr = farm_mgr
+        self.last_harvest_ok = {}  # user_id -> bool，收获是否真正成功
     
     @player_required
     async def handle_farm_info(self, player: Player, event: AstrMessageEvent):
@@ -114,7 +115,7 @@ class SpiritFarmHandlers:
     async def handle_harvest(self, player: Player, event: AstrMessageEvent):
         """收获灵草"""
         success, msg = await self.mgr.harvest(player)
-        self.last_harvest_ok = bool(success)  # 供任务进度判定
+        self.last_harvest_ok[player.user_id] = bool(success)  # 供任务进度判定（按用户隔离）
         yield event.plain_result(msg)
     
     @player_required

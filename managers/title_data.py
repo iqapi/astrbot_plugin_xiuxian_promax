@@ -51,6 +51,7 @@ TITLES = [
     T("秘境游客", 1, "rift_count", condition=5, exp=0.03),
     T("勤修不辍", 1, "cultivate_count", condition=10, exp=0.02),
     T("仙途行者", 1, "cultivate_count", condition=50, exp=0.03),
+    T("仙途新星", 2, "manual", condition=None, atk=40, exp=0.05),  # 新手七日第7日全勤奖励（first_week 颁发）
 
     # ========== 灵品（进阶玩法，25）==========
     T("百战老兵", 2, "spar_count", condition=50, atk=40),

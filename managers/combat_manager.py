@@ -106,19 +106,19 @@ class CombatManager:
         if elem_mult != 1.0:
             damage = int(damage * elem_mult)
         
-        # 2. 暴击判定
+        # 2. 暴击判定（randint(0,99) < rate：rate=0 必不暴击，rate=100 必暴击）
         base_crit = attacker.crit_rate
         bonus_crit = effects.get("crit_rate", 0)
-        is_crit = random.randint(0, 100) <= (base_crit + bonus_crit)
-        
+        is_crit = random.randint(0, 99) < (base_crit + bonus_crit)
+
         if is_crit:
             crit_mult = effects.get("crit_damage", 1.5)
             damage = int(damage * crit_mult)
             logs.append(f"💥 {attacker.name} 触发会心一击！")
-            
+
         # 3. 连击/追加伤害判定
         combo_rate = effects.get("combo_rate", 0)
-        if random.randint(0, 100) <= combo_rate:
+        if combo_rate > 0 and random.randint(0, 99) < combo_rate:
             extra_dmg = int(damage * 0.5)
             damage += extra_dmg
             logs.append(f"⚡ {attacker.name} 触发功法连击，追加 {extra_dmg} 伤害！")
@@ -229,10 +229,21 @@ class CombatManager:
 
     @classmethod
     def player_vs_player_balanced(cls, player1: CombatStats, player2: CombatStats) -> Dict:
-        """天道压制 PVP（强制拉平基础属性，限5回合）"""
-        p1_orig_hp, p1_orig_atk = player1.hp, player1.atk
-        p2_orig_hp, p2_orig_atk = player2.hp, player2.atk
-        
+        """天道压制 PVP（强制拉平基础属性，限5回合；退出前恢复调用方传入的属性对象）"""
+        p1_orig = (player1.hp, player1.max_hp, player1.atk, player1.defense)
+        p2_orig = (player2.hp, player2.max_hp, player2.atk, player2.defense)
+        try:
+            return cls._balanced_combat(player1, player2, p1_orig, p2_orig)
+        finally:
+            # 恢复原属性：调用方（切磋/大比）赛后还会复用该对象同步血量/展示
+            (player1.hp, player1.max_hp, player1.atk, player1.defense) = p1_orig
+            (player2.hp, player2.max_hp, player2.atk, player2.defense) = p2_orig
+
+    @classmethod
+    def _balanced_combat(cls, player1: CombatStats, player2: CombatStats, p1_orig, p2_orig) -> Dict:
+        p1_orig_hp, _, p1_orig_atk, _ = p1_orig
+        p2_orig_hp, _, p2_orig_atk, _ = p2_orig
+
         # 强制拉平基础属性 (HP 锁定 10000)
         player1.hp = player1.max_hp = 10000
         player2.hp = player2.max_hp = 10000
@@ -344,7 +355,8 @@ class CombatManager:
             reward = boss.exp
         elif player.hp <= 0:
             winner = boss.user_id
-            reward = int(boss.exp * (total_damage_dealt / boss.max_hp))
+            # 按 Boss 已损失血量比例给部分奖励；max_hp 兜底 1 防除零
+            reward = int(boss.exp * (total_damage_dealt / max(1, boss.max_hp)))
         else:
             winner = "平局"
             reward = 0

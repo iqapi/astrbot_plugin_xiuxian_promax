@@ -208,7 +208,6 @@ class AdventureManager:
             lines.append(f"💡 共 {len(available)} 条路线可用（全服共 {len(self.routes)} 条）")
             lines.append("💡 使用 /开始历练 <路线名> 出发（如 /开始历练 云游四方）")
             return False, "\n".join(lines)
-            return False, "\n".join(lines)
 
         route_key = self._resolve_route(route_token)
         route = self.routes.get(route_key)
@@ -303,6 +302,19 @@ class AdventureManager:
                 await self.db.conn.rollback()
                 return False, "❌ 你还未踏入修仙之路！", None
 
+            # 事务内重查历练状态：并发双开 /完成历练 时，第二个会因状态已被置回 IDLE 而被拦下
+            recheck_cd = await self.db.ext.get_user_cd(user_id)
+            if not recheck_cd or recheck_cd.type != UserStatus.ADVENTURING:
+                await self.db.conn.rollback()
+                return False, "❌ 你当前不在历练中！", None
+
+            # 事务内把状态置回空闲（先占位防并发）。同连接可见未提交数据，并发方重查即被拦下；
+            # 用裸 SQL 而非 ext.set_user_free()，后者内部 commit 会击穿本事务的原子性
+            await self.db.conn.execute(
+                "UPDATE user_cd SET type = 0, scheduled_time = 0, extra_data = '{}' WHERE user_id = ?",
+                (user_id,)
+            )
+
             # 处理物品掉落，传递 external_transaction=True
             dropped_items, item_msg = await self._handle_drops(player, route, event, external_transaction=True)
 
@@ -326,12 +338,93 @@ class AdventureManager:
                 comp_bonus = 0.0
             if comp_bonus > 0:
                 rewards["exp"] = int(rewards["exp"] * (1 + comp_bonus))
+            # v3.19.0 新玩法：天象（历练）/ 轮回周目 / 图鉴收集 / 天骄榜赛季
+            try:
+                from .weather_manager import WeatherManager
+                wm = await WeatherManager(self.db).get_multiplier("adventure")
+                if wm != 1.0:
+                    rewards["exp"] = int(rewards["exp"] * wm)
+            except Exception:
+                pass
+            try:
+                from .samsara_manager import SamsaraManager
+                from .collection_manager import CollectionManager
+                sams_bonus = SamsaraManager.get_exp_bonus(player)
+                coll_bonus = CollectionManager.get_exp_bonus(player)
+                if sams_bonus > 0:
+                    rewards["exp"] = int(rewards["exp"] * (1 + sams_bonus))
+                if coll_bonus > 0:
+                    rewards["exp"] = int(rewards["exp"] * (1 + coll_bonus))
+            except Exception:
+                pass
+            # v3.20.0 新玩法：结契羁绊 / 灵宠出战（异常安全）
+            try:
+                from .marriage_manager import MarriageManager
+                bond = await MarriageManager(self.db).bond_bonus(player)
+                if bond > 0:
+                    rewards["exp"] = int(rewards["exp"] * (1 + bond))
+            except Exception:
+                pass
+            try:
+                from .pet_battle_manager import PetBattleManager
+                petb = await PetBattleManager(self.db).get_exp_bonus(player.user_id)
+                if petb > 0:
+                    rewards["exp"] = int(rewards["exp"] * (1 + petb))
+            except Exception:
+                pass
+            # v3.21.0 宗门科技：聚灵阵（修为）+ 生财阵（灵石）（异常安全）
+            try:
+                if player.sect_id:
+                    from .sect_tech_manager import SectTechManager
+                    stm = SectTechManager(self.db)
+                    tech_exp = await stm.get_cultivate_bonus(player.sect_id)
+                    tech_gold = await stm.get_gold_bonus(player.sect_id)
+                    if tech_exp > 0:
+                        rewards["exp"] = int(rewards["exp"] * (1 + tech_exp))
+                    if tech_gold > 0:
+                        rewards["gold"] = int(rewards["gold"] * (1 + tech_gold))
+            except Exception:
+                pass
+            # v3.22.0 每日求签修为倍率（异常安全）
+            try:
+                from .fortune_stick_manager import FortuneStickManager
+                fm = await FortuneStickManager(self.db).get_exp_mult(player)
+                if fm != 1.0:
+                    rewards["exp"] = int(rewards["exp"] * fm)
+                # v3.23.0 补接财签灵石倍率（此前定义未接入，财签等于白抽）
+                gm = await FortuneStickManager(self.db).get_gold_mult(player)
+                if gm != 1.0:
+                    rewards["gold"] = int(rewards["gold"] * gm)
+            except Exception:
+                pass
+            # 结契羁绊值：共同历练积累（已婚者 +1）
+            try:
+                from .marriage_manager import MarriageManager
+                mm = MarriageManager(self.db)
+                partner_id = await mm.get_partner_id(player.user_id)
+                if partner_id:
+                    await mm.add_bond(player.user_id, partner_id, 1)
+            except Exception:
+                pass
             player.experience += rewards["exp"]
             player.gold += rewards["gold"]
+
+            # 道侣周任务：历练计数（异常安全）
+            try:
+                from .couple_quest_manager import CoupleQuestManager
+                await CoupleQuestManager(self.db).record_action(player, "adventure")
+            except Exception:
+                pass
+            # 天骄榜：赛季修为增量
+            try:
+                from .season_manager import SeasonManager
+                if rewards["exp"] > 0:
+                    await SeasonManager(self.db).record_exp_gain(user_id, rewards["exp"])
+            except Exception:
+                pass
             
             # 一次更新玩家对象
             await self.db.update_player(player)
-            await self.db.ext.set_user_free(user_id)
             await self.db.conn.commit()
         except Exception:
             await self.db.conn.rollback()
@@ -342,11 +435,16 @@ class AdventureManager:
             # 受伤时增加额外休整时间
             fatigue += 600
         if fatigue:
-            # 冷却持久化到数据库，重启不失效（同时兼容旧内存结构）
-            self._route_cooldowns.setdefault(user_id, {})[route["key"]] = int(time.time()) + fatigue
+            # 冷却持久化到数据库，重启不失效
             await self.db.ext.set_system_config(
                 f"adv_cd_{user_id}_{route['key']}", str(int(time.time()) + fatigue)
             )
+            # 内存冷却缓存：清理已过期条目，防止 dict 无界增长
+            user_cds = self._route_cooldowns.setdefault(user_id, {})
+            now_ts = int(time.time())
+            for k in [k for k, v in user_cds.items() if v < now_ts]:
+                del user_cds[k]
+            user_cds[route["key"]] = now_ts + fatigue
 
         fatigue_hint = f"\n⏳ 该路线休整：{fatigue // 60} 分钟" if fatigue else ""
         display_minutes = effective_duration // 60
@@ -418,11 +516,25 @@ class AdventureManager:
 
     # -------- 内部工具 --------
 
-    def _resolve_route(self, token: str) -> str:
+    def _resolve_route(self, token: str) -> Optional[str]:
+        """解析路线 token：精确key → 别名 → 模糊包含。找不到返回 None（由调用方报错，不再静默回退默认路线）"""
         if not token:
-            return self.default_route_key
-        normalized = token.strip().lower()
-        return self.route_alias_index.get(normalized, self.default_route_key)
+            return None
+        token = token.strip()
+        if not token:
+            return None
+        if token in self.routes:
+            return token
+        if token in self.route_alias_index:
+            return self.route_alias_index[token]
+        normalized = token.lower()
+        if normalized in self.route_alias_index:
+            return self.route_alias_index[normalized]
+        # 模糊包含匹配（如"云游"匹配"云游四方"）
+        for key, route in self.routes.items():
+            if token in route.get("name", "") or normalized in route.get("name", "").lower():
+                return key
+        return None
 
     def _trigger_route_event(self, route: dict) -> dict:
         weights = route.get("event_weights", {})

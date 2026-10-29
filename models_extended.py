@@ -1,9 +1,15 @@
 # models_extended.py - 新增模型定义
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as _dc_fields
 from enum import IntEnum
 from typing import TYPE_CHECKING, List, Optional
 import json
+
+
+def row_to_model(cls, row):
+    """数据库行 -> dataclass（过滤表中存在但模型没有的列，避免历史遗留列/迁移提前加列导致 TypeError）"""
+    valid = {f.name for f in _dc_fields(cls)}
+    return cls(**{k: v for k, v in dict(row).items() if k in valid})
 
 if TYPE_CHECKING:
     from .config_manager import ConfigManager

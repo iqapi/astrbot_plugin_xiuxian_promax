@@ -50,11 +50,14 @@ class ConfigManager:
                     json.dump(default_config, f, ensure_ascii=False, indent=2)
                 return default_config
             except Exception as e:
+                logger.error(f"写入默认配置 {file_path} 失败，将使用内置默认值: {e}")
                 return default_config
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
+            # 用户配置损坏时必须留痕：静默回退默认值会让"改了配置不生效"无从排查
+            logger.error(f"配置文件 {file_path} 解析失败（JSON 损坏或格式错误），已回退到内置默认值: {e}")
             return default_config
 
     def _load_items_data(self, file_path: Path) -> Dict[str, dict]:

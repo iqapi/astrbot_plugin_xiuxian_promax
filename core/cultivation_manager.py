@@ -107,7 +107,8 @@ class CultivationManager:
 
     def generate_new_player_stats(self, user_id: str, cultivation_type: str = "灵修") -> Player:
         root = self._get_random_spiritual_root()
-        initial_gold = self.config.get("VALUES", {}).get("INITIAL_GOLD", 1000)
+        # 与 _conf_schema.json 中 INITIAL_GOLD 默认值(100)对齐，避免两套默认不一致
+        initial_gold = self.config.get("VALUES", {}).get("INITIAL_GOLD", 100)
 
         if cultivation_type == "体修":
             initial_blood_qi = random.randint(100, 500)
