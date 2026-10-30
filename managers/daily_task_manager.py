@@ -55,9 +55,6 @@ class DailyTaskManager:
     def __init__(self, db: DataBase):
         self.db = db
 
-    def __init__(self, db: DataBase):
-        self.db = db
-
     # ===== v6.17 每日随机任务池：每人当日可接任务不同 =====
     def _daily_seed(self, user_id: str) -> int:
         """每人每日独立种子（日期+用户ID）"""

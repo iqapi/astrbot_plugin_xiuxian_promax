@@ -1,8 +1,8 @@
-﻿<p align="center">
-  <img src="logo.png" alt="模拟修仙" width="200">
-</p>
+<img src="https://capsule-render.vercel.app/api?type=venom&height=220&text=%E6%A8%A1%E6%8B%9F%E4%BF%AE%E4%BB%99&subText=%E4%BB%99%E7%BC%98%E4%B8%87%E8%B1%A1%20%C2%B7%20%E7%BE%A4%E8%81%8A%E6%94%BE%E7%BD%AE%E4%BF%AE%E4%BB%99%E6%B8%B8%E6%88%8F&fontSize=62&descSize=26&color=0:FFE29A,50:D4AF37,100:6B4F1A&section=header&stroke=FFE29A&strokeWidth=2" alt="模拟修仙 · 仙缘万象" width="100%">
 
-<h1 align="center">模拟修仙 · 仙缘万象</h1>
+<p align="center">
+  <img src="logo.png" alt="模拟修仙" width="140">
+</p>
 
 <p align="center">
   <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/stargazers">
@@ -14,7 +14,7 @@
   <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml">
     <img src="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <img src="https://img.shields.io/badge/version-v3.25.1-gold?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v3.25.3-gold?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/指令-220+-gold?style=for-the-badge" alt="Commands">
   <img src="https://img.shields.io/badge/玩法-37-9cf?style=for-the-badge" alt="Features">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="License">
@@ -27,7 +27,7 @@
 
 ---
 
-> **插件版本:** v3.25.1 · **游戏版本:** v6.18 · **数据库:** v29
+> **插件版本:** v3.25.3 · **游戏版本:** v6.18 · **数据库:** v29
 > **原作者:** xiaojuwa · **二改:** [Zspor](https://github.com/Zspor/astrbot_plugin_monixiuxian2) · **三改维护:** [云兮](https://github.com/iqapi)
 
 一款为 AstrBot 深度重构的**放置类群聊修仙游戏**。从炼气一层到混元大罗金仙，**220+ 指令、13 大经典系统、24 个新玩法**，与群友一起修仙问道。
@@ -495,6 +495,12 @@ v3.22.0  廿四玩法版     登仙台世界工程/称号熔炼/每日求签/修
 v3.23.0  并发安全加固   原子原语(CAS/数值键/限次)落地，观礼密封重设计，7高危14中危全清
 v3.24.x  工程优化版     启动崩溃修复/性能四项/GameStore/main.py拆分/CI+单测/管理员工具箱
 v3.25.x  视觉重制版     新中式仙侠卡片(水墨远山/朱红印章/云头纹)/物品功效展示/卡片全量覆盖/复查修缮
+v3.25.2  指令注册回退   实测 Mixin 继承链指令无法被 AstrBot 唤醒，52 条新玩法指令全部移回 main.py，
+                        删除 commands/ 包（require_whitelist/封禁拦截/埋点/卡片适配器保留，内联主类）
+v3.25.3  回退善后修复   ① 拼接错位：/仙界管理 装饰器误挂到 send_text_card（管理面板失效、卡片函数被
+                        当指令调用报 AstrMessageEvent 错），已复位并全文件扫描确认 0 悬空装饰器
+                        ② `..` 相对导入越界（main.py 顶层模块）：卡片/GameStore 静默失败，改 `.utils/.managers`
+                        ③ 卡片生成异常不再静默吞掉，记录 error 日志便于排查
 ```
 
 </details>
@@ -512,7 +518,4 @@ v3.25.x  视觉重制版     新中式仙侠卡片(水墨远山/朱红印章/云
 
 ---
 
-<p align="center">
-  <b>道友，仙途漫漫，与君同行。</b><br>
-  <img src="https://img.shields.io/badge/愿-道友仙途昌隆-gold?style=for-the-badge">
-</p>
+<img src="https://capsule-render.vercel.app/api?type=waving&height=130&text=%E9%81%93%E5%8F%8B%EF%BC%8C%E4%BB%99%E9%80%94%E6%BC%AB%E6%BC%AB%EF%BC%8C%E4%B8%8E%E5%90%9B%E5%90%8C%E8%A1%8C%E3%80%82&fontSize=30&color=0:6B4F1A,50:D4AF37,100:FFE29A&section=footer" alt="道友，仙途漫漫，与君同行。" width="100%">
