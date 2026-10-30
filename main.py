@@ -1096,7 +1096,7 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_sect_list(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.sect_handlers.handle_sect_list(event): buf.append(str(r))
+        async for r in self.sect_handlers.handle_sect_list(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "sect", "🏯 宗门列表", "仙盟林立 · 强者为尊"): yield r
 
     @filter.command(CMD_SECT_DONATE, "宗门捐献")
@@ -1138,42 +1138,42 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_rank_level(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_level(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_level(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏔️ 境界排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_POWER, "战力排行")
     @require_whitelist
     async def handle_rank_power(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_power(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_power(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "⚔️ 战力排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_WEALTH, "财富排行")
     @require_whitelist
     async def handle_rank_wealth(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_wealth(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_wealth(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "💰 灵石排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_SECT, "宗门排行")
     @require_whitelist
     async def handle_rank_sect(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_sect(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_sect(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏯 宗门排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_DEPOSIT, "存款排行")
     @require_whitelist
     async def handle_rank_deposit(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_deposit(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_deposit(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "🏦 存款排行", "修行界风云榜"): yield r
 
     @filter.command(CMD_RANK_CONTRIBUTION, "贡献排行")
     @require_whitelist
     async def handle_rank_contribution(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.ranking_handlers.handle_rank_sect_contribution(event): buf.append(str(r))
+        async for r in self.ranking_handlers.handle_rank_sect_contribution(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rank", "✨ 贡献排行", "修行界风云榜"): yield r
 
     # ===== 战斗 =====
@@ -1209,7 +1209,7 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_rift_list(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.rift_handlers.handle_rift_list(event): buf.append(str(r))
+        async for r in self.rift_handlers.handle_rift_list(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "rift", "🌀 秘境列表", "天开异境 · 机缘所在",
                                            footer="探索秘境 <ID> · /秘境词缀 看今日天时"): yield r
 
@@ -1375,7 +1375,7 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_bank_info(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.bank_handlers.handle_bank_info(event): buf.append(str(r))
+        async for r in self.bank_handlers.handle_bank_info(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "bank", "🏦 灵石银行", "存取 · 复利 · 贷款",
                                            footer="贷款逾期将被追杀 · 谨慎借贷"): yield r
 
@@ -1435,7 +1435,7 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_bounty_list(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.bounty_handlers.handle_bounty_list(event): buf.append(str(r))
+        async for r in self.bounty_handlers.handle_bounty_list(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "bounty", "📜 悬赏令", "今日悬赏 · 童叟无欺",
                                            footer="接取悬赏 <编号> · 完成得灵石功德"): yield r
 
@@ -1597,7 +1597,7 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_task_board(self, event: AstrMessageEvent):
         buf = []
-        async for r in self.daily_task_handlers.handle_task_board(event): buf.append(str(r))
+        async for r in self.daily_task_handlers.handle_task_board(event): buf.append(self._res_text(r))
         async for r in self.send_text_card(event, "\n".join(buf), "task", "📋 任务榜", "今日随机任务",
                                            footer="接取任务 <黄/玄/地/天> · 完成领奖"): yield r
 
@@ -2741,6 +2741,24 @@ class XiuXianPlugin(Star):
             
         yield event.plain_result(res)
 
+    @staticmethod
+    def _res_text(r) -> str:
+        """v3.25.4 关键修复：handler 产出的是 MessageEventResult 对象（非字符串），
+        直接 str() 会得到 'MessageEventResult(chain=[type=<Component...])' 垃圾。
+        此处解包组件链提取纯文本（兼容 str 与结果对象）。"""
+        if r is None:
+            return ""
+        if isinstance(r, str):
+            return r
+        chain = getattr(r, "chain", None)
+        if chain:
+            parts = []
+            for comp in chain:
+                if getattr(comp, "type", "") == "Plain":
+                    parts.append(getattr(comp, "text", "") or "")
+            return "\n".join(p for p in parts if p)
+        return str(r)
+
     async def send_text_card(self, event: AstrMessageEvent, text: str, bg: str,
                              title: str, subtitle: str = "", footer: str = ""):
         """把多行文本渲染成卡片发送；渲染失败/关闭时回退原文。
@@ -2824,7 +2842,7 @@ class XiuXianPlugin(Star):
         # v3.23.0：榜单只读——赛季推进/结算统一由定时循环触发，防并发双结算
         buf = []
         async for r in self.season_mgr.handle_board(player, event):
-            buf.append(str(r))
+            buf.append(self._res_text(r))
         async for r in self._board_card(event, "\n".join(buf), "rank", "🏆 天骄榜", "90 天赛季 · 修为增量排行",
                                         footer="榜一：50000 灵石 + 限定称号"):
             yield r
@@ -2987,7 +3005,7 @@ class XiuXianPlugin(Star):
     async def handle_pblty_board(self, event: AstrMessageEvent):
         buf = []
         async for r in self.pblty_mgr.handle_board(event):
-            buf.append(str(r))
+            buf.append(self._res_text(r))
         async for r in self._board_card(event, "\n".join(buf), "market", "📜 悬赏行会", "玩家悬赏 · 赏金托管",
                                         footer="发布悬赏 <描述> <赏金> · 接玩家悬赏 <编号>"):
             yield r

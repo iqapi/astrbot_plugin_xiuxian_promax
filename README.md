@@ -14,7 +14,7 @@
   <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml">
     <img src="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
-  <img src="https://img.shields.io/badge/version-v3.25.3-gold?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v3.25.4-gold?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/指令-220+-gold?style=for-the-badge" alt="Commands">
   <img src="https://img.shields.io/badge/玩法-37-9cf?style=for-the-badge" alt="Features">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="License">
@@ -27,7 +27,7 @@
 
 ---
 
-> **插件版本:** v3.25.3 · **游戏版本:** v6.18 · **数据库:** v29
+> **插件版本:** v3.25.4 · **游戏版本:** v6.18 · **数据库:** v29
 > **原作者:** xiaojuwa · **二改:** [Zspor](https://github.com/Zspor/astrbot_plugin_monixiuxian2) · **三改维护:** [云兮](https://github.com/iqapi)
 
 一款为 AstrBot 深度重构的**放置类群聊修仙游戏**。从炼气一层到混元大罗金仙，**220+ 指令、13 大经典系统、24 个新玩法**，与群友一起修仙问道。
@@ -501,6 +501,9 @@ v3.25.3  回退善后修复   ① 拼接错位：/仙界管理 装饰器误挂�
                         当指令调用报 AstrMessageEvent 错），已复位并全文件扫描确认 0 悬空装饰器
                         ② `..` 相对导入越界（main.py 顶层模块）：卡片/GameStore 静默失败，改 `.utils/.managers`
                         ③ 卡片生成异常不再静默吞掉，记录 error 日志便于排查
+v3.25.4  卡片内容修复   【关键】卡片适配器把 MessageEventResult 对象当文本（银行/排行等卡片正文出现
+                        "MessageEventResult(chain=[type=<Component..." 垃圾），新增 _res_text 解包组件链
+                        提取纯文本，13 处调用全部修正；另扫描出 7 对指令前缀包含冲突待观察
 ```
 
 </details>
