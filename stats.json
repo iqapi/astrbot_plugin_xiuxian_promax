@@ -1,0 +1,17 @@
+{
+  "start": "2026-09-06",
+  "end": "2026-10-31",
+  "window": "auto",
+  "cropped": true,
+  "firstActive": "2026-10-25",
+  "lastActive": "2026-10-31",
+  "total": 45,
+  "max": 25,
+  "busiest": {
+    "date": "2026-10-26",
+    "count": 25
+  },
+  "activeDays": 5,
+  "longest": 3,
+  "current": 2
+}
