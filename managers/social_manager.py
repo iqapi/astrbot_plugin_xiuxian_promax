@@ -103,8 +103,14 @@ class SocialManager:
         if player.gold < COMPANION_COST:
             return False, f"❌ 结缘需要 {COMPANION_COST:,} 灵石（三书六礼总要有的）。"
 
-        player.gold -= COMPANION_COST
-        await self.db.update_player(player)
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写玩家快照
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (COMPANION_COST, player.user_id, COMPANION_COST)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 结缘需要 {COMPANION_COST:,} 灵石（三书六礼总要有的）。"
         now = int(time.time())
         await self.db.conn.execute(
             "INSERT OR REPLACE INTO npc_partners (user_id, npc_id, bond, daily_time, created_at) VALUES (?, ?, 0, 0, ?)",
@@ -138,12 +144,16 @@ class SocialManager:
         new_bond = comp["bond"] + BOND_PER_DAY
         new_level = min(MAX_COMPANION_LEVEL, new_bond // BOND_PER_LEVEL + 1)
 
-        player.experience += exp_gain
-        await self.db.update_player(player)
-        await self.db.conn.execute(
-            "UPDATE npc_partners SET bond = ?, daily_time = ? WHERE user_id = ?",
-            (new_bond, now, player.user_id)
+        # v3.25.5：单条原子语句同时占用"今日共修资格"并累加情缘（原先查后写可
+        # 并发双吃修为）；修为改原子累加，不再整行覆写玩家快照
+        today_start = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d")))
+        cursor = await self.db.conn.execute(
+            "UPDATE npc_partners SET daily_time = ?, bond = bond + ? WHERE user_id = ? AND daily_time < ?",
+            (now, BOND_PER_DAY, player.user_id, today_start)
         )
+        if cursor.rowcount == 0:
+            return False, "❌ 今日已与仙灵共修过了，明日再来（一日不见如隔三秋）。"
+        await self.db.add_player_exp(player.user_id, exp_gain)
         await self.db.conn.commit()
 
         up_note = ""
@@ -209,17 +219,22 @@ class SocialManager:
         spirit_cut = int(gold_income * 0.20)
         player_cut = gold_income - spirit_cut
 
-        # 洞天产出进洞天主人账上；仙灵消耗 1 点情缘作为谢礼
-        await self.db.add_player_gold(player.user_id, player_cut)
-        await self.db.conn.execute(
-            "UPDATE blessed_lands SET last_collect_time = ? WHERE user_id = ?",
-            (now, player.user_id)
+        # v3.25.5：先 CAS 占用收取权（原"读时间戳→加钱→写回"并发双触发双份产出），
+        # 成功后才动钱；情缘扣减加 MAX(0,..) 钳制（防并发扣成负数）
+        cursor = await self.db.conn.execute(
+            "UPDATE blessed_lands SET last_collect_time = ? WHERE user_id = ? AND last_collect_time = ?",
+            (now, player.user_id, land["last_collect_time"])
         )
+        if cursor.rowcount == 0:
+            return False, "❌ 代收失败：产出可能刚被收取过，请稍后再试。仙灵耸耸肩飞走了～"
         await self.db.conn.execute(
-            "UPDATE npc_partners SET bond = bond - 1 WHERE user_id = ?",
+            "UPDATE npc_partners SET bond = MAX(0, bond - 1) WHERE user_id = ?",
             (player.user_id,)
         )
         await self.db.conn.commit()
+
+        # 洞天产出进洞天主人账上（v3.25.5：原子记账）
+        await self.db.add_player_gold(player.user_id, player_cut)
 
         cfg = SPIRIT_COMPANIONS.get(comp["npc_id"], {})
         return True, (
@@ -228,7 +243,7 @@ class SocialManager:
             f"道侣【{comp['npc_id']}】（{cfg.get('title', '')}）代你巡视洞天，\n"
             f"收得闲置产出 {hours} 小时：\n"
             f"💰 灵石：+{player_cut:,}（仙灵情谊分成 {spirit_cut:,}）\n"
-            f"💞 消耗情缘 1 点（剩余 {comp['bond'] - 1}）\n"
+            f"💞 消耗情缘 1 点（剩余 {max(0, comp['bond'] - 1)}）\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💡 洞天已重新计时，/洞天收取 正常收取不受影响"
         )
@@ -287,6 +302,13 @@ class SocialManager:
             return False, f"❌ 对方门下弟子已满（{self.MAX_DISCIPLES} 人），暂时不再收徒。"
 
         now = int(time.time())
+        # v3.25.5 修复：表有 UNIQUE(disciple_id)，出师记录(graduated=1)保留会让再次拜师
+        # 的 INSERT 抛 IntegrityError——出师弟子永远无法再拜师。该表仅作在学关系使用
+        # （历史行无展示入口），拜师前清理已出师的历史记录
+        await self.db.conn.execute(
+            "DELETE FROM master_relations WHERE disciple_id = ? AND graduated = 1",
+            (disciple.user_id,)
+        )
         await self.db.conn.execute(
             "INSERT INTO master_relations (master_id, disciple_id, created_at, graduated) VALUES (?, ?, ?, 0)",
             (master_id, disciple.user_id, now)
@@ -315,7 +337,8 @@ class SocialManager:
         if not master:
             return False, ""
         mname = master.user_name or rel["master_id"][:8]
-        return True, f"\n🎓 你的突破令师父【{mname}】欣喜，师德 +{gain}（当前 {master.virtue_points + gain}）"
+        # v3.25.5 修复：master 是加成后重新读取的，这里不能再 +gain（原显示双计）
+        return True, f"\n🎓 你的突破令师父【{mname}】欣喜，师德 +{gain}（当前 {master.virtue_points}）"
 
     async def graduate_disciple(self, master: Player, disciple_id: str) -> Tuple[bool, str]:
         """出师（师父操作，徒弟需境界≥3）"""
@@ -328,13 +351,14 @@ class SocialManager:
         if d.level_index < 3:
             dn = d.user_name or disciple_id[:8]
             return False, f"❌ 弟子【{dn}】尚未达到筑基期（境界3），尚需打磨。"
-        # 奖励双方
+        # 奖励双方（v3.25.5：改原子记账，不再整行覆写快照）
         d_reward_gold, d_reward_exp = 30000, 20000
         m_reward_gold = 20000
-        d.gold += d_reward_gold
-        d.experience += d_reward_exp
-        d.fate_points = getattr(d, "fate_points", 0) + 20
-        await self.db.update_player(d)
+        await self.db.add_player_gold(d.user_id, d_reward_gold)
+        await self.db.add_player_exp(d.user_id, d_reward_exp)
+        await self.db.conn.execute(
+            "UPDATE players SET fate_points = fate_points + 20 WHERE user_id = ?", (d.user_id,)
+        )
         await self.db.add_player_gold(master.user_id, m_reward_gold)
         await self.db.conn.execute(
             "UPDATE master_relations SET graduated = 1 WHERE id = ?", (rel["id"],)
@@ -402,6 +426,16 @@ class SocialManager:
         vp = getattr(player, "virtue_points", 0)
         if vp < goods["cost"]:
             return False, f"❌ 师德点不足！需要 {goods['cost']}，当前 {vp}。\n💡 收徒并等弟子 /突破 即可累积师德。"
+        # v3.25.5 修复：原代码从未扣减师德点，且 handler 失败路径"退还"反而凭空加点，
+        # 可无限白嫖兑换。改为条件原子扣点（余额不足时 rowcount=0），失败路径由 handler 退还。
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET virtue_points = virtue_points - ? WHERE user_id = ? AND virtue_points >= ?",
+            (goods["cost"], player.user_id, goods["cost"])
+        )
+        if cursor.rowcount == 0:
+            return False, f"❌ 师德点不足！需要 {goods['cost']}，当前 {vp}。\n💡 收徒并等弟子 /突破 即可累积师德。"
+        await self.db.conn.commit()
+        player.virtue_points = vp - goods["cost"]
         # 扣点（handler 层存储失败时会退还）
         if goods["type"] == "title":
             if player.title and "传道真人" in player.title:
@@ -410,7 +444,7 @@ class SocialManager:
                 player.title = f"{player.title}·传道真人"  # 追加而非覆盖，保留原称号
             else:
                 player.title = "传道真人"
-            await self.db.update_player(player)
+            # v3.25.5：只落 title 字段（师德点已原子扣减），不再整行覆写
+            await self.db.update_player_fields(player.user_id, title=player.title)
             return True, f"🏅 兑换成功！获得称号【传道真人】（消耗师德 {goods['cost']}，剩余 {player.virtue_points}）"
-        await self.db.update_player(player)
         return True, f"__NEED_STORE__{goods['item']}|{goods['count']}|兑换【{goods['name']}】成功（消耗师德 {goods['cost']}，剩余 {player.virtue_points}）"

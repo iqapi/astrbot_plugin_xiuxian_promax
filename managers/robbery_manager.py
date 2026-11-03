@@ -35,7 +35,8 @@ class RobberyManager:
             duration_note = "\n⚒️ 阵法师专精生效：大阵持续36小时"
 
         player.shield_expire_time = now + duration
-        await self.db.update_player(player)
+        # v3.25.5：定向落库，不再整行覆写
+        await self.db.update_player_fields(player.user_id, shield_expire_time=player.shield_expire_time)
 
         return True, (
             "🛡️ 护府大阵已开启！\n"
@@ -64,22 +65,24 @@ class RobberyManager:
         # 检查进攻方道具
         if not self.storage_ring_mgr.has_item(attacker, "迷神香", 1):
             return False, "❌ 潜入失败：你的储物戒里没有【迷神香】。", False
-            
-        await self.storage_ring_mgr.retrieve_item(attacker, "迷神香", 1)
 
         # 计算目标未收取的资产（洞天产出）
         async with self.db.conn.execute("SELECT gold_per_hour, last_collect_time FROM blessed_lands WHERE user_id = ?", (target_id,)) as cursor:
             row = await cursor.fetchone()
-            
+
         if not row:
             return False, "❌ 对方穷得连洞天都没有，你白跑了一趟。", False
-            
+
         gold_per_hour, last_collect = row
         hours_passed = (now - last_collect) / 3600
         pending_gold = min(24, int(hours_passed)) * gold_per_hour
 
         if pending_gold < 100:
             return False, "❌ 对方洞府穷得叮当响，没有任何油水可捞。", False
+
+        # v3.25.5 修复：迷神香在确认"有油水"后才消耗（原实现提前消耗，
+        # 对无洞天/无油水目标出手会白白损失道具，与"白跑一趟"提示矛盾）
+        await self.storage_ring_mgr.retrieve_item(attacker, "迷神香", 1)
 
         # 成功率判定：受双方境界差影响
         success_rate = 0.6
@@ -90,9 +93,13 @@ class RobberyManager:
         if random.random() < success_rate:
             # 偷窃成功
             rob_amount = int(pending_gold * 0.15) # 偷走未收取收益的 15%
-            attacker.gold += rob_amount
-            attacker.karma = (getattr(attacker, "karma", 0) or 0) - 1  # 行窃增加业力
-            await self.db.update_player(attacker)
+            # v3.25.5：改原子记账（原快照整行回写在并发下会覆盖他人变更）
+            await self.db.add_player_gold(attacker.user_id, rob_amount)
+            await self.db.conn.execute(
+                "UPDATE players SET karma = karma - 1 WHERE user_id = ?",
+                (attacker.user_id,)
+            )
+            await self.db.conn.commit()
 
             # ===== 只扣掉被偷走的那部分产出 =====
             # 目标损失 rob_amount 灵石：等价于把收取时间往回拨 rob_amount/gold_per_hour 小时，

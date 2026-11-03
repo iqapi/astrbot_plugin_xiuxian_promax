@@ -43,6 +43,10 @@ class LootAuctionManager:
 
     async def _load_state(self) -> dict:
         raw = await self.db.ext.get_system_config(self.STATE_KEY)
+        return self._parse_state(raw)
+
+    @staticmethod
+    def _parse_state(raw) -> dict:
         if not raw:
             return {}
         try:
@@ -114,56 +118,62 @@ class LootAuctionManager:
 
     async def bid(self, player: Player, amount: int) -> Tuple[bool, str]:
         """/竞拍 <金额>：出价即托管，被超越自动退款，可多次加价
-        v3.23.0：余额取数据库实时值（不信命令快照）"""
-        state = await self._load_state()
-        now = int(time.time())
-        if not state.get("open"):
-            return False, "❌ 当前没有进行中的拍卖。\n💡 世界Boss被击杀后战利品将开拍，留意全服播报。"
-        if now >= state.get("end_ts", 0):
-            return False, "⏰ 本场拍卖已截止，等待结算中…\n💡 发送 /拍卖行 查看结果。"
-
+        v3.23.0：余额取数据库实时值（不信命令快照）
+        v3.25.5：出价记录改 CAS 抢占落库（原"读快照→扣款→整体覆写"在并发下
+        会覆盖他人出价，被覆盖者钱已扣、注单消失，托管款蒸发）"""
         amount = int(amount)
         if not (self.MIN_BID <= amount <= self.MAX_BID):
             return False, f"❌ 出价需在 {self.MIN_BID:,} - {self.MAX_BID:,} 灵石之间。"
 
-        top_uid, top_amt = self._top_bid(state)
-        if top_uid and amount < top_amt + self.MIN_INCREMENT:
-            return False, (
-                f"❌ 出价太低！当前最高价 {top_amt:,} 灵石"
-                f"（需至少 {top_amt + self.MIN_INCREMENT:,}）。\n💡 /竞拍 <金额> 加价至少 {self.MIN_INCREMENT:,} 灵石"
-            )
+        for _ in range(3):
+            raw = await self.db.ext.get_system_config(self.STATE_KEY)
+            state = self._parse_state(raw)
+            now = int(time.time())
+            if not state.get("open"):
+                return False, "❌ 当前没有进行中的拍卖。\n💡 世界Boss被击杀后战利品将开拍，留意全服播报。"
+            if now >= state.get("end_ts", 0):
+                return False, "⏰ 本场拍卖已截止，等待结算中…\n💡 发送 /拍卖行 查看结果。"
 
-        bids = state.setdefault("bids", {})
-        my_bid = bids.get(player.user_id)
-        refund = 0
-        fresh = await self.db.get_player_by_id(player.user_id)
-        live_gold = fresh.gold if fresh else 0
-        if my_bid:
-            # 同一玩家加价：先退还其旧出价托管款，再扣新价（净额托管）
-            refund = int(my_bid.get("amount", 0))
+            top_uid, top_amt = self._top_bid(state)
+            if top_uid and amount < top_amt + self.MIN_INCREMENT:
+                return False, (
+                    f"❌ 出价太低！当前最高价 {top_amt:,} 灵石"
+                    f"（需至少 {top_amt + self.MIN_INCREMENT:,}）。\n💡 /竞拍 <金额> 加价至少 {self.MIN_INCREMENT:,} 灵石"
+                )
+
+            bids = dict(state.get("bids") or {})
+            my_bid = bids.get(player.user_id)
+            # 我旧出价的托管款不在当前余额中：加价按"退旧扣新"净额结算
+            refund = int(my_bid.get("amount", 0)) if my_bid else 0
+            fresh = await self.db.get_player_by_id(player.user_id)
+            effective = (fresh.gold if fresh else 0) + refund
+            if effective < amount:
+                return False, f"❌ 灵石不足！出价 {amount:,} 需全额托管（当前持有 {effective:,}）。"
+
+            bids[player.user_id] = {"amount": amount, "name": player.user_name or player.user_id[:8]}
+            new_state = {**state, "bids": bids}
+
+            # CAS：出价记录抢占成功后才动钱（失败=他人已抢先出价，重读重试）
+            if not await self.db.ext.syscfg_cas(
+                self.STATE_KEY, json.dumps(new_state, ensure_ascii=False), raw or None
+            ):
+                continue
+
             if refund > 0:
                 await self.db.add_player_gold(player.user_id, refund)
-                live_gold += refund
-        if live_gold < amount:
-            # 退款已到账，直接回滚状态判断（不再写回旧出价）
-            if refund > 0:
-                await self.db.add_player_gold(player.user_id, -refund)
-            return False, f"❌ 灵石不足！出价 {amount:,} 需全额托管（当前持有 {live_gold:,}）。"
+            await self.db.add_player_gold(player.user_id, -amount)
 
-        await self.db.add_player_gold(player.user_id, -amount)
-        bids[player.user_id] = {"amount": amount, "name": player.user_name or player.user_id[:8]}
-        await self._save_state(state)
-
-        remain = max(0, state["end_ts"] - now)
-        rank = 1 + sum(1 for u, i in bids.items() if u != player.user_id and i.get("amount", 0) > amount)
-        lines = [
-            f"🔨 竞价成功！【{player.user_name or player.user_id[:8]}】出价 {amount:,} 灵石"
-            f"（已托管{'，退回旧出价 ' + format(refund, ',') + ' 灵石' if refund else ''}）",
-            f"📊 当前排名：第 {rank} 名 · 剩余 {remain // 60} 分 {remain % 60} 秒",
-        ]
-        if top_uid and top_uid != player.user_id:
-            lines.append(f"⚠️ 你已超越前最高价（{top_amt:,}），若被再次超越将自动退款，可继续加价。")
-        return True, "\n".join(lines)
+            remain = max(0, state["end_ts"] - now)
+            rank = 1 + sum(1 for u, i in bids.items() if u != player.user_id and i.get("amount", 0) > amount)
+            lines = [
+                f"🔨 竞价成功！【{player.user_name or player.user_id[:8]}】出价 {amount:,} 灵石"
+                f"（已托管{'，退回旧出价 ' + format(refund, ',') + ' 灵石' if refund else ''}）",
+                f"📊 当前排名：第 {rank} 名 · 剩余 {remain // 60} 分 {remain % 60} 秒",
+            ]
+            if top_uid and top_uid != player.user_id:
+                lines.append(f"⚠️ 你已超越前最高价（{top_amt:,}），若被再次超越将自动退款，可继续加价。")
+            return True, "\n".join(lines)
+        return False, "⚠️ 天机阁竞价正酣，手速太快啦，请稍后再试。"
 
     async def _refund_bids(self, bids: dict):
         """退还全部托管出价款（旧拍卖兜底/结算共用）"""

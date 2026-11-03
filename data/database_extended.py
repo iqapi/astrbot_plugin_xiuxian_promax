@@ -396,6 +396,21 @@ class DatabaseExtended:
     async def set_user_free(self, user_id: str):
         """设置用户为空闲状态"""
         await self.set_user_busy(user_id, 0, 0)
+
+    async def claim_user_free_if_type(self, user_id: str, expected_type: int) -> bool:
+        """原子结算门禁（v3.25.5）：仅当当前状态为 expected_type 时置为空闲。
+        用于"完成类"指令先抢占结算权再发奖，防并发双交双拿奖励。返回是否成功。"""
+        import time
+        cursor = await self.conn.execute(
+            """
+            UPDATE user_cd
+            SET type = 0, create_time = ?, scheduled_time = 0, extra_data = '{}'
+            WHERE user_id = ? AND type = ?
+            """,
+            (int(time.time()), user_id, expected_type)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
     
     # ===== Player扩展字段更新方法 =====
     
@@ -599,6 +614,14 @@ class DatabaseExtended:
         )
         await self.conn.commit()
 
+    async def delete_system_config(self, key: str) -> bool:
+        """删除系统配置键（v3.25.5：清理键一律 DELETE 而非置空串，
+        置空串会残留行，后续 int("") 解析崩溃）"""
+        await self.ensure_system_config_table()
+        cursor = await self.conn.execute("DELETE FROM system_config WHERE key = ?", (key,))
+        await self.conn.commit()
+        return cursor.rowcount > 0
+
     # ===== v3.23.0 原子 system_config 设施（CAS / 数值键 / 限次认领）=====
     # 动机：新玩法大量使用"读快照→内存改→整体覆写"，跨 await 边界存在并发窗口。
     # 以下原语让"检查+登记"成为单条 SQL，消除检查-发奖之间的竞态。
@@ -728,6 +751,7 @@ class DatabaseExtended:
             await self.conn.commit()
             return n
         except Exception as e:
+            from astrbot.api import logger
             logger.warning(f"清理日键异常: {e}")
             return 0
 
@@ -764,13 +788,17 @@ class DatabaseExtended:
         await self.conn.commit()
         return cursor.lastrowid
     
-    async def get_pending_gift(self, receiver_id: str) -> Optional[dict]:
-        """获取接收者的待处理赠予请求（最新的一个）"""
+    async def get_pending_gift(self, receiver_id: str, cleanup: bool = True) -> Optional[dict]:
+        """获取接收者的待处理赠予请求（最新的一个）
+        v3.25.5：新增 cleanup 开关——cleanup_expired_gifts 内部带 commit，
+        在外层事务中调用会击穿事务（失败路径 rollback 已无意义，赠予物品蒸发）。
+        事务内请传 cleanup=False，把过期清理挪到 BEGIN 之前执行。"""
         import time
         now = int(time.time())
-        
-        # 先清理过期的请求
-        await self.cleanup_expired_gifts()
+
+        # 先清理过期的请求（仅在非事务上下文执行）
+        if cleanup:
+            await self.cleanup_expired_gifts()
         
         async with self.conn.execute(
             """

@@ -171,7 +171,7 @@ class WorldBossManager:
             final_damage = boss["current_hp"]
 
         # 4. 开启事务进行并发扣血与记录
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 事务内复查每日次数与冷却：事务外的读-判-写可被并发请求绕过
             if record:
@@ -280,6 +280,18 @@ class WorldBossManager:
             (boss_id,)
         ) as cursor:
             damages = [dict(r) for r in await cursor.fetchall()]
+
+        # v3.25.5 修复：取回 Boss 名称供战利品拍卖使用（原代码引用了未定义的 boss_name）
+        boss_name = "灭世魔神"
+        try:
+            async with self.db.conn.execute(
+                "SELECT boss_name FROM world_boss WHERE boss_id = ?", (boss_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row and row[0]:
+                    boss_name = row[0]
+        except Exception:
+            pass
 
         msg = [
             f"🎉 世界Boss已被成功击杀！",

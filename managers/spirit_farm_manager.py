@@ -113,9 +113,15 @@ class SpiritFarmManager:
         cost = 10000
         if player.gold < cost:
             return False, f"❌ 开垦灵田需要 {cost:,} 灵石。"
-        
-        player.gold -= cost
-        await self.db.update_player(player)
+
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 开垦灵田需要 {cost:,} 灵石。"
         
         await self.db.conn.execute(
             """
@@ -160,7 +166,22 @@ class SpiritFarmManager:
             truncated_note = f"\n⚠️ 你要求种植 {count} 株，但空位只剩 {available_slots} 个，实际种下 {plant_count} 株"
         if plant_count <= 0:
             return False, "❌ 种植数量必须大于0！"
-        
+
+        # v3.25.5 修复（经济漏洞）：原代码种植不消耗任何种子/灵草也不收费，
+        # 收获时还返还灵草本体+修为+灵石，可无限循环刷三大资源。
+        # 设计意图为"种下的那株就是种子"：种植前从储物戒扣除对应灵草。
+        if self.storage_ring_manager is not None:
+            have = self.storage_ring_manager.get_item_count(player, herb_name)
+            if have < plant_count:
+                tip = f"（拥有 {have}）" if have > 0 else "（储物戒中没有）"
+                return False, (
+                    f"❌ 储物戒中【{herb_name}】数量不足，需要 {plant_count} 株{tip}。\n"
+                    f"💡 种下的灵草即种子，收获时返还本体+产量，可先 /历练 或从坊市获取"
+                )
+            ok, rmsg = await self.storage_ring_manager.retrieve_item(player, herb_name, plant_count)
+            if not ok:
+                return False, f"❌ 扣除灵草失败：{rmsg}"
+
         # 批量种植（成熟时间受季节影响）
         herb_config = SPIRIT_HERBS[herb_name]
         plant_time = int(time.time())
@@ -240,11 +261,10 @@ class SpiritFarmManager:
             harvest_details.append(herb_name)
             herb_counts[herb_name] = herb_counts.get(herb_name, 0) + 1
         
-        # 应用奖励
+        # 应用奖励（v3.25.5：改原子记账，不再整行覆写玩家快照）
         if total_exp > 0 or total_gold > 0:
-            player.experience += total_exp
-            player.gold += total_gold
-            await self.db.update_player(player)
+            await self.db.add_player_exp(player.user_id, total_exp)
+            await self.db.add_player_gold(player.user_id, total_gold)
         
         # 将灵草存入储物戒
         stored_items = []
@@ -304,9 +324,15 @@ class SpiritFarmManager:
         if player.gold < cost:
             return False, f"❌ 施肥一次需要 {cost:,} 灵石（恢复30点肥力）。"
 
-        player.gold -= cost
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 施肥一次需要 {cost:,} 灵石（恢复30点肥力）。"
         new_fertility = min(100, fertility + 30)
-        await self.db.update_player(player)
         await self.db.conn.execute(
             "UPDATE spirit_farms SET fertility = ? WHERE user_id = ?",
             (new_fertility, player.user_id)
@@ -362,8 +388,8 @@ class SpiritFarmManager:
             )
         else:
             compensation = 3000
-            player.gold += compensation
-            await self.db.update_player(player)
+            # v3.25.5：原子记账，不再整行覆写玩家快照
+            await self.db.add_player_gold(player.user_id, compensation)
             return False, (
                 f"💔 杂交失败...两株灵草灵气相斥枯萎了。\n"
                 f"获得安慰补偿：{compensation:,} 灵石\n"
@@ -385,10 +411,16 @@ class SpiritFarmManager:
         
         if player.gold < cost:
             return False, f"❌ 升级需要 {cost:,} 灵石。"
-        
-        player.gold -= cost
-        await self.db.update_player(player)
-        
+
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 升级需要 {cost:,} 灵石。"
+
         new_level = current_level + 1
         await self.db.conn.execute(
             "UPDATE spirit_farms SET level = ? WHERE user_id = ?",

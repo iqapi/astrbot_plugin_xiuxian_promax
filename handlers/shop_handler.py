@@ -225,7 +225,11 @@ class ShopHandler:
             try:
                 raw_msg = event.get_message_str().strip()
                 raw_msg = raw_msg.lstrip('/').strip()  # 兼容 /购买 斜杠前缀，防止物品名带上命令前缀
-                if raw_msg.startswith("购买"):
+                # v3.25.5 修复：先剥离长前缀"购买物品"，否则 compact 入口"购买物品玄铁"
+                # 会被剥成"物品玄铁"导致必然查无此物
+                if raw_msg.startswith("购买物品"):
+                    raw_msg = raw_msg[len("购买物品"):].strip()
+                elif raw_msg.startswith("购买"):
                     raw_msg = raw_msg[len("购买"):].strip()
                 raw_msg = raw_msg.replace("　", " ")
                 raw_msg = raw_msg.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
@@ -315,7 +319,7 @@ class ShopHandler:
                 )
                 return
 
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(event.get_sender_id())
             if player.gold < total_price:

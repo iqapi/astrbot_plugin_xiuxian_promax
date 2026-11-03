@@ -132,7 +132,7 @@ class StorageRingManager:
 
         orig_player = player  # 保留调用方对象引用，结束时同步物品，防止调用方后续用旧数据覆盖
         if not external_transaction:
-            await self.db.conn.execute("BEGIN IMMEDIATE")
+            await self.db.begin_immediate()
         try:
             if not external_transaction:
                 fresh_player = await self.db.get_player_by_id(player.user_id)
@@ -176,7 +176,7 @@ class StorageRingManager:
 
     async def retrieve_item(self, player: Player, item_name: str, count: int = 1) -> Tuple[bool, str]:
         orig_player = player  # 同步调用方对象，防止其后续 update_player 回滚本次取出
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             if not player:
@@ -212,7 +212,7 @@ class StorageRingManager:
 
     async def discard_item(self, player: Player, item_name: str, count: int = 1) -> Tuple[bool, str]:
         orig_player = player  # 同步调用方对象，防止其后续 update_player 回滚本次丢弃
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             if not player:

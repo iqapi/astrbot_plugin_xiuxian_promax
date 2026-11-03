@@ -34,6 +34,7 @@ class ExitManager:
 
     async def _exit_adventure(self, player: Player, user_cd) -> Tuple[bool, str]:
         """历练提前退出：按已进行时长比例结算该路线收益"""
+        user_id = player.user_id
         import json as _json
         extra = {}
         try:
@@ -63,9 +64,9 @@ class ExitManager:
         # 状态清空（不发完成奖励、不触发奇遇/悬赏/疲劳）
         await self.db.ext.set_user_free(user_id)
 
-        player.gold += gold_reward
-        player.experience += exp_reward
-        await self.db.update_player(player)
+        # v3.25.5：奖励改原子记账，不再整行覆写玩家快照
+        await self.db.add_player_gold(user_id, gold_reward)
+        await self.db.add_player_exp(user_id, exp_reward)
 
         pct = f"{ratio * 100:.0f}%"
         return True, (
@@ -81,6 +82,7 @@ class ExitManager:
 
     async def _exit_rift(self, player: Player, user_cd) -> Tuple[bool, str]:
         """秘境提前退出：按已进行时长比例结算该秘境奖励区间中值（向下取整，无物品掉落）"""
+        user_id = player.user_id
         import json as _json
         extra = {}
         try:
@@ -111,9 +113,9 @@ class ExitManager:
 
         await self.db.ext.set_user_free(user_id)
 
-        player.gold += gold_reward
-        player.experience += exp_reward
-        await self.db.update_player(player)
+        # v3.25.5：奖励改原子记账，不再整行覆写玩家快照
+        await self.db.add_player_gold(user_id, gold_reward)
+        await self.db.add_player_exp(user_id, exp_reward)
 
         pct = f"{ratio * 100:.0f}%"
         minutes = max(0, elapsed // 60)

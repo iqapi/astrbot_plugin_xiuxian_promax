@@ -170,24 +170,29 @@ class EncounterManager:
         karma = int(outcome.get("karma", 0))
         item = outcome.get("item")
 
+        # v3.25.5：奖励/损失全部原子记账（不再整行覆写快照）
         if gold:
-            player.gold = max(0, player.gold + gold)
+            await self.db.add_player_gold(player.user_id, gold)
             lines.append(f"{'获得' if gold > 0 else '损失'}灵石：{gold:+,}")
         if exp:
-            player.experience = max(0, player.experience + exp)
+            await self.db.add_player_exp(player.user_id, exp)
             lines.append(f"{'获得' if exp > 0 else '损失'}修为：{exp:+,}")
         if hp_pct:
             lost = int(player.hp * hp_pct)
             player.hp = max(1, player.hp - lost)
+            await self.db.update_player_fields(player.user_id, hp=player.hp)
             lines.append(f"损失气血：-{lost:,}")
-        if karma > 0:
+        if karma:
+            await self.db.conn.execute(
+                "UPDATE players SET karma = karma + ? WHERE user_id = ?",
+                (karma, player.user_id)
+            )
+            await self.db.conn.commit()
             player.karma = (getattr(player, "karma", 0) or 0) + karma
-            lines.append(f"✨功德 +{karma}（当前功德 {player.karma}）：奇遇概率与突破成功率提升")
-        elif karma < 0:
-            player.karma = (getattr(player, "karma", 0) or 0) + karma
-            lines.append(f"🌑业力 {karma}（当前 {player.karma}）：突破成功率降低，多行善可消解")
-
-        need_save = bool(gold or exp or hp_pct or karma)
+            if karma > 0:
+                lines.append(f"✨功德 +{karma}（当前功德 {player.karma}）：奇遇概率与突破成功率提升")
+            else:
+                lines.append(f"🌑业力 {karma}（当前 {player.karma}）：突破成功率降低，多行善可消解")
 
         if item and self.storage_ring_mgr and not fail:
             item_name = item.get("name", "")
@@ -198,6 +203,4 @@ class EncounterManager:
             else:
                 lines.append(f"⚠️ 获得【{item_name}】x{item_count}，但储物戒已满，物品丢失")
 
-        if need_save:
-            await self.db.update_player(player)
         return True, "\n".join(lines)

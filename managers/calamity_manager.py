@@ -24,7 +24,9 @@ class CalamityManager:
 
     async def _get(self, key: str, default: str = "") -> str:
         v = await self.db.ext.get_system_config(key)
-        return v if v is not None else default
+        # v3.25.5：空串一律视为未设置（历史版本清理键时置 "" 而非删除，
+        # 曾导致 int("") 崩溃：灵石已扣但贡献记录丢失、结算循环中断）
+        return v if v not in (None, "") else default
 
     async def is_tide_active(self) -> bool:
         return await self._get(self.KEY_ACTIVE) == "1"
@@ -107,17 +109,23 @@ class CalamityManager:
         if player.gold < amount:
             return False, f"❌ 灵石不足！你当前持有 {player.gold:,}。"
 
-        player.gold -= amount
-        await self.db.update_player(player)
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写玩家快照
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (amount, player.user_id, amount)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！你当前持有 {player.gold:,}。"
 
-        progress = int(await self._get(self.KEY_PROGRESS, "0")) + amount
+        # v3.25.5：进度与个人贡献改用原子数值累加（原读-改-写有并发丢更新窗口，
+        # 且旧键残留 "" 时 int("") 崩溃；syscfg_adjust_number 内部 CAST 对空串按 0 处理）
+        progress = await self.db.ext.syscfg_adjust_number(self.KEY_PROGRESS, amount)
         target = int(await self._get(self.KEY_TARGET, "0"))
-        await self.db.ext.set_system_config(self.KEY_PROGRESS, str(progress))
 
         # 记录个人贡献，结算时返还奖励
         contrib_key = f"tide_contrib_{player.user_id}"
-        old = int(await self._get(contrib_key, "0"))
-        await self.db.ext.set_system_config(contrib_key, str(old + amount))
+        await self.db.ext.syscfg_adjust_number(contrib_key, amount)
 
         if progress >= target:
             return True, (await self._settle_success())[1] + f"\n\n💰 你本次捐献：{amount:,} 灵石"
@@ -144,11 +152,17 @@ class CalamityManager:
         import time as _time
         for key, value in rows:
             uid = key.replace("tide_contrib_", "")
+            # v3.25.5：防御性解析（历史残留空串/脏数据不再中断整个结算循环）
+            try:
+                contrib = int(value)
+            except (TypeError, ValueError):
+                contrib = 0
             contributor = await self.db.get_player_by_id(uid)
             if contributor:
-                refund = int(int(value) * 0.15)
+                refund = int(contrib * 0.15)
                 await self.db.add_player_gold(uid, refund + 3000)
-            await self.db.ext.set_system_config(key, "")
+            # v3.25.5：清理键改为 DELETE，不再残留空串行
+            await self.db.ext.delete_system_config(key)
             await self.db.ext.set_system_config(
                 f"tide_bless_{uid}", str(int(_time.time()) + 86400)
             )
@@ -180,13 +194,13 @@ class CalamityManager:
         await self.db.ext.set_system_config(self.KEY_ACTIVE, "0")
         await self.db.ext.set_system_config(self.KEY_AFTERMATH, str(int(time.time()) + 86400))
 
-        # 清理贡献记录
+        # 清理贡献记录（v3.25.5：DELETE 而非置空串，避免下轮 int("") 崩溃）
         async with self.db.conn.execute(
             "SELECT key FROM system_config WHERE key LIKE 'tide_contrib_%'"
         ) as cursor:
             rows = await cursor.fetchall()
         for (key,) in rows:
-            await self.db.ext.set_system_config(key, "")
+            await self.db.ext.delete_system_config(key)
 
         return True, (
             f"💀【魔潮得逞】修士们未能及时抵御！\n"
@@ -249,8 +263,8 @@ class CalamityManager:
         season_idx = get_season_index_pub()
         seasons = ["🌱 春·生发", "☀️ 夏·炎灼", "🍂 秋·丰收", "❄️ 冬·蛰藏"]
         wday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        # 下一个周六
-        days_to_sat = (5 - local.tm_wday) % 7 or 7
+        # 下一个周六（v3.25.5 修复：周六当天 `or 7` 会显示"还有 7 天"，实际当晚就开）
+        days_to_sat = (5 - local.tm_wday) % 7
         # 下个月初
         if local.tm_mday == 1:
             days_to_month = 0
@@ -272,7 +286,7 @@ class CalamityManager:
             f"魔潮状态：{'🌑 肆虐中！/抵御魔潮 参与抵御' if tide_active else ('🌫 余波未散，修炼-20%' if aftermath else '🌤 风平浪静')}",
             "━━━━━━━━━━━━━━━",
             "【事件预告】",
-            f"  · 周六 20:00：周六魔潮（{'还有 ' + str(days_to_sat) + ' 天' if not tide_active else '进行中'}）",
+            f"  · 周六 20:00：周六魔潮（{'今晚开启！' if days_to_sat == 0 and not tide_active else ('还有 ' + str(days_to_sat) + ' 天' if not tide_active else '进行中')}）",
             f"  · 每月 1 日 20:00：月初大魔潮（8小时，还有 {days_to_month} 天）",
             "  · 世界Boss：按全服周期自动降临（关注广播）",
             "  · 灵眼：每 2 小时出现一处",

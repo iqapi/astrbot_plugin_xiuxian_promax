@@ -294,7 +294,7 @@ class AdventureManager:
         rewards = self._calculate_rewards(player, route, effective_duration, event)
         
         # 开始事务
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 重新获取玩家对象，确保在事务中
             player = await self.db.get_player_by_id(user_id)
@@ -385,6 +385,14 @@ class AdventureManager:
                         rewards["gold"] = int(rewards["gold"] * (1 + tech_gold))
             except Exception:
                 pass
+            # v3.32.0 灵潮：全服随机增益窗口，历练修为 +30%（只读 SELECT，不影响事务）
+            try:
+                from .spirit_tide_manager import SpiritTideManager
+                if await SpiritTideManager(self.db).is_active():
+                    rewards["exp"] = int(rewards["exp"] * (1 + SpiritTideManager.BONUS))
+                    rewards["_lichao"] = True
+            except Exception:
+                pass
             # v3.22.0 每日求签修为倍率（异常安全）
             try:
                 from .fortune_stick_manager import FortuneStickManager
@@ -397,38 +405,41 @@ class AdventureManager:
                     rewards["gold"] = int(rewards["gold"] * gm)
             except Exception:
                 pass
-            # 结契羁绊值：共同历练积累（已婚者 +1）
-            try:
-                from .marriage_manager import MarriageManager
-                mm = MarriageManager(self.db)
-                partner_id = await mm.get_partner_id(player.user_id)
-                if partner_id:
-                    await mm.add_bond(player.user_id, partner_id, 1)
-            except Exception:
-                pass
+            # 结契羁绊值：共同历练积累（已婚者 +1）—— v3.25.5（B6）挪到事务提交后执行
             player.experience += rewards["exp"]
             player.gold += rewards["gold"]
 
-            # 道侣周任务：历练计数（异常安全）
-            try:
-                from .couple_quest_manager import CoupleQuestManager
-                await CoupleQuestManager(self.db).record_action(player, "adventure")
-            except Exception:
-                pass
-            # 天骄榜：赛季修为增量
-            try:
-                from .season_manager import SeasonManager
-                if rewards["exp"] > 0:
-                    await SeasonManager(self.db).record_exp_gain(user_id, rewards["exp"])
-            except Exception:
-                pass
-            
             # 一次更新玩家对象
             await self.db.update_player(player)
             await self.db.conn.commit()
         except Exception:
             await self.db.conn.rollback()
             raise
+
+        # v3.25.5（B6）：以下回调内部自带 commit（system_config/落库方法），
+        # 原先放在事务内会把外层事务提前提交——进程中途崩溃会出现"物品已发、
+        # 状态已清、但修为灵石未落库"。统一挪到事务提交后执行（均异常安全）。
+        try:
+            from .marriage_manager import MarriageManager
+            mm = MarriageManager(self.db)
+            partner_id = await mm.get_partner_id(player.user_id)
+            if partner_id:
+                await mm.add_bond(player.user_id, partner_id, 1)
+        except Exception:
+            pass
+        # 道侣周任务：历练计数（异常安全）
+        try:
+            from .couple_quest_manager import CoupleQuestManager
+            await CoupleQuestManager(self.db).record_action(player, "adventure")
+        except Exception:
+            pass
+        # 天骄榜：赛季修为增量
+        try:
+            from .season_manager import SeasonManager
+            if rewards["exp"] > 0:
+                await SeasonManager(self.db).record_exp_gain(user_id, rewards["exp"])
+        except Exception:
+            pass
 
         fatigue = route.get("fatigue_cooldown", 0)
         if event.get("injury"):

@@ -214,7 +214,7 @@ class XiuXianPlugin(Star):
         self.impart_mgr = ImpartManager(self.db)
 
         # ===== 功能处理器 =====
-        self.sect_handlers = SectHandlers(self.db, self.sect_mgr)
+        self.sect_handlers = SectHandlers(self.db, self.sect_mgr, self.config_manager)
         self.combat_handlers = CombatHandlers(self.db, self.combat_mgr, self.config_manager)
         self.ranking_handlers = RankingHandlers(self.db, self.rank_mgr)
         self.rift_handlers = RiftHandlers(self.db, self.rift_mgr)
@@ -265,6 +265,43 @@ class XiuXianPlugin(Star):
         # v6.5 灵兽系统
         self.pet_mgr = PetManager(self.db)
         self.pet_handlers = PetHandlers(self.db, self.pet_mgr)
+
+        # v3.26.0 镇妖塔 & 功德善堂
+        from .managers.tower_manager import TowerManager
+        from .managers.merit_manager import MeritManager
+        self.tower_mgr = TowerManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.merit_mgr = MeritManager(self.db, self.storage_ring_mgr)
+
+        # v3.27.0 除妖
+        from .managers.hunt_manager import HuntManager
+        self.hunt_mgr = HuntManager(self.db, self.config_manager, self.storage_ring_mgr)
+
+        # v3.28.0 顿悟与道心
+        from .managers.enlighten_manager import EnlightenManager
+        self.enlighten_mgr = EnlightenManager(self.db)
+        self.player_handler.enlighten_mgr = self.enlighten_mgr
+
+        # v3.29.0 云游商人
+        from .managers.wander_merchant_manager import WanderMerchantManager
+        self.wmerch_mgr = WanderMerchantManager(self.db, self.storage_ring_mgr, self.pill_handler.pill_manager)
+
+        # v3.30.0 段位天梯
+        from .managers.ladder_manager import LadderManager
+        self.ladder_mgr = LadderManager(self.db)
+        self.combat_handlers.ladder_mgr = self.ladder_mgr
+
+        # v3.32.0 灵潮事件
+        from .managers.spirit_tide_manager import SpiritTideManager
+        self.spirit_tide_mgr = SpiritTideManager(self.db)
+
+        # v3.33.0 宗门秘境
+        from .managers.sect_raid_manager import SectRaidManager
+        self.sect_raid_mgr = SectRaidManager(self.db, self.config_manager, self.storage_ring_mgr)
+
+        # v3.34.0 仙途回忆录
+        from .managers.memoir_manager import MemoirManager
+        self.memoir_mgr = MemoirManager(self.db)
+        self.memoir_mgr.config_manager = self.config_manager
 
         # v6.6 交易坊市
         self.auction_mgr = AuctionManager(self.db, self.storage_ring_mgr, self.config_manager)
@@ -434,13 +471,16 @@ class XiuXianPlugin(Star):
         self.tide_check_task = asyncio.create_task(self._schedule_tide_check())
         # v6.17 商店自动上货
         self.restock_task = asyncio.create_task(self._schedule_restock())
+        # v3.32.0 灵潮事件
+        self.lichao_task = asyncio.create_task(self._schedule_lichao())
 
         logger.info("【修仙插件】已加载。")
 
     async def terminate(self):
         tasks = [t for t in (self.boss_task, self.loan_check_task, self.spirit_eye_task,
                              self.bounty_check_task, self.demon_check_task,
-                             getattr(self, "tide_check_task", None), getattr(self, "restock_task", None)) if t]
+                             getattr(self, "tide_check_task", None), getattr(self, "restock_task", None),
+                             getattr(self, "lichao_task", None)) if t]
         for task in tasks:
             task.cancel()
         # 等待后台任务真正退出后再关库，避免任务停在半途事务时连接被关闭导致写入丢失
@@ -793,6 +833,21 @@ class XiuXianPlugin(Star):
                 break
             except Exception as e:
                 logger.error(f"自动上货任务异常: {e}")
+                await asyncio.sleep(120)
+
+    async def _schedule_lichao(self):
+        """v3.32.0 灵潮事件：每 5 分钟判定一次，开启则全服播报"""
+        while True:
+            try:
+                await self.db.ensure_connection()
+                await asyncio.sleep(300)
+                msg = await self.spirit_tide_mgr.maybe_start()
+                if msg:
+                    await self._broadcast_world_boss_spawn(msg)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"灵潮任务异常: {e}")
                 await asyncio.sleep(120)
 
     async def _broadcast_world_boss_spawn(self, msg: str):
@@ -1831,7 +1886,10 @@ class XiuXianPlugin(Star):
     async def handle_demon_catch(self, event: AstrMessageEvent, target: str = ""):
         got_it = False
         async for r in self.demon_handlers.handle_catch(event, target):
-            if isinstance(r, str) and ("降妖除魔" in r or "最后一名天魔" in r):
+            # v3.25.5 修复：yield 出的是 MessageEventResult 而非 str，原 isinstance 判断永假，
+            # 导致"揪出天魔"称号永不触发
+            text = self._res_text(r)
+            if "降妖除魔" in text or "最后一名天魔" in text:
                 got_it = True
             yield r
         # 称号：揪出天魔
@@ -2078,9 +2136,20 @@ class XiuXianPlugin(Star):
         if player.gold < cost:
             yield event.plain_result(f"❌ 行善需要捐献 {cost:,} 灵石（为贫苦散修购置丹药）。")
             return
-        player.gold -= cost
+        # v3.26.0：条件原子扣款 + 功德原子累加（不再整行覆写快照）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            yield event.plain_result(f"❌ 行善需要捐献 {cost:,} 灵石（为贫苦散修购置丹药）。")
+            return
+        await self.db.conn.execute(
+            "UPDATE players SET karma = karma + 1 WHERE user_id = ?", (player.user_id,)
+        )
+        await self.db.conn.commit()
         player.karma = (getattr(player, "karma", 0) or 0) + 1
-        await self.db.update_player(player)
         await self.db.ext.set_system_config(key, today)
         # 称号：功德
         try:
@@ -2563,11 +2632,15 @@ class XiuXianPlugin(Star):
             yield event.plain_result("❌ 本周丹会已开启过，下周再来。")
             return
         await self.db.ext.set_system_config(key, "1")
-        # 宗主自己先领
+        # 宗主自己先领（v3.25.5 修复：原代码只发文案未实际发放丹药；且旧奖池 5 个丹药名中
+        # 4 个不存在于配置，唯一存在的也会被储物戒拒绝——丹药必须走丹药背包）
+        pills_pool = ["炼气丹", "聚灵丹", "凝气丹", "培元丹", "凝神丹"]
+        pill = _random.choice(pills_pool)
+        await self.pill_handler.pill_manager.add_pill_to_inventory(player, pill, 2)
         yield event.plain_result(
             "🍶 宗门丹会开启！\n"
             f"【{sect.sect_name}】炼丹房灯火通明，香飘十里。\n"
-            f"你先领取了一枚【随机丹药】。\n"
+            f"你先领取了【{pill}】x2（已放入丹药背包）。\n"
             f"💡 全宗成员 7 天内发送 /领丹会丹 即可各领一枚"
         )
 
@@ -2592,19 +2665,267 @@ class XiuXianPlugin(Star):
         if claimed:
             yield event.plain_result("❌ 本周已领过丹会丹了。")
             return
-        # 随机丹药池
-        pills_pool = ["回气散", "凝神丹", "小还丹", "血气丹", "清心丹"]
+        # 随机丹药池（v3.25.5 修复：原池 5 个名字仅 1 个存在于配置；改用丹药背包发放，
+        # 储物戒 store_item 会拒绝丹药）
+        pills_pool = ["炼气丹", "聚灵丹", "凝气丹", "培元丹", "凝神丹"]
         pill = _random.choice(pills_pool)
-        ok, smsg = await self.storage_ring_mgr.store_item(player, pill, 2, silent=True)
-        if not ok:
-            yield event.plain_result(f"❌ 储物戒已满，无法发放丹药：{smsg}")
-            return
+        await self.pill_handler.pill_manager.add_pill_to_inventory(player, pill, 2)
         await self.db.ext.set_system_config(claim_key, "1")
         yield event.plain_result(
             f"🍶 丹会领丹成功！\n"
-            f"获得【{pill}】x2（已存入储物戒）\n"
-            f"💡 同系列装备凑齐有套装效果，/装备图鉴 查看"
+            f"获得【{pill}】x2（已放入丹药背包）\n"
+            f"💡 服用后增益生效，/丹药背包 查看"
         )
+
+    # ===== v3.26.0 镇妖塔 =====
+    @filter.command("镇妖塔", "挑战镇妖塔下一层妖兽（每日3次，层数越高越强）")
+    @require_whitelist
+    async def handle_tower_challenge(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        old_best = await self.tower_mgr.get_best(player.user_id)
+        _ok, msg, _new_record = await self.tower_mgr.challenge(player)
+        yield event.plain_result(msg)
+        # 称号：登塔层数（破阵先锋 10 层 / 镇妖塔主 20 层）
+        if _ok:
+            new_best = await self.tower_mgr.get_best(player.user_id)
+            if new_best > old_best:
+                try:
+                    tmsg = await self.title_hooks.bump_value(player, "tower_floor", new_best)
+                    if tmsg: yield event.plain_result(tmsg)
+                except Exception:
+                    pass
+
+    @filter.command("镇妖塔扫荡", "扫荡已通关最高层（每日2次，60%收益）")
+    @require_whitelist
+    async def handle_tower_sweep(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _ok, msg = await self.tower_mgr.sweep(player)
+        yield event.plain_result(msg)
+
+    @filter.command("镇妖塔榜", "查看全服登塔排行")
+    @require_whitelist
+    async def handle_tower_rank(self, event: AstrMessageEvent):
+        yield event.plain_result(await self.tower_mgr.get_ranking())
+
+    # ===== v3.26.0 功德善堂 =====
+    @filter.command("功德善堂", "查看功德货架（行善积德的回报）")
+    @require_whitelist
+    async def handle_merit_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.merit_mgr.get_panel(player))
+
+    @filter.command("功德兑换", "功德善堂兑换 <编号>（消耗功德）")
+    @require_whitelist
+    async def handle_merit_redeem(self, event: AstrMessageEvent, item_id: str = "0"):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        try:
+            idx = int(item_id)
+        except ValueError:
+            idx = 0
+        _ok, msg = await self.merit_mgr.redeem(player, idx)
+        yield event.plain_result(msg)
+
+    # ===== v3.26.0 灵兽探险 =====
+    @filter.command("灵兽派遣", "派灵兽外出探险8小时（可选地点）")
+    @require_whitelist
+    async def handle_pet_expedition(self, event: AstrMessageEvent, dest: str = ""):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _ok, msg = await self.pet_mgr.start_expedition(player, (dest or "").strip())
+        yield event.plain_result(msg)
+
+    @filter.command("灵兽归来", "收取灵兽探险成果")
+    @require_whitelist
+    async def handle_pet_expedition_collect(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _ok, msg = await self.pet_mgr.collect_expedition(player)
+        yield event.plain_result(msg)
+
+    # ===== v3.27.0 除妖 =====
+    @filter.command("除妖", "猎杀一只与自身境界相当的野外妖兽（每日5次）")
+    @require_whitelist
+    async def handle_hunt(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _report, msg, win = await self.hunt_mgr.hunt(player)
+        yield event.plain_result(msg)
+        # 称号：降妖伏魔（累计50只）
+        if win:
+            try:
+                total = await self.hunt_mgr.get_total(player.user_id)
+                tmsg = await self.title_hooks.bump_value(player, "hunt_count", total)
+                if tmsg: yield event.plain_result(tmsg)
+            except Exception:
+                pass
+
+    @filter.command("除妖信息", "查看除妖体力与累计战绩")
+    @require_whitelist
+    async def handle_hunt_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.hunt_mgr.get_panel(player))
+
+    # ===== v3.28.0 顿悟与道心 =====
+    @filter.command("悟道", "查看道心与顿悟状态（出关可触发顿悟）")
+    @require_whitelist
+    async def handle_enlighten_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.enlighten_mgr.get_panel(player))
+
+    # ===== v3.29.0 云游商人 =====
+    @filter.command("云游商人", "查看限时特惠货品（每2小时刷新）")
+    @require_whitelist
+    async def handle_wander_merchant(self, event: AstrMessageEvent):
+        yield event.plain_result(await self.wmerch_mgr.get_board())
+
+    @filter.command("云游购买", "购买云游商人特惠 <编号>（每件限购1份）")
+    @require_whitelist
+    async def handle_wander_buy(self, event: AstrMessageEvent, item_id: str = "0"):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        try:
+            idx = int(item_id)
+        except ValueError:
+            idx = 0
+        _ok, msg = await self.wmerch_mgr.buy(player, idx)
+        yield event.plain_result(msg)
+
+    # ===== v3.30.0 段位天梯 =====
+    @filter.command("天梯", "查看PVP段位天梯（决斗/切磋累积积分）")
+    @require_whitelist
+    async def handle_ladder_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.ladder_mgr.get_panel(player))
+
+    @filter.command("天梯领取", "领取已达段位的里程碑奖励")
+    @require_whitelist
+    async def handle_ladder_claim(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _ok, msg = await self.ladder_mgr.claim_milestone(player)
+        yield event.plain_result(msg)
+
+    @filter.command("天梯榜", "查看全服天梯高手")
+    @require_whitelist
+    async def handle_ladder_rank(self, event: AstrMessageEvent):
+        yield event.plain_result(await self.ladder_mgr.get_ranking())
+
+    # ===== v3.31.0 轮回天赋 =====
+    @filter.command("轮回天赋", "查看轮回天赋树（需至少转生1次）")
+    @require_whitelist
+    async def handle_talent_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.reinc_mgr.get_talents_panel(player))
+
+    @filter.command("轮回悟道", "参悟轮回天赋 <节点名>（消耗仙缘点）")
+    @require_whitelist
+    async def handle_talent_upgrade(self, event: AstrMessageEvent, node: str = ""):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        _ok, msg = await self.reinc_mgr.upgrade_talent(player, node)
+        yield event.plain_result(msg)
+
+    # ===== v3.32.0 灵潮事件 =====
+    @filter.command("灵潮", "查看全服灵潮状态（灵潮期间修炼收益+30%）")
+    @require_whitelist
+    async def handle_spirit_tide(self, event: AstrMessageEvent):
+        yield event.plain_result(await self.spirit_tide_mgr.get_status())
+
+    # ===== v3.33.0 宗门秘境 =====
+    @filter.command("宗门秘境", "查看本宗秘境与妖王状态")
+    @require_whitelist
+    async def handle_sect_raid_panel(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        if not player.sect_id:
+            yield event.plain_result("❌ 你还未加入宗门。")
+            return
+        sect = await self.db.ext.get_sect_by_id(player.sect_id)
+        if not sect:
+            yield event.plain_result("❌ 宗门信息异常。")
+            return
+        yield event.plain_result(await self.sect_raid_mgr.get_panel(player, sect))
+
+    # ===== v3.34.0 仙途回忆录 =====
+    @filter.command("回忆录", "查看你的仙途生涯年报（战斗/积累/生活全览）")
+    @require_whitelist
+    async def handle_memoir(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        yield event.plain_result(await self.memoir_mgr.get_memoir(player))
+
+    @filter.command("召唤宗门Boss", "宗主/长老消耗2000资材召唤秘境妖王")
+    @require_whitelist
+    async def handle_sect_raid_summon(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        if not player.sect_id:
+            yield event.plain_result("❌ 你还未加入宗门。")
+            return
+        sect = await self.db.ext.get_sect_by_id(player.sect_id)
+        if not sect:
+            yield event.plain_result("❌ 宗门信息异常。")
+            return
+        if player.sect_position not in (0, 1):
+            yield event.plain_result("❌ 只有宗主或长老才能召唤秘境妖王。")
+            return
+        _ok, msg = await self.sect_raid_mgr.summon(player, sect)
+        yield event.plain_result(msg)
+
+    @filter.command("讨伐宗门Boss", "讨伐本宗秘境妖王（每日2次，斩杀全宗发奖）")
+    @require_whitelist
+    async def handle_sect_raid_challenge(self, event: AstrMessageEvent):
+        player = await self.db.get_player_by_id(event.get_sender_id())
+        if not player:
+            yield event.plain_result("❌ 道友尚未踏入仙途。")
+            return
+        if not player.sect_id:
+            yield event.plain_result("❌ 你还未加入宗门。")
+            return
+        _ok, msg, _killed = await self.sect_raid_mgr.challenge(player, player.sect_id)
+        yield event.plain_result(msg)
 
     @filter.command("宗门协作榜", "查看宗门协作周榜与本宗贡献")
     @require_whitelist
@@ -3615,7 +3936,8 @@ class XiuXianPlugin(Star):
                 return
             uid = deep_target.user_id
             try:
-                owned_titles = await self.title_mgr._load_owned(deep_target)
+                # v3.25.5 修复：_load_owned 是同步方法，await 它会抛 TypeError 被吞掉，深查称号恒为 0
+                owned_titles = self.title_mgr._load_owned(deep_target)
             except Exception:
                 owned_titles = {}
             partner = await self.marriage_mgr.get_partner_id(uid)

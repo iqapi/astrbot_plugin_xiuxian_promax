@@ -91,7 +91,7 @@ class BankManager:
         if amount <= 0:
             return False, "存款金额必须大于0。"
         
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             if player.gold < amount:
@@ -135,7 +135,7 @@ class BankManager:
         if amount <= 0:
             return False, "取款金额必须大于0。"
         
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             bank_data = await self.db.ext.get_bank_account(player.user_id)
@@ -168,7 +168,7 @@ class BankManager:
     
     async def claim_interest(self, player: Player) -> Tuple[bool, str]:
         """领取利息（事务化，防止并发双领）"""
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 事务内重读账户，确保利息以最新余额计算
             bank_data = await self.db.ext.get_bank_account(player.user_id)
@@ -245,7 +245,7 @@ class BankManager:
         if amount > self.max_loan_amount:
             return False, f"最大贷款金额为 {self.max_loan_amount:,} 灵石。"
         
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             existing_loan = await self.db.ext.get_active_loan(player.user_id)
@@ -304,7 +304,7 @@ class BankManager:
     
     async def repay(self, player: Player) -> Tuple[bool, str]:
         """还款"""
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             player = await self.db.get_player_by_id(player.user_id)
             loan_info = await self.get_loan_info(player)

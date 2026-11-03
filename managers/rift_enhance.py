@@ -145,6 +145,8 @@ class RiftEnhanceManager:
         # v3.23.0：费用与奖励全走原子接口（不再整行覆写 player 快照）
         fresh = await self.db.get_player_by_id(player.user_id)
         if not fresh or fresh.gold < fee:
+            # v3.25.5：余额不足时回滚已扣的扫荡场次，不让玩家白扣一次
+            await self.db.ext.syscfg_adjust_number(key, -1)
             return False, f"❌ 扫荡需缴纳门票 {fee:,} 灵石（当前持有 {fresh.gold if fresh else 0:,}）。"
         await self.db.add_player_gold(player.user_id, gold_reward - fee)
         await self.db.add_player_exp(player.user_id, exp_reward)
@@ -156,6 +158,7 @@ class RiftEnhanceManager:
             f"📈 修为：+{exp_reward:,}\n"
             f"💰 灵石：+{gold_reward:,}（门票 -{fee:,}）\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"今日剩余扫荡次数：{self.SWEEP_DAILY_LIMIT - used - 1}\n"
+            # v3.25.5 修复：used 已含本次，剩余次数不再重复 -1（原显示差一）
+            f"今日剩余扫荡次数：{self.SWEEP_DAILY_LIMIT - used}\n"
             f"💡 手动探索收益期望更高且可能掉落物品，扫荡胜在省时"
         )

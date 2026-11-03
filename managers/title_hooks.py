@@ -28,17 +28,17 @@ class TitleHooks:
         """行为计数 +1 并检查颁发。返回提示文本"""
         try:
             ck = f"title_cnt_{key}_{player.user_id}"
-            raw = await self.db.ext.get_system_config(ck)
-            val = (int(raw) if raw and raw.isdigit() else 0) + count
-            await self.db.ext.set_system_config(ck, str(val))
+            # v3.25.5：计数改原子累加（原读-改-写并发下丢计数）
+            val = await self.db.ext.syscfg_adjust_number(ck, count)
             tm = self._tm()
             # 累进型条件：直接传计数值
             msg = tm.grant_by_key(player, key, val)
-            
+
             # ★ 新增：如果有新获得的称号，必须立即落库，否则图鉴读不到
+            # v3.25.5：只写受影响字段，不再整行覆写并发变更
             if msg:
-                await self.db.update_player(player)
-                
+                await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+
             # 特殊映射：win_pvp 由决斗专用 key 计数
             return msg
         except Exception as e:
@@ -51,11 +51,12 @@ class TitleHooks:
         try:
             tm = self._tm()
             msg = tm.grant_by_key(player, key, value)
-            
+
             # ★ 新增：如果有新获得的称号，必须立即落库
+            # v3.25.5：只写受影响字段，不再整行覆写并发变更
             if msg:
-                await self.db.update_player(player)
-                
+                await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+
             return msg
         except Exception as e:
             # ★ 新增：记录异常日志
@@ -67,7 +68,8 @@ class TitleHooks:
         try:
             is_new, msg = self._tm().grant(player, title_name)
             if is_new:
-                await self.db.update_player(player)
+                # v3.25.5：只写受影响字段，不再整行覆写并发变更
+                await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
             return msg
         except Exception as e:
             logger.exception(f"称号手动授予异常 title={title_name} uid={player.user_id}: {e}")

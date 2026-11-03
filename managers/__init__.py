@@ -42,6 +42,21 @@ from .encounter_manager import EncounterManager
 from .life_skill_manager import LifeSkillManager
 # v6.10 魔潮天灾
 from .calamity_manager import CalamityManager
+# v3.26.0 镇妖塔 & 功德善堂
+from .tower_manager import TowerManager
+from .merit_manager import MeritManager
+# v3.27.0 除妖
+from .hunt_manager import HuntManager
+# v3.29.0 云游商人
+from .wander_merchant_manager import WanderMerchantManager
+# v3.30.0 段位天梯
+from .ladder_manager import LadderManager
+# v3.32.0 灵潮事件
+from .spirit_tide_manager import SpiritTideManager
+# v3.33.0 宗门秘境
+from .sect_raid_manager import SectRaidManager
+# v3.34.0 仙途回忆录
+from .memoir_manager import MemoirManager
 
 __all__ = [
     "CombatManager", "CombatStats", "SectManager", "RiftManager",
@@ -50,5 +65,7 @@ __all__ = [
     "BlessedLandManager", "SpiritFarmManager", "DualCultivationManager", "SpiritEyeManager",
     "DailyTaskManager", "WorldBossManager", "RobberyManager", "TutorialManager", "ReincarnationManager",
     "GambleManager", "ForgeManager", "DemonInvasionManager", "PetManager",
-    "AuctionManager", "EscortManager", "EncounterManager", "LifeSkillManager", "CalamityManager"
+    "AuctionManager", "EscortManager", "EncounterManager", "LifeSkillManager", "CalamityManager",
+    "TowerManager", "MeritManager", "HuntManager", "WanderMerchantManager", "LadderManager",
+    "SpiritTideManager", "SectRaidManager", "MemoirManager"
 ]

@@ -1,5 +1,7 @@
 # data/data_manager.py
 
+import asyncio
+
 import aiosqlite
 import json
 from dataclasses import fields
@@ -19,6 +21,28 @@ class DataBase:
         self.db_path = Path(db_file)
         self.conn: aiosqlite.Connection = None
         self.ext: Optional[DatabaseExtended] = None  # 扩展操作类
+
+    async def begin_immediate(self, retries: int = 20):
+        """v3.25.5：共享单连接上的安全显式事务入口（全部 BEGIN IMMEDIATE 统一走此方法）。
+
+        全项目共用一条 aiosqlite 连接，协程 A 的显式事务未结束时，协程 B 的裸
+        BEGIN 会抛 "cannot start a transaction within a transaction"，且 B 的
+        except rollback 会把 A 的未提交工作一并回滚（跨协程数据损坏）。
+        此处改为冲突时让步等待重试：B 会等到 A 的事务提交/回滚后再开启，
+        既消除并发 BEGIN 崩溃，也保证各事务段互不裹挟。
+
+        已知限制：他人协程的普通 autocommit 写语句若恰好落在 A 的事务开启期间，
+        会被裹进 A 的事务随 A 一起提交/回滚（连接级固有语义，如需彻底隔离需
+        全部写路径走 begin_immediate 串行化）。"""
+        for attempt in range(retries):
+            try:
+                await self.conn.execute("BEGIN IMMEDIATE")
+                return
+            except aiosqlite.OperationalError as e:
+                if "within a transaction" not in str(e):
+                    raise
+                await asyncio.sleep(0.05 * (attempt + 1))
+        raise RuntimeError("数据库事务开启超时：并发事务冲突重试耗尽（可能有事务泄漏）")
 
     async def connect(self):
         """连接数据库"""
@@ -439,7 +463,7 @@ class DataBase:
         """尝试扣减指定商店物品的库存（原子操作，可批量）"""
         quantity = max(1, int(quantity))
         if not external_transaction:
-            await self.conn.execute("BEGIN IMMEDIATE")
+            await self.begin_immediate()
         try:
             async with self.conn.execute(
                 "SELECT last_refresh_time, current_items FROM shop WHERE shop_id = ?",
@@ -499,7 +523,7 @@ class DataBase:
     async def increment_shop_item_stock(self, shop_id: str, item_name: str, quantity: int = 1):
         """回滚库存（在购买失败时恢复库存），支持批量"""
         quantity = max(1, int(quantity))
-        await self.conn.execute("BEGIN IMMEDIATE")
+        await self.begin_immediate()
         try:
             async with self.conn.execute(
                 "SELECT last_refresh_time, current_items FROM shop WHERE shop_id = ?",

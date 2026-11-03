@@ -60,9 +60,18 @@ class LifeSkillManager:
         if cost and player.gold < cost:
             return False, f"❌ 改换职业需要 {cost:,} 灵石。"
 
-        player.gold -= cost
+        # v3.25.5：条件原子扣款 + 定向落库（不再整行覆写；cost 可为 0）
+        if cost:
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (cost, player.user_id, cost)
+            )
+            await self.db.conn.commit()
+            if cursor.rowcount == 0:
+                return False, f"❌ 改换职业需要 {cost:,} 灵石。"
+            player.gold -= cost
         player.life_skill = skill_name
-        await self.db.update_player(player)
+        await self.db.update_player_fields(player.user_id, life_skill=skill_name)
 
         info = LIFE_SKILLS[skill_name]
         return True, (

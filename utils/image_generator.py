@@ -186,7 +186,7 @@ def _gold_gradient_text(canvas, xy, text, font) -> Tuple[int, int]:
     md.text((4, 4), text, font=font, fill=255)
     bbox = mask.getbbox()
     if not bbox:
-        draw.text((x, y), text, font=font, fill=INK_GOLD)
+        ImageDraw.Draw(canvas).text((x, y), text, font=font, fill=INK_GOLD)
         return tw, th
     mask = mask.crop(bbox)
     w2, h2 = mask.size
@@ -493,7 +493,7 @@ def render_card(
         title_s = _trunc(draw, title, f_title, width - pad * 2 - 60)
         emoji_px_title = 46
         tw = _mixed_width(title_s, f_title, emoji_px_title)
-        title_end_x = _draw_mixed(canvas, ((width - tw) / 2, 38), title_s, f_title, emoji_px_title, None)
+        title_end_x = _draw_mixed(canvas, ((width - tw) / 2, 38), title_s, f_title, emoji_px_title, INK_GOLD)
         draw = ImageDraw.Draw(canvas)
         seal_char = "仙"
         for _ch in title_s:

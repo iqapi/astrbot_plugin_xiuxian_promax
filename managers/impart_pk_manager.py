@@ -92,10 +92,9 @@ class ImpartPkManager:
                 await self.db.ext.update_impart_info(defender_impart)
                 rewards["defender_loss"] = loss
         else:
-            # 失败惩罚：损失修为
+            # 失败惩罚：损失修为（v3.25.5：原子扣减，不再整行覆写）
             exp_loss = int(attacker.experience * 0.01)  # 1%
-            attacker.experience = max(0, attacker.experience - exp_loss)
-            await self.db.update_player(attacker)
+            await self.db.add_player_exp(attacker.user_id, -exp_loss)
             rewards["exp_loss"] = exp_loss
         
         return attacker_wins, "\n".join(battle_log[-6:]), rewards  # 只返回最后6条log

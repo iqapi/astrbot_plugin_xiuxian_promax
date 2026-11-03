@@ -315,10 +315,14 @@ class StorageRingHandler:
         """接收赠予的物品（带事务防并发）"""
         user_id = player.user_id
 
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        # v3.25.5 修复：过期清理必须放在 BEGIN 之前（其内部 commit 会击穿外层事务，
+        # 之后 DELETE 立即生效而 rollback 失效——store_item 失败时赠予物品蒸发）
+        await self.db.ext.cleanup_expired_gifts()
+
+        await self.db.begin_immediate()
         try:
-            # 事务内重新获取请求
-            gift = await self.db.ext.get_pending_gift(user_id)
+            # 事务内重新获取请求（cleanup=False：清理已在事务外完成）
+            gift = await self.db.ext.get_pending_gift(user_id, cleanup=False)
             if not gift:
                 await self.db.conn.rollback()
                 yield event.plain_result("你没有待接收的赠予物品")

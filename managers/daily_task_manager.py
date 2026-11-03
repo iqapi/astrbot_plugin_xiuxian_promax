@@ -63,12 +63,15 @@ class DailyTaskManager:
         return int(hashlib.md5(f"{day}_{user_id}".encode()).hexdigest()[:8], 16)
 
     def get_daily_pool(self, user_id: str, level: str, picks: int = 3):
-        """该玩家今日该品阶可接的随机任务（每日固定，不会因查看变化）"""
+        """该玩家今日该品阶可接的随机任务（每日固定，不会因查看变化）
+        v3.25.5：改用稳定哈希——原 hash(level) 受 PYTHONHASHSEED 随机化，
+        进程重启后当日任务池会漂移"""
         import random as _random
+        import zlib
         pool = self.TASK_POOL.get(level, [])
         if not pool:
             return []
-        rng = _random.Random(self._daily_seed(user_id) + hash(level) % 10000)
+        rng = _random.Random(self._daily_seed(user_id) + zlib.crc32(level.encode("utf-8")) % 10000)
         idx = rng.sample(range(len(pool)), min(picks, len(pool)))
         return [(i, pool[i]) for i in idx]
 
@@ -179,7 +182,7 @@ class DailyTaskManager:
     async def claim_rewards(self, player: Player) -> Tuple[bool, str, list]:
         """结算所有已完成的任务（加入事务防并发卡双倍奖励）"""
         # 开启事务锁
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 事务内重新查询任务状态，确保是最新的
             async with self.db.conn.execute(

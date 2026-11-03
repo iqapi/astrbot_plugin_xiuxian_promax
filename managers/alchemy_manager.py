@@ -5,6 +5,7 @@
 
 import json
 import random
+import time
 from typing import Tuple, List, Dict, Optional, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models import Player
@@ -100,6 +101,39 @@ class AlchemyManager:
         """丹炉带来的成功率加成（百分点）"""
         return self.get_furnace_level(player) * 3
 
+    async def get_available_recipes(self, user_id: str) -> Tuple[bool, str]:
+        """列出丹药配方（v3.25.5 修复：原 handler 调用了不存在的方法，/丹药配方 必崩）"""
+        player = await self.db.get_player_by_id(user_id)
+        if not player:
+            return False, "❌ 你还未踏入修仙之路！"
+
+        if not self.recipes:
+            return False, "❌ 暂无丹药配方，请联系管理员检查炼丹配置。"
+
+        lines = ["📜【丹药配方】", "━━━━━━━━━━━━━━━"]
+        usable, locked = [], []
+        for recipe_id in sorted(self.recipes.keys()):
+            r = self.recipes[recipe_id]
+            (usable if player.level_index >= r["level_required"] else locked).append(r)
+
+        if not usable:
+            lines.append("（暂无当前境界可炼的丹药）")
+        for r in usable:
+            mats = "、".join(f"{m}×{c}" for m, c in r["materials"].items()) or "无"
+            lines.append(
+                f"[{r['id']}] {r['name']}（成功率{r['success_rate']}%）\n"
+                f"  材料：{mats}\n"
+                f"  效果：{r['desc']}"
+            )
+        if locked:
+            names = "、".join(f"{r['name']}(需境界{r['level_required']})" for r in locked[:6])
+            more = f" 等{len(locked)}种" if len(locked) > 6 else ""
+            lines.append("━━━━━━━━━━━━━━━")
+            lines.append(f"🔒 未解锁：{names}{more}")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 发送 /炼丹 <ID> 开始炼制，/火候 <1-3> 掌控丹炉")
+        return True, "\n".join(lines)
+
     async def upgrade_furnace(self, player: Player) -> Tuple[bool, str]:
         """升级丹炉（消耗灵石，等级越高越贵）"""
         level = self.get_furnace_level(player)
@@ -110,11 +144,19 @@ class AlchemyManager:
         if player.gold < cost:
             return False, f"❌ 灵石不足！升级丹炉到 {level + 1} 级需要 {cost:,} 灵石。"
 
+        # v3.25.5：条件原子扣款 + 定向落库（不再整行覆写）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！升级丹炉到 {level + 1} 级需要 {cost:,} 灵石。"
         player.gold -= cost
         data = self._get_bonus_data(player)
         data["alchemy_furnace"] = level + 1
         player.permanent_bonus = json.dumps(data, ensure_ascii=False)
-        await self.db.update_player(player)
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
 
         furnace_names = ["凡铁炉", "青石炉", "紫金炉", "灵纹炉", "八卦炉", "五品玄天炉"]
         return True, (
@@ -205,8 +247,7 @@ class AlchemyManager:
         if not fire_matched:
             fire_cfg = self.FIRE_OPTIONS["3"]  # 未选火候或不匹配，按守中处理
 
-        await self.db.conn.execute("BEGIN IMMEDIATE")
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 事务内重新获取玩家对象，确保数据是最新的
             player = await self.db.get_player_by_id(user_id)
@@ -283,10 +324,9 @@ class AlchemyManager:
             except Exception:
                 comp_bonus_pct = 0
             final_success_rate = min(95, max(5, success_rate + level_bonus + furnace_bonus + sect_bonus + comp_bonus_pct + fire_cfg["rate_bonus"]))
-            # 极品判定：火候影响极品概率，极品丹效果x1.5
-            perfect = (random.randint(1, 100) <= max(2, 10 + fire_cfg["perfect_bonus"])) if is_success else False
-            
             is_success = random.randint(1, 100) <= final_success_rate
+            # 极品判定：火候影响极品概率，极品丹效果x1.5（v3.25.5 修复：原代码在 is_success 赋值前引用，必触发 UnboundLocalError）
+            perfect = (random.randint(1, 100) <= max(2, 10 + fire_cfg["perfect_bonus"])) if is_success else False
             
             # 构建消耗描述
             cost_lines = []

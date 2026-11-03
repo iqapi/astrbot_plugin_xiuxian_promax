@@ -216,7 +216,12 @@ class RiftManager:
             remaining = user_cd.scheduled_time - current_time
             minutes = remaining // 60
             return False, f"❌ 探索尚未完成！还需要 {minutes} 分钟。", None
-        
+
+        # v3.25.5：先原子抢占结算权（原门禁"先查后清"，并发双交都通过检查；
+        # 天骄榜 record_exp_gain 是原子累加，会被双计）
+        if not await self.db.ext.claim_user_free_if_type(user_id, UserStatus.EXPLORING):
+            return False, "❌ 你当前不在探索秘境！", None
+
         # 4. 获取秘境信息（从extra_data中读取）
         extra_data = user_cd.get_extra_data() if hasattr(user_cd, 'get_extra_data') else {}
         rift_id = extra_data.get("rift_id", 0)
@@ -286,10 +291,10 @@ class RiftManager:
             if item_lines:
                 item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
         
-        # 7. 应用奖励
-        player.experience += exp_reward
-        player.gold += gold_reward
-        await self.db.update_player(player)
+        # 7. 应用奖励（v3.25.5：改原子记账，不再整行覆写快照；掉落的丹药单独落库）
+        await self.db.add_player_exp(user_id, exp_reward)
+        await self.db.add_player_gold(user_id, gold_reward)
+        await self.db.update_player_fields(user_id, pills_inventory=player.pills_inventory)
 
         # v3.19.0 天骄榜：赛季修为增量（异常安全）
         try:

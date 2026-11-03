@@ -198,16 +198,22 @@ class DualCultivationManager:
         # 计算双修收益
         init_exp_gain = int(acceptor.experience * DUAL_CULT_EXP_BONUS)
         accept_exp_gain = int(initiator.experience * DUAL_CULT_EXP_BONUS)
-        
-        # 应用收益
-        initiator.experience += init_exp_gain
-        acceptor.experience += accept_exp_gain
-        await self.db.update_player(initiator)
-        await self.db.update_player(acceptor)
-        
-        # 记录冷却
-        await self._set_last_dual_time(initiator.user_id, now)
-        await self._set_last_dual_time(acceptor.user_id, now)
+
+        # v3.25.5：原子占用双方冷却位（原"先查后写"在多人并发接受同一发起者的请求时，
+        # 每人都能通过检查并白吃发起者 10% 修为）；任一方占用失败即取消并回滚
+        if not await self._claim_dual_slot(acceptor.user_id, now, DUAL_CULT_COOLDOWN):
+            await self._delete_request(request["id"])
+            return False, "❌ 你的双修冷却中，请稍后再试。"
+        if not await self._claim_dual_slot(initiator.user_id, now, DUAL_CULT_COOLDOWN):
+            # 回滚接收方刚占用的冷却位（恢复原值，无历史则归 0）
+            await self._set_last_dual_time(acceptor.user_id, acceptor_last_dual or 0)
+            await self._delete_request(request["id"])
+            remaining = DUAL_CULT_COOLDOWN - (now - (initiator_last_dual or 0))
+            return False, f"❌ 对方仍在双修冷却，还需 {remaining // 60} 分钟。"
+
+        # 应用收益（v3.25.5：改原子记账，不再整行覆写玩家快照）
+        await self.db.add_player_exp(initiator.user_id, init_exp_gain)
+        await self.db.add_player_exp(acceptor.user_id, accept_exp_gain)
 
         # 清除请求
         await self._delete_request(request["id"])
@@ -277,3 +283,18 @@ class DualCultivationManager:
             (user_id, timestamp)
         )
         await self.db.conn.commit()
+
+    async def _claim_dual_slot(self, user_id: str, now: int, cooldown: int) -> bool:
+        """原子占用双修冷却位（v3.25.5）：仅当 last_dual_time 已过冷却期时写入 now，
+        并发下同一时刻只有一方能占用成功。返回是否占用成功。"""
+        cursor = await self.db.conn.execute(
+            """
+            INSERT INTO dual_cultivation (user_id, last_dual_time)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET last_dual_time = excluded.last_dual_time
+            WHERE dual_cultivation.last_dual_time < ?
+            """,
+            (user_id, now, now - cooldown)
+        )
+        await self.db.conn.commit()
+        return cursor.rowcount > 0

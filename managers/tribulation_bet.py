@@ -136,6 +136,22 @@ class TribulationBetManager:
     async def _refund_pool(self, uid: str, pool: dict):
         """退还奖池全部托管款并关闭（异常池兜底）"""
         try:
+            # v3.25.5：CAS 抢占作废权（原无条件退款在并发双 tick 下双退款），
+            # 抢占成功后才退款
+            raw = await self.db.ext.get_system_config(self._pool_key(uid))
+            if not raw:
+                return
+            try:
+                cur = json.loads(raw)
+            except Exception:
+                cur = None
+            if not (isinstance(cur, dict) and cur.get("open")):
+                return
+            closed = {**cur, "open": False}
+            if not await self.db.ext.syscfg_cas(
+                self._pool_key(uid), json.dumps(closed, ensure_ascii=False), raw
+            ):
+                return  # 已被其他路径抢占处理
             for better_id, bet in self._normalize_bets(pool.get("bets")).items():
                 await self.db.add_player_gold(better_id, bet["amount"])
             await self.db.ext.set_system_config(self._pool_key(uid), "")
@@ -173,16 +189,44 @@ class TribulationBetManager:
             if better.gold < amount:
                 return False, f"❌ 灵石不足！你只有 {better.gold:,} 灵石。"
 
-            bets = self._normalize_bets(pool.get("bets"))
-            if better.user_id in bets:
-                return False, "❌ 本场观礼你已下注，每人限押一次。"
+            # v3.25.5 并发加固：注单落库改 CAS 抢占（原"读池→扣款→整体覆写"在并发下
+            # 会覆盖他人注单致托管款蒸发；覆写若落在开奖 CAS 之后还会复活已开奖池致双退款）。
+            # 条件原子扣款在前，CAS 失败自动退款重读重试
+            pool = None
+            for _ in range(3):
+                raw = await self.db.ext.get_system_config(self._pool_key(pool_uid))
+                try:
+                    cur = json.loads(raw) if raw else None
+                except Exception:
+                    cur = None
+                if not (isinstance(cur, dict) and cur.get("open")):
+                    return False, "❌ 当前没有进行中的渡劫观礼。"
+                if float(cur.get("end_ts", 0) or 0) < time.time():
+                    return False, "❌ 本场观礼下注窗口已关闭，静候开奖。"
+                bets = self._normalize_bets(cur.get("bets"))
+                if better.user_id in bets:
+                    return False, "❌ 本场观礼你已下注，每人限押一次。"
 
-            # 托管扣款（先查后扣，扣款即托管）
-            await self.db.add_player_gold(better.user_id, -amount)
-            bets[better.user_id] = {"amount": amount, "side": side}
-            pool["bets"] = bets
-            await self._save_pool(pool_uid, pool)
+                cursor = await self.db.conn.execute(
+                    "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                    (amount, better.user_id, amount)
+                )
+                await self.db.conn.commit()
+                if cursor.rowcount == 0:
+                    return False, f"❌ 灵石不足！你只有 {better.gold:,} 灵石。"
 
+                bets[better.user_id] = {"amount": amount, "side": side}
+                cur["bets"] = bets
+                if await self.db.ext.syscfg_cas(
+                    self._pool_key(pool_uid), json.dumps(cur, ensure_ascii=False), raw or None
+                ):
+                    pool = cur
+                    break
+                await self.db.add_player_gold(better.user_id, amount)  # CAS 失败回滚扣款
+            else:
+                return False, "❌ 观礼下注正忙，请稍后再试。"
+
+            bets = pool["bets"]
             total = sum(v["amount"] for v in bets.values())
             same_side = sum(v["amount"] for v in bets.values() if v["side"] == side)
             return True, (

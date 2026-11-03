@@ -101,7 +101,8 @@ class CollectionManager:
                 ms["exp"] for ms in self.MILESTONES if ms["count"] in claimed
             )
             self._set_bonus(player, total_exp)
-            await self.db.update_player(player)
+            # v3.25.5：只落 permanent_bonus，不再整行覆写
+            await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
 
             return "".join(msgs)
         except Exception as e:

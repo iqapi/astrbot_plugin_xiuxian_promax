@@ -128,7 +128,7 @@ async def _check_loan_status(db, player: Player) -> dict:
         # 检查是否已逾期
         if now > due_at:
             # 使用事务保护，防止并发删除
-            await db.conn.execute("BEGIN IMMEDIATE")
+            await db.begin_immediate()
             try:
                 # 重新检查贷款状态
                 loan = await db.ext.get_active_loan(player.user_id)

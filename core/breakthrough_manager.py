@@ -1,5 +1,6 @@
 # managers/breakthrough_manager.py
 
+import json
 import random
 from typing import Optional, Tuple
 from astrbot.api import logger
@@ -413,6 +414,9 @@ class BreakthroughManager:
                     f"当前修为：{player.experience}\n"
                     f"请继续修炼，再接再厉！"
                 )
+                # v3.25.5 修复：pity_note 计算后从未拼入消息，玩家看不到道韵保底进度
+                if pity_note:
+                    fail_msg += pity_note
                 logger.info(f"玩家 {player.user_id} 突破失败：{current_level_name} -> {next_level_name}，损失修为 {exp_penalty}")
                 return False, fail_msg, False
     

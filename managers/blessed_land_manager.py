@@ -75,8 +75,15 @@ class BlessedLandManager:
         if player.gold < price:
             return False, f"❌ 灵石不足！【{name}】需要 {price:,} 灵石。"
 
+        # v3.25.5：条件原子扣款（不再整行覆写；家具存于 blessed_lands 表，无需动 players 其他字段）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (price, player.user_id, price)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！【{name}】需要 {price:,} 灵石。"
         player.gold -= price
-        await self.db.update_player(player)
 
         furniture = land.get("furniture_list") or []
         furniture.append(name)
@@ -113,23 +120,36 @@ class BlessedLandManager:
         
         if player.gold < price:
             return False, f"❌ 灵石不足！购买{land_config['name']}需要 {price:,} 灵石。"
-        
-        # 扣除灵石
-        player.gold -= price
-        await self.db.update_player(player)
-        
-        # 创建洞天
-        await self.db.conn.execute(
-            """
-            INSERT INTO blessed_lands (user_id, land_type, land_name, level, exp_bonus, 
-                                       gold_per_hour, last_collect_time)
-            VALUES (?, ?, ?, 1, ?, ?, ?)
-            """,
-            (player.user_id, land_type, land_config["name"], land_config["exp_bonus"],
-             land_config["gold_per_hour"], int(time.time()))
+
+        # v3.25.5 修复落库顺序：先 INSERT 占坑（UNIQUE 冲突→并发双击友好提示），
+        # 再条件原子扣款；原顺序先扣款后 INSERT，并发双击时钱已扣、洞天没拿到
+        try:
+            await self.db.conn.execute(
+                """
+                INSERT INTO blessed_lands (user_id, land_type, land_name, level, exp_bonus,
+                                           gold_per_hour, last_collect_time)
+                VALUES (?, ?, ?, 1, ?, ?, ?)
+                """,
+                (player.user_id, land_type, land_config["name"], land_config["exp_bonus"],
+                 land_config["gold_per_hour"], int(time.time()))
+            )
+            await self.db.conn.commit()
+        except Exception as e:
+            if "UNIQUE" in str(e):
+                return False, "❌ 你已拥有洞天，请先升级而非重新购买。"
+            raise
+
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (price, player.user_id, price)
         )
         await self.db.conn.commit()
-        
+        if cursor.rowcount == 0:
+            # 扣款失败：释放占坑
+            await self.db.conn.execute("DELETE FROM blessed_lands WHERE user_id = ?", (player.user_id,))
+            await self.db.conn.commit()
+            return False, f"❌ 灵石不足！购买{land_config['name']}需要 {price:,} 灵石。"
+
         return True, (
             f"✨ 恭喜获得【{land_config['name']}】！\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -166,15 +186,21 @@ class BlessedLandManager:
         
         if player.gold < upgrade_cost:
             return False, f"❌ 灵石不足！升级需要 {upgrade_cost:,} 灵石。"
-        
+
         # 升级加成
         new_level = current_level + 1
         new_exp_bonus = config["exp_bonus"] * (1 + new_level * 0.1)
         new_gold_per_hour = int(config["gold_per_hour"] * (1 + new_level * 0.15))
-        
-        player.gold -= upgrade_cost
-        await self.db.update_player(player)
-        
+
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (upgrade_cost, player.user_id, upgrade_cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！升级需要 {upgrade_cost:,} 灵石。"
+
         await self.db.conn.execute(
             """
             UPDATE blessed_lands SET level = ?, exp_bonus = ?, gold_per_hour = ?
@@ -219,16 +245,18 @@ class BlessedLandManager:
         max_exp_per_hour = config.get("max_exp_per_hour", 5000)
         exp_income = int(player.experience * land["exp_bonus"] * hours * 0.01)
         exp_income = min(exp_income, max_exp_per_hour * hours)
-        
-        player.gold += gold_income
-        player.experience += exp_income
-        await self.db.update_player(player)
-        
-        await self.db.conn.execute(
-            "UPDATE blessed_lands SET last_collect_time = ? WHERE user_id = ?",
-            (now, player.user_id)
+
+        # v3.25.5：先原子占用收取权（原读-改-写可并发双收），成功后发奖励；
+        # 奖励改原子累加，不再整行覆写玩家快照
+        cursor = await self.db.conn.execute(
+            "UPDATE blessed_lands SET last_collect_time = ? WHERE user_id = ? AND last_collect_time = ?",
+            (now, player.user_id, last_collect)
         )
+        if cursor.rowcount == 0:
+            return False, "❌ 收取失败：产出可能刚被领取过，请稍后再试。"
         await self.db.conn.commit()
+        await self.db.add_player_gold(player.user_id, gold_income)
+        await self.db.add_player_exp(player.user_id, exp_income)
         
         return True, (
             f"✅ 洞天收取成功！\n"
@@ -266,20 +294,28 @@ class BlessedLandManager:
         if existing["level"] < current_config["max_level"]:
             return False, f"❌ 你的{existing['land_name']}需要达到满级 {current_config['max_level']} 才能进阶。"
         
-        # 计算进阶成本（新洞天价格 × 0.3）
+        # 计算进阶成本：新洞天价格 × 0.3（v3.25.5 修复：原代码实收全价，与注释设计意图不符）
         target_config = BLESSED_LANDS[target_type]
-        advance_cost = int(target_config["price"])
-        
+        advance_cost = int(target_config["price"] * 0.3)
+
         if player.gold < advance_cost:
             return False, f"❌ 灵石不足！进阶需要 {advance_cost:,} 灵石。"
-        
-        # 扣除灵石
-        player.gold -= advance_cost
-        await self.db.update_player(player)
-        
+
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (advance_cost, player.user_id, advance_cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！进阶需要 {advance_cost:,} 灵石。"
+
         # 取消等级保留，每次进阶后从1级开始
         initial_level = 1
-        
+
+        # v3.25.5 修复：进阶保留已购家具（原 DELETE 整行重建，2-10 万灵石/件的家具静默蒸发）
+        furniture_json = existing.get("furniture") or "[]"
+
         # 删除原洞天，创建新洞天
         await self.db.conn.execute(
             "DELETE FROM blessed_lands WHERE user_id = ?",
@@ -287,15 +323,25 @@ class BlessedLandManager:
         )
         await self.db.conn.execute(
             """
-            INSERT INTO blessed_lands (user_id, land_type, land_name, level, exp_bonus, 
-                                       gold_per_hour, last_collect_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO blessed_lands (user_id, land_type, land_name, level, exp_bonus,
+                                       gold_per_hour, last_collect_time, furniture)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (player.user_id, target_type, target_config["name"], initial_level, 
-             target_config["exp_bonus"], target_config["gold_per_hour"], int(time.time()))
+            (player.user_id, target_type, target_config["name"], initial_level,
+             target_config["exp_bonus"], target_config["gold_per_hour"], int(time.time()),
+             furniture_json)
         )
         await self.db.conn.commit()
-        
+
+        # 家具保留提示
+        try:
+            kept_furniture = json.loads(furniture_json)
+        except Exception:
+            kept_furniture = []
+        furniture_note = (
+            f"\n🛋️ 已购家具已保留：{'、'.join(kept_furniture)}" if kept_furniture else ""
+        )
+
         return True, (
             f"✨ 恭喜进阶到【{target_config['name']}】！\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -303,7 +349,7 @@ class BlessedLandManager:
             f"修炼加成：+{target_config['exp_bonus']:.0%}\n"
             f"每小时产出：{target_config['gold_per_hour']} 灵石\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"花费：{advance_cost:,} 灵石"
+            f"花费：{advance_cost:,} 灵石（新洞天价格 × 0.3）{furniture_note}"
         )
     
     async def get_blessed_land_info(self, user_id: str) -> str:
@@ -314,12 +360,13 @@ class BlessedLandManager:
                 "🏔️ 洞天福地\n"
                 "━━━━━━━━━━━━━━━\n"
                 "你还没有洞天！\n\n"
+                # v3.25.5 修复：价格表与 BLESSED_LANDS 配置对齐（原展示为过期数值）
                 "可购买的洞天：\n"
                 "  1. 小洞天 - 10,000灵石\n"
-                "  2. 中洞天 - 50,000灵石\n"
-                "  3. 大洞天 - 200,000灵石\n"
-                "  4. 福地 - 500,000灵石\n"
-                "  5. 洞天福地 - 1,000,000灵石\n\n"
+                "  2. 中洞天 - 30,000灵石\n"
+                "  3. 大洞天 - 80,000灵石\n"
+                "  4. 福地 - 200,000灵石\n"
+                "  5. 洞天福地 - 500,000灵石\n\n"
                 "💡 使用 /购买洞天 <编号>"
             )
         

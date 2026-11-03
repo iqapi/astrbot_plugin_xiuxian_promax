@@ -115,11 +115,16 @@ class EscortManager:
         escort_gold = int(extra.get("escort_gold", 2000))
         escort_exp = int(extra.get("escort_exp", 1000))
 
-        player.gold += escort_gold
-        player.experience += escort_exp
-        player.karma = (getattr(player, "karma", 0) or 0) + 1  # 护镖有功，功德+1
-        await self.db.update_player(player)
-        await self.db.ext.set_user_free(user_id)
+        # v3.25.5：先原子抢占结算权（防并发双领镖银），再原子记账
+        if not await self.db.ext.claim_user_free_if_type(user_id, UserStatus.DELIVERING):
+            return False, "❌ 你当前没有在押镖！"
+        await self.db.add_player_gold(user_id, escort_gold)
+        await self.db.add_player_exp(user_id, escort_exp)
+        await self.db.conn.execute(
+            "UPDATE players SET karma = karma + 1 WHERE user_id = ?",  # 护镖有功，功德+1
+            (user_id,)
+        )
+        await self.db.conn.commit()
         # 接单冷却（10分钟）
         await self.db.ext.set_system_config(f"escort_cd_{user_id}", str(int(time.time()) + 600))
 
@@ -129,7 +134,7 @@ class EscortManager:
             f"你平安将镖车护送到了目的地！\n"
             f"获得镖银：+{escort_gold:,} 灵石\n"
             f"获得酬劳：+{escort_exp:,} 修为\n"
-            f"✨ 护镖有功，功德 +1（当前 {player.karma}）"
+            f"✨ 护镖有功，功德 +1（当前 {player.karma + 1}）"
         )
 
     async def quit_escort(self, player: Player) -> Tuple[bool, str]:
@@ -137,8 +142,12 @@ class EscortManager:
         user_cd = await self.db.ext.get_user_cd(player.user_id)
         if not user_cd or user_cd.type != UserStatus.DELIVERING:
             return False, "❌ 你当前没有在押镖！"
-        await self.db.ext.set_user_free(player.user_id)
-        return True, "🏃 你扔下镖车跑路了...镖局震怒，本次押镖无任何收益。"
+        # v3.25.5：原子置空闲（防并发双触发），且放弃也进入接单冷却
+        #（防反复接/弃重掷镖银随机数）
+        if not await self.db.ext.claim_user_free_if_type(player.user_id, UserStatus.DELIVERING):
+            return False, "❌ 你当前没有在押镖！"
+        await self.db.ext.set_system_config(f"escort_cd_{player.user_id}", str(int(time.time()) + 300))
+        return True, "🏃 你扔下镖车跑路了...镖局震怒，本次押镖无任何收益。（5 分钟内不能再接新镖）"
 
     async def rob_escort(self, attacker: Player, target_id: str) -> Tuple[bool, str]:
         """劫镖：消耗迷神香，与押镖人强制PVP，胜者抢走部分镖银"""
@@ -196,7 +205,7 @@ class EscortManager:
 
         if result["winner"] == attacker.user_id:
             # 事务内重读镖银并原子扣减：并发劫镖各自按原始镖银算 30% 会重复扣款
-            await self.db.conn.execute("BEGIN IMMEDIATE")
+            await self.db.begin_immediate()
             try:
                 fresh_cd = await self.db.ext.get_user_cd(target_id)
                 fresh_extra = fresh_cd.get_extra_data() if hasattr(fresh_cd, "get_extra_data") else {}
@@ -225,9 +234,13 @@ class EscortManager:
             except Exception:
                 pass
 
-            attacker.gold += robbed
-            attacker.karma = (getattr(attacker, "karma", 0) or 0) - 1  # 劫镖为恶行，增加业力
-            await self.db.update_player(attacker)
+            # v3.25.5：原子记账（不再整行覆写快照）
+            await self.db.add_player_gold(attacker.user_id, robbed)
+            await self.db.conn.execute(
+                "UPDATE players SET karma = karma - 1 WHERE user_id = ?",  # 劫镖为恶行，增加业力
+                (attacker.user_id,)
+            )
+            await self.db.conn.commit()
 
             return True, (
                 f"{log}\n\n"

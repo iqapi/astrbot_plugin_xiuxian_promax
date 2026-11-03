@@ -155,10 +155,16 @@ class SectManager:
         valid, error = self._validate_sect_name(sect_name)
         if not valid: return False, error
         if await self.db.ext.get_sect_by_name(sect_name): return False, f"❌ 宗门名称『{sect_name}』已被使用！"
-        
-        player.gold -= required_stone
-        await self.db.update_player(player)
-        
+
+        # v3.25.5：条件原子扣款（防快照过期透支），不再整行覆写
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (required_stone, user_id, required_stone)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 创建宗门需要 {required_stone} 灵石！"
+
         new_sect = Sect(
             sect_id=0, sect_name=sect_name, sect_owner=user_id, sect_scale=100, sect_used_stone=0,
             sect_fairyland=0, sect_materials=100, mainbuff="0", secbuff="0", elixir_room_level=0
@@ -196,10 +202,11 @@ class SectManager:
         sect_name = sect.sect_name if sect else "未知宗门"
         
         await self.db.ext.update_player_sect_info(user_id, 0, 0)
+        # v3.25.5：只写受影响字段，不再整行覆写并发变更
         player.sect_id = 0
         player.sect_position = 0
         player.sect_contribution = 0
-        await self.db.update_player(player)
+        await self.db.update_player_fields(user_id, sect_id=0, sect_position=0, sect_contribution=0)
         return True, f"✨ 你已退出宗门『{sect_name}』！贡献度已清零。"
     
     async def donate_to_sect(self, user_id: str, stone_amount: int) -> Tuple[bool, str]:
@@ -209,12 +216,14 @@ class SectManager:
         if stone_amount <= 0: return False, "❌ 捐献数量必须大于0！"
         if player.gold < stone_amount: return False, f"❌ 你的灵石不足！当前拥有 {player.gold} 灵石。"
         
-        # 原子增减：避免全字段覆盖回滚其他并发修改
-        await self.db.conn.execute(
-            "UPDATE players SET gold = MAX(0, gold - ?), sect_contribution = sect_contribution + ? WHERE user_id = ?",
-            (stone_amount, stone_amount, user_id)
+        # 原子增减：v3.25.5 增加 gold>=? 条件（原 MAX(0,..) 钳制下灵石不足也会全额入账贡献）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ?, sect_contribution = sect_contribution + ? WHERE user_id = ? AND gold >= ?",
+            (stone_amount, stone_amount, user_id, stone_amount)
         )
         await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 你的灵石不足！当前拥有 {player.gold} 灵石。"
         # 同步内存对象，供后续消息展示
         player.gold -= stone_amount
         player.sect_contribution += stone_amount
@@ -304,8 +313,9 @@ class SectManager:
         if target.sect_position == 0: return False, "❌ 无法踢出宗主！"
         
         await self.db.ext.update_player_sect_info(target_id, 0, 0)  # 与主动退宗保持一致：无宗门时职位归零
+        # v3.25.5：只写受影响字段，不再整行覆写并发变更
         target.sect_contribution = 0
-        await self.db.update_player(target)
+        await self.db.update_player_fields(target_id, sect_contribution=0)
         return True, f"✨ 已将 {target.user_name or target_id} 踢出宗门！"
 
     async def perform_sect_task(self, user_id: str) -> Tuple[bool, str]:
@@ -343,11 +353,14 @@ class SectManager:
             if user_cd.scheduled_time and now < user_cd.scheduled_time:
                 return False, f"❌ 宗门任务尚未完成！还需 {(user_cd.scheduled_time - now)//60} 分。"
 
+            # v3.25.5：先原子抢占结算权（原门禁先查后清，并发双交可双拿贡献与资材）
+            if not await self.db.ext.claim_user_free_if_type(user_id, UserStatus.SECT_TASK):
+                return False, "❌ 你当前不在宗门任务中！"
+
             contribution_gain = random.randint(10, 30)
 
             # 演武场：宗门建筑，宗门任务奖励+10%/级
             arena_note = ""
-            sect = None  # 预置：下方 walrus 若在 try 内抛异常，避免 362 行 NameError
             try:
                 levels = self.get_buildings(sect) if (sect := await self.db.ext.get_sect_by_id(player.sect_id)) else {}
                 arena_lv = int(levels.get("演武场", 0))
@@ -357,14 +370,16 @@ class SectManager:
             except Exception:
                 pass
 
-            player.sect_contribution += contribution_gain
-            await self.db.update_player(player)
+            # v3.25.5：贡献与资材改原子累加，不再整行覆写
+            await self.db.conn.execute(
+                "UPDATE players SET sect_contribution = sect_contribution + ? WHERE user_id = ?",
+                (contribution_gain, user_id)
+            )
+            await self.db.conn.commit()
 
             if sect:
-                sect.sect_materials += contribution_gain * 10
-                await self.db.ext.update_sect(sect)
+                await self.db.ext.update_sect_materials(player.sect_id, contribution_gain * 10, 1)
 
-            await self.db.ext.set_user_free(user_id)
             return True, f"✨ 宗门任务完成！\n获得贡献：{contribution_gain}\n宗门资材：+{contribution_gain * 10}{arena_note}"
         else:
             # 旁路封堵：此前任何非宗门任务状态调用完成指令都会被"顺手"置为空闲，
@@ -418,11 +433,9 @@ class SectManager:
         
         if is_winner:
             # ===== 胜者逻辑 =====
+            # v3.25.5：胜场计数改原子累加（原读-改-写并发丢计数）
             win_key = f"sect_battle_wins_{user_id}"
-            current_wins_str = await self.db.ext.get_system_config(win_key)
-            current_wins = int(current_wins_str) if current_wins_str and current_wins_str.isdigit() else 0
-            current_wins += 1
-            await self.db.ext.set_system_config(win_key, str(current_wins))
+            current_wins = await self.db.ext.syscfg_adjust_number(win_key, 1)
 
             if current_wins == 1 and not player.title:
                 player.title = "初露锋芒"
@@ -442,23 +455,27 @@ class SectManager:
             except Exception as e:
                 logger.warning(f"大比称号写入图鉴失败: {e}")
 
-            player.sect_contribution += 100
+            # v3.25.5：贡献/宗门积分改原子累加（原读-改-写并发丢计数），不再整行覆写
+            await self.db.conn.execute(
+                "UPDATE players SET sect_contribution = sect_contribution + 100 WHERE user_id = ?",
+                (player.user_id,)
+            )
+            await self.db.conn.commit()
             # 给宗门加积分
             score_key = f"sect_score_{player.sect_id}"
-            current_score = await self.db.ext.get_system_config(score_key)
-            new_score = int(current_score) + 10 if current_score else 10
-            await self.db.ext.set_system_config(score_key, str(new_score))
-            
-            await self.db.update_player(player)
+            await self.db.ext.syscfg_adjust_number(score_key, 10)
+
             return f"\n🏅 你为大比赢得一场胜利！宗门贡献+100，宗门积分+10。{title_msg}"
-            
+
         else:
             # ===== 败者/平局保底逻辑 =====
-            player.sect_contribution += 20
+            # v3.25.5：贡献/宗门积分改原子累加，不再整行覆写
+            await self.db.conn.execute(
+                "UPDATE players SET sect_contribution = sect_contribution + 20 WHERE user_id = ?",
+                (player.user_id,)
+            )
+            await self.db.conn.commit()
             score_key = f"sect_score_{player.sect_id}"
-            current_score = await self.db.ext.get_system_config(score_key)
-            new_score = int(current_score) + 2 if current_score else 2
-            await self.db.ext.set_system_config(score_key, str(new_score))
-            
-            await self.db.update_player(player)
+            await self.db.ext.syscfg_adjust_number(score_key, 2)
+
             return "" # 败者不弹额外提示，避免刷屏

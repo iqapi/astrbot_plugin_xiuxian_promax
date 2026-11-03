@@ -7,9 +7,12 @@ from ..data.data_manager import DataBase
 from ..models_extended import UserStatus
 
 class SectHandlers:
-    def __init__(self, db: DataBase, sect_mgr: SectManager):
+    def __init__(self, db: DataBase, sect_mgr: SectManager, config_manager=None):
         self.db = db
         self.sect_mgr = sect_mgr
+        # v3.25.5 修复：EquipmentManager 需要真正的 ConfigManager（sect_mgr.config 只是 dict，
+        # 传入后会因缺少 techniques_data 等属性导致装备玩家大比切磋必崩）
+        self.config_manager = config_manager
 
     async def handle_create_sect(self, event: AstrMessageEvent, name: str):
         """创建宗门"""
@@ -174,8 +177,8 @@ class SectHandlers:
         # ===== 核心修复 2：检查每日挑战次数上限 (3次) =====
         today_str = time.strftime('%Y-%m-%d')
         daily_key = f"sect_battle_daily_{user_id}_{today_str}"
-        count_str = await self.db.ext.get_system_config(daily_key)
-        count = int(count_str) if count_str and count_str.isdigit() else 0
+        # v3.25.5：预检仅作提示（真正的原子占坑在进入战斗前执行）
+        count = await self.db.ext.syscfg_get_number(daily_key)
         if count >= 3:
             yield event.plain_result("❌ 你今日的大比切磋次数已达上限（3次），请明日再来。")
             return
@@ -186,7 +189,7 @@ class SectHandlers:
         from ..managers.pet_manager import PetManager
         
         cm = CombatManager()
-        em = EquipmentManager(self.db, self.sect_mgr.config)
+        em = EquipmentManager(self.db, self.config_manager)
         pet_mgr = PetManager(self.db)
         
         async def get_stats(uid):
@@ -200,6 +203,7 @@ class SectHandlers:
                 pet_eff = pet_mgr.get_pet_combat_effects(pet)
                 for k, v in pet_eff.items(): effects[k] = effects.get(k, 0) + v
             return CombatStats(user_id=uid, name=p.user_name or uid, hp=hp, max_hp=hp, mp=mp, max_mp=mp, atk=atk, effects=effects,
+                               exp=p.experience,
                                element=(cm.get_element_from_name(p.main_technique) or cm.get_element_from_name(p.weapon)))
 
         p1_stats = await get_stats(user_id)
@@ -221,16 +225,17 @@ class SectHandlers:
             p1_stats.atk = int(base1 * CLASS_MULT.get(picked, 1.0)) + 300
             p2_stats.atk = int(base2 * 1.0) + 300  # 防守方不盲选，保持常倍
             note_msg = f"\n🎯 你盲选了【{picked}】出战！（对方不知情，攻击倍率已按 {picked} 计算）"
-            # 换命符：携带者可在盲选劣势下切换一次（有符自动消耗）
-            try:
-                from ..core import StorageRingManager
-                srm = StorageRingManager(self.db, self.sect_mgr.config if hasattr(self.sect_mgr, 'config') else None)
-            except Exception:
-                srm = None
+            # 注：原此处有一段"换命符"半成品死代码（创建 StorageRingManager 后从未使用，
+            # 且传入 dict 当 ConfigManager 会踩类型坑）。经查【换命符】并不存在于任何物品
+            # 配置中，功能永远无法触发，已移除。若日后在 config/items.json 上架该物品，
+            # 可在此实现"防守方携带换命符自动消耗、攻击倍率与盲选方持平"的反埋伏机制。
 
         # 扣除次数与记录冷却（进入战斗才扣除）
+        # v3.25.5：次数改原子限次认领（原 read-then-write 在并发连发下可刷爆 3 次/日）
+        if not await self.db.ext.syscfg_claim_slot(daily_key, 3):
+            yield event.plain_result("❌ 你今日的大比切磋次数已达上限（3次），请明日再来。")
+            return
         await self.db.ext.set_system_config(cooldown_key, str(now))
-        await self.db.ext.set_system_config(daily_key, str(count + 1))
 
         # 进行天道压制战斗
         result = cm.player_vs_player_balanced(p1_stats, p2_stats)
@@ -243,7 +248,9 @@ class SectHandlers:
             # 挑战者胜
             try:
                 from ..managers.title_hooks import TitleHooks
-                tmsg = await TitleHooks(self.db).bump(p1_stats, "sect_battle_win")
+                # v3.25.5 修复：bump 需要 Player 对象，原代码传入 CombatStats 导致称号永不发放
+                p1_real = await self.db.get_player_by_id(user_id)
+                tmsg = await TitleHooks(self.db).bump(p1_real, "sect_battle_win") if p1_real else ""
                 if tmsg: extra_pre = tmsg
                 else: extra_pre = ""
             except Exception:

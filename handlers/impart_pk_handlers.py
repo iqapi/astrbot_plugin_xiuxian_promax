@@ -20,8 +20,20 @@ class ImpartPkHandlers:
     @player_required
     async def handle_impart_challenge(self, player: Player, event: AstrMessageEvent, target_info: str = ""):
         """发起传承挑战"""
-        # 解析目标
-        target_id = self._extract_user_id(target_info)
+        # 解析目标（v3.25.5 修复：优先解析 @ 消息组件，原实现只匹配文本 CQ 码，
+        # 而 AstrBot 下 @ 是独立消息段，导致 /传承挑战 @某人 永远解析失败）
+        target_id = ""
+        try:
+            if hasattr(event, "message_obj") and event.message_obj:
+                for comp in event.message_obj.message:
+                    qq = getattr(comp, "qq", None)
+                    if qq and not isinstance(comp, str):
+                        target_id = str(qq)
+                        break
+        except Exception:
+            target_id = ""
+        if not target_id:
+            target_id = self._extract_user_id(target_info)
         if not target_id:
             yield event.plain_result(
                 "⚔️ 传承挑战\n"

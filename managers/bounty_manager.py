@@ -237,7 +237,7 @@ class BountyManager:
         now = int(time.time())
         time_limit = cached.get("time_limit", template.get("time_limit", 3600))
 
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             active = await self.db.ext.get_active_bounty(player.user_id)
             if active:
@@ -322,7 +322,7 @@ class BountyManager:
         )
 
     async def complete_bounty(self, player: Player) -> Tuple[bool, str]:
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             active = await self.db.ext.get_active_bounty(player.user_id)
             if not active:
@@ -353,17 +353,19 @@ class BountyManager:
             stone_reward = rewards.get("stone", 0)
             exp_reward = rewards.get("exp", 0)
 
-            await self.db.conn.execute(
+            # v3.25.5：先原子抢占完成权（rowcount 防并发双领），奖励改原子增量
+            cursor = await self.db.conn.execute(
                 "UPDATE bounty_tasks SET status = 2 WHERE user_id = ? AND status = 1",
                 (player.user_id,)
             )
+            if cursor.rowcount == 0:
+                await self.db.conn.rollback()
+                return False, "❌ 该悬赏已完成或状态已变化，无法重复领取。"
 
             MAX_VALUE = 2**63 - 1
-            player.gold = min(player.gold + stone_reward, MAX_VALUE)
-            player.experience = min(player.experience + exp_reward, MAX_VALUE)
             await self.db.conn.execute(
-                "UPDATE players SET gold = ?, experience = ? WHERE user_id = ?",
-                (player.gold, player.experience, player.user_id)
+                "UPDATE players SET gold = MIN(gold + ?, ?), experience = MIN(experience + ?, ?) WHERE user_id = ?",
+                (stone_reward, MAX_VALUE, exp_reward, MAX_VALUE, player.user_id)
             )
             await self.db.conn.commit()
         except Exception:
@@ -440,7 +442,7 @@ class BountyManager:
         if not activity_tag:
             return False, ""
 
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             active = await self.db.ext.get_active_bounty(player.user_id)
             if not active:

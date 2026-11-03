@@ -103,6 +103,11 @@ TITLES = [
     T("天命之子", 3, "luck_event", condition=50, luck=18, exp=0.10),
     T("镇魔都尉", 3, "demon_catch", condition=8, atk=90, crit=5),
     T("护道者", 3, "escort_count", condition=100, gold_pct=0.15, phys_def=80),
+    T("破阵先锋", 3, "tower_floor", condition=10, atk=90, phys_def=60),
+    T("降妖伏魔", 3, "hunt_count", condition=50, atk=80, phys_def=55),
+    T("济世善人", 3, "manual", atk=60, exp=0.08, luck=8),
+    T("初入天梯", 2, "ladder_points", condition=30, atk=40),
+    T("天梯战魂", 3, "ladder_points", condition=160, atk=150, crit=4),
 
     # ========== 天品（巅峰成就，18）==========
     T("化神尊者", 4, "breakthrough", condition=34, exp=0.15, atk=180),
@@ -120,6 +125,8 @@ TITLES = [
     T("极品丹神", 4, "craft_perfect", condition=150, exp=0.22, luck=10),
     T("赌圣", 4, "gamble_count", condition=150, luck=15),
     T("洞天主宰", 4, "land_level", condition=5, exp=0.15, magic_def=120),
+    T("镇妖塔主", 4, "tower_floor", condition=20, atk=200, phys_def=150, exp=0.12),
+    T("天梯至圣", 4, "ladder_points", condition=450, atk=300, crit=8),
     T("百变星君", 4, "rebirth", condition=3, exp=0.15, luck=10),
     T("轮回至尊", 4, "reincarnation", condition=10, exp=0.25, luck=18),
     T("功德无量", 4, "karma", condition=50, luck=20, exp=0.20),

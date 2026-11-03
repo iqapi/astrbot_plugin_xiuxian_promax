@@ -49,6 +49,10 @@ class SectTechManager:
 
     async def _load_levels(self, sect_id: int) -> Dict[str, int]:
         raw = await self.db.ext.get_system_config(self._data_key(sect_id))
+        return self._parse_levels(raw)
+
+    @staticmethod
+    def _parse_levels(raw) -> Dict[str, int]:
         if not raw:
             return {}
         try:
@@ -97,6 +101,8 @@ class SectTechManager:
             if position not in (0, 1):
                 return False, "⚖️ 只有宗主或副宗主可为宗门研习科技。"
 
+            # v3.25.5 并发加固：等级 JSON 读-改-写改走 CAS（原实现两人并发研读会
+            # 按同一级计费重复扣款，或后写者覆盖先写者的科技等级——钱扣了科技没了）
             levels = await self._load_levels(sect_id)
             cur_lv = int(levels.get(tech_name, 0))
             if cur_lv >= MAX_LEVEL:
@@ -111,24 +117,46 @@ class SectTechManager:
             if player.gold < cost:
                 return False, f"❌ 灵石不足（持有 {player.gold:,}，需 {cost:,}）。"
 
-            # 校验全部通过后才扣灵石并升级
-            await self.db.add_player_gold(player.user_id, -cost)
-            levels[tech_name] = cur_lv + 1
-            await self._save_levels(sect_id, levels)
-
-            sect_name = await self._sect_name(sect_id)
-            per = TECHS[tech_name]["per_level"]
-            new_lv = cur_lv + 1
-            bonus = per * new_lv
-            bonus_txt = f"{bonus * 100:.0f}%"
-            return True, (
-                f"🔭 【{sect_name}】科技研习成功！\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"⭐ {tech_name} 升至 {new_lv}/{MAX_LEVEL} 级\n"
-                f"💰 捐资 {cost:,} 灵石（由 {player.user_name or player.user_id[:8]} 慷慨解囊）\n"
-                f"🎁 当前全宗加成：+{bonus_txt}\n"
-                f"💡 /宗门科技 查看科技总览"
-            )
+            for _ in range(3):
+                raw = await self.db.ext.get_system_config(self._data_key(sect_id))
+                levels = self._parse_levels(raw)
+                cur_lv = int(levels.get(tech_name, 0))
+                if cur_lv >= MAX_LEVEL:
+                    return False, f"✨【{tech_name}】已臻大成（{MAX_LEVEL} 级），无需再研。"
+                cost = self._next_cost(tech_name, cur_lv)
+                if amount < cost:
+                    return False, (
+                        f"❌ 灵石不足。【{tech_name}】升至 {cur_lv + 1} 级需一次捐足 "
+                        f"{cost:,} 灵石（你欲捐 {amount:,}）。"
+                    )
+                # 条件原子扣款（防透支），CAS 失败则退款重试
+                cursor = await self.db.conn.execute(
+                    "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                    (cost, player.user_id, cost)
+                )
+                await self.db.conn.commit()
+                if cursor.rowcount == 0:
+                    return False, f"❌ 灵石不足（需 {cost:,}）。"
+                new_levels = dict(levels)
+                new_levels[tech_name] = cur_lv + 1
+                if await self.db.ext.syscfg_cas(
+                    self._data_key(sect_id), json.dumps(new_levels, ensure_ascii=False), raw or None
+                ):
+                    sect_name = await self._sect_name(sect_id)
+                    per = TECHS[tech_name]["per_level"]
+                    new_lv = cur_lv + 1
+                    bonus = per * new_lv
+                    bonus_txt = f"{bonus * 100:.0f}%"
+                    return True, (
+                        f"🔭 【{sect_name}】科技研习成功！\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"⭐ {tech_name} 升至 {new_lv}/{MAX_LEVEL} 级\n"
+                        f"💰 捐资 {cost:,} 灵石（由 {player.user_name or player.user_id[:8]} 慷慨解囊）\n"
+                        f"🎁 当前全宗加成：+{bonus_txt}\n"
+                        f"💡 /宗门科技 查看科技总览"
+                    )
+                await self.db.add_player_gold(player.user_id, cost)  # CAS 失败回滚扣款
+            return False, "⚠️ 科技研习当前繁忙，请稍后再试。"
         except Exception as e:
             logger.error(f"[宗门科技] 研习失败: {e}")
             return False, "❌ 研习失败，请稍后再试。"
@@ -239,7 +267,7 @@ class SectTechManager:
                 logger.error(f"[宗门科技] 清理时查询宗门 {sect_id} 失败: {e}")
                 continue
             if sect is None:
-                await self.db.ext.set_system_config(key, "")
+                await self.db.ext.delete_system_config(key)  # v3.25.5：DELETE 而非置空串
                 removed += 1
         if removed:
             logger.info(f"[宗门科技] 已清理 {removed} 个解散宗门的残留科技数据")

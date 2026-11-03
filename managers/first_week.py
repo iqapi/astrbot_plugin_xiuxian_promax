@@ -123,8 +123,9 @@ class FirstWeekManager:
             state["claimed"] = claimed
             await self.save_state(player, state)
 
-            player.gold += total_gold
-            player.experience += total_exp
+            # v3.25.5：奖励原子记账（不再整行覆写快照）
+            await self.db.add_player_gold(player.user_id, total_gold)
+            await self.db.add_player_exp(player.user_id, total_exp)
 
             # 第7日全领 → 称号（仙途新星已注册在 title_data.TITLES 中）
             title_note = ""
@@ -133,9 +134,9 @@ class FirstWeekManager:
                 tm = TitleManager(self.db)
                 ok, _ = tm.grant(player, "仙途新星")
                 if ok:
+                    # v3.25.5：只落 permanent_bonus，不再整行覆写
+                    await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
                     title_note = "\n🏅 七日圆满！获得称号【仙途新星】（灵品·物伤+40 修为+5%）"
-
-            await self.db.update_player(player)
 
             return True, (
                 f"🎁【七日仙途】领取成功！\n"

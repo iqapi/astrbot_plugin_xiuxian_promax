@@ -101,17 +101,26 @@ class BountyAssist:
         # 每个悬赏最多3人助力（每人限1次）
         week_id = f"bounty_{bounty['id']}" if "id" in bounty else f"bounty_{target_id}_{bounty.get('start_time', 0)}"
         aid_key = f"bounty_assist_{week_id}"
-        helpers = []
-        raw_helpers = await self.db.ext.get_system_config(aid_key)
-        if raw_helpers:
-            try:
-                helpers = json.loads(raw_helpers)
-            except Exception:
-                helpers = []
-        if player.user_id in helpers:
-            return False, "❌ 你已助力过这次悬赏。"
-        if len(helpers) >= 3:
-            return False, "❌ 该悬赏助力已满（3人）。"
+        # v3.25.5 并发加固：助力名额 CAS 抢占（原读-改-写在并发下可重复助力/超员），
+        # 奖励改原子记账，不再整行覆写玩家快照
+        for _ in range(3):
+            raw_helpers = await self.db.ext.get_system_config(aid_key)
+            helpers = []
+            if raw_helpers:
+                try:
+                    helpers = json.loads(raw_helpers)
+                except Exception:
+                    helpers = []
+            if player.user_id in helpers:
+                return False, "❌ 你已助力过这次悬赏。"
+            if len(helpers) >= 3:
+                return False, "❌ 该悬赏助力已满（3人）。"
+            if await self.db.ext.syscfg_cas(
+                aid_key, json.dumps(helpers + [player.user_id]), raw_helpers or None
+            ):
+                break
+        else:
+            return False, "⚠️ 助力通道繁忙，请稍后再试。"
 
         # 助力奖励：该悬赏奖励的10%
         try:
@@ -121,13 +130,13 @@ class BountyAssist:
         stone = int(rewards.get("stone", 0) * 0.10)
         exp = int(rewards.get("exp", 0) * 0.10)
 
-        player.gold += stone
-        player.experience += exp
-        player.karma = (getattr(player, "karma", 0) or 0) + 1  # 助人为乐，功德+1
-        await self.db.update_player(player)
-
-        helpers.append(player.user_id)
-        await self.db.ext.set_system_config(aid_key, json.dumps(helpers))
+        await self.db.add_player_gold(player.user_id, stone)
+        await self.db.add_player_exp(player.user_id, exp)
+        await self.db.conn.execute(
+            "UPDATE players SET karma = karma + 1 WHERE user_id = ?",  # 助人为乐，功德+1
+            (player.user_id,)
+        )
+        await self.db.conn.commit()
 
         # 信箱：通知悬赏主人
         try:

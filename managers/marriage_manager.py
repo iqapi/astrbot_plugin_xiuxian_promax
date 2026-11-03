@@ -101,25 +101,46 @@ class MarriageManager:
                     f"❌ 【{target.user_name or other[:8]}】已与一位道侣结契，姻缘已被斩断。"
                 )
 
-            # v3.23.0：对方已有未过期请求时拒绝（此前直接覆盖会吞掉前一位提案人的礼金）
-            pending = await self._load_req(other)
-            if pending and int(time.time()) - pending.get("ts", 0) <= REQUEST_EXPIRE:
-                return False, (
-                    f"❌ 【{target.user_name or other[:8]}】已有待确认的结契请求，"
-                    f"请稍后再试（请求 5 分钟内有效）。"
-                )
-
-            if player.gold < PROPOSAL_COST:
-                return False, f"❌ 结契需 {PROPOSAL_COST:,} 灵石礼金，你当前持有 {player.gold:,}，灵石不足。"
-            await self.db.add_player_gold(me, -PROPOSAL_COST)
-
+            # v3.25.5：CAS 抢占请求位后再扣礼金（原"检查-扣款-覆写"在并发下可覆盖
+            # 前一位提案人的请求吞其礼金；扣款后若写请求位异常也不退款）。
+            # 请求位为空 → 空位抢占；已有请求但已过期 → 以旧值为期望值覆写。
             req = {
                 "proposer_id": me,
                 "proposer_name": player.user_name or me[:8],
                 "target_id": other,
                 "ts": int(time.time()),
             }
-            await self._save_req(other, req)
+            req_json = json.dumps(req, ensure_ascii=False)
+            raw_req = await self.db.ext.get_system_config(self._req_key(other))
+            if raw_req:
+                try:
+                    pending = json.loads(raw_req)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pending = None
+                if isinstance(pending, dict) and int(time.time()) - pending.get("ts", 0) <= REQUEST_EXPIRE:
+                    return False, (
+                        f"❌ 【{target.user_name or other[:8]}】已有待确认的结契请求，"
+                        f"请稍后再试（请求 5 分钟内有效）。"
+                    )
+                claimed = await self.db.ext.syscfg_cas(self._req_key(other), req_json, raw_req)
+            else:
+                claimed = await self.db.ext.syscfg_cas(self._req_key(other), req_json, None)
+            if not claimed:
+                return False, (
+                    f"❌ 【{target.user_name or other[:8]}】已有待确认的结契请求，"
+                    f"请稍后再试（请求 5 分钟内有效）。"
+                )
+
+            # 条件原子扣礼金；不足则释放请求位
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (PROPOSAL_COST, me, PROPOSAL_COST)
+            )
+            await self.db.conn.commit()
+            if cursor.rowcount == 0:
+                await self._save_req(other, None)
+                return False, f"❌ 结契需 {PROPOSAL_COST:,} 灵石礼金，你当前持有 {player.gold:,}，灵石不足。"
+
             remain_min = REQUEST_EXPIRE // 60
             return True, (
                 f"💌 结契请求已送达！\n"

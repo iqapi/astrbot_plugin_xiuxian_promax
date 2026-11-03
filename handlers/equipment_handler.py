@@ -55,19 +55,19 @@ class EquipmentHandler:
         else:
             equipment_lines.append("  未装备\n")
 
-        # 总属性加成
+        # 总属性加成（v3.25.5 修复：加成值无条件计算，原代码仅在有装备时赋值，
+        # 无装备玩家走卡片分支时引用未定义变量，被 except 吞掉导致卡片永远不显示）
+        total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
+        magic_damage_bonus = total_attrs["magic_damage"] - player.magic_damage
+        physical_damage_bonus = total_attrs["physical_damage"] - player.physical_damage
+        magic_defense_bonus = total_attrs["magic_defense"] - player.magic_defense
+        physical_defense_bonus = total_attrs["physical_defense"] - player.physical_defense
+        mental_power_bonus = total_attrs["mental_power"] - player.mental_power
+        max_spiritual_qi_bonus = total_attrs["max_spiritual_qi"] - player.max_spiritual_qi
+        exp_multiplier = total_attrs["exp_multiplier"]
+
         if equipped_items:
             equipment_lines.append("\n--- 装备属性加成 ---\n")
-            total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
-
-            # 计算加成值（总属性 - 基础属性）
-            magic_damage_bonus = total_attrs["magic_damage"] - player.magic_damage
-            physical_damage_bonus = total_attrs["physical_damage"] - player.physical_damage
-            magic_defense_bonus = total_attrs["magic_defense"] - player.magic_defense
-            physical_defense_bonus = total_attrs["physical_defense"] - player.physical_defense
-            mental_power_bonus = total_attrs["mental_power"] - player.mental_power
-            max_spiritual_qi_bonus = total_attrs["max_spiritual_qi"] - player.max_spiritual_qi
-            exp_multiplier = total_attrs["exp_multiplier"]
 
             if magic_damage_bonus > 0:
                 equipment_lines.append(f"⚔️ 法伤 +{magic_damage_bonus}\n")

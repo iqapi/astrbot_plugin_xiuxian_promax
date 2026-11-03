@@ -61,9 +61,16 @@ class ForgeManager:
         if player.gold < cost_sword:
             return False, f"❌ 灵石不足！需要 {cost_sword:,} 灵石。"
 
-        # 扣除物品
-        await self.storage_ring_mgr.retrieve_item(player, "强化石", cost_stone)
+        # v3.25.5：先条件原子扣灵石再扣材料（防快照过期透支；不再整行覆写）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (cost_sword, player.user_id, cost_sword)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！需要 {cost_sword:,} 灵石。"
         player.gold -= cost_sword
+        await self.storage_ring_mgr.retrieve_item(player, "强化石", cost_stone)
 
         # 判定成功率
         success_rate = max(0.2, 1.0 - current_level * 0.05)
@@ -71,10 +78,9 @@ class ForgeManager:
         if random.random() < success_rate:
             data["forge_level"] = current_level + 1
             player.permanent_bonus = json.dumps(data)
-            await self.db.update_player(player)
+            await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
             return True, f"✨ 炼器成功！你的炼器等级提升至 +{current_level + 1}。\n（全属性基础攻击/防御获得加成）{skill_note}"
         else:
-            await self.db.update_player(player)
             return False, f"💥 炼器失败！由于火候不佳，消耗了材料和灵石，但等级未提升（当前 +{current_level}）。{skill_note}"
 
     async def wash_equipment(self, player: Player) -> Tuple[bool, str]:
@@ -108,7 +114,8 @@ class ForgeManager:
             
         data["affixes"] = affixes
         player.permanent_bonus = json.dumps(data)
-        await self.db.update_player(player)
+        # v3.25.5：只落 permanent_bonus，不再整行覆写
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
         
         msg = [
             "✨ 洗练成功！你获得了新词条：",

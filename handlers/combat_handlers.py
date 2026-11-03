@@ -14,15 +14,29 @@ DUEL_COOLDOWN = 300
 SPAR_COOLDOWN = 60
 
 class CombatHandlers:
-    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager=None):
+    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager=None, ladder_mgr=None):
         self.db = db
         self.combat_mgr = combat_mgr
         self.config_manager = config_manager
+        self.ladder_mgr = ladder_mgr  # v3.30.0 段位天梯
         self.equipment_mgr = EquipmentManager(db, config_manager)
         self.pill_mgr = PillManager(db, config_manager)
         # 按 user_id 记录战斗结果：并发对战时互相独立，防止 A 的结果覆盖 B 导致任务记错人
         self.last_duel_result = {}
         self.last_spar_fought = {}
+
+    async def _record_ladder(self, user_id: str, winner_id, duel: bool) -> str:
+        """v3.30.0：结算天梯积分（发起方），返回附加提示（异常安全）"""
+        if not self.ladder_mgr:
+            return ""
+        try:
+            if winner_id is None or winner_id not in (user_id,):
+                outcome = "draw" if winner_id is None else "lose"
+            else:
+                outcome = "win"
+            return await self.ladder_mgr.record(user_id, outcome, duel)
+        except Exception:
+            return ""
     
     async def _get_combat_cooldown(self, user_id: str) -> dict:
         try:
@@ -232,6 +246,9 @@ class CombatHandlers:
         else:
             final_log += f"\n\n🏆 决斗结束，平局！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
 
+        # v3.30.0 段位天梯：决斗积分（发起方结算）
+        final_log += await self._record_ladder(user_id, result['winner'], duel=True)
+
         yield event.plain_result(final_log)
 
     async def handle_spar(self, event: AstrMessageEvent, target: str):
@@ -282,5 +299,8 @@ class CombatHandlers:
             final_log += f"\n\n🏆 切磋结束，{p2_stats.name} 获胜！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
         else:
             final_log += f"\n\n🏆 切磋结束，平局！\n(剩余血量: {p1_hp_pct}% vs {p2_hp_pct}%)"
+
+        # v3.30.0 段位天梯：切磋积分（发起方结算）
+        final_log += await self._record_ladder(user_id, result['winner'], duel=False)
 
         yield event.plain_result(final_log)

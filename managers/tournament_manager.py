@@ -107,17 +107,38 @@ class TournamentManager:
                 if state.get("phase") == "signup":
                     players = list(state.get("players", []))
                     if len(players) >= 2:
+                        # v3.25.5 幂等：CAS 先把届次置为 running 抢占开赛权，
+                        # 防止并发双 tick 各跑一套 bracket 双发冠军奖
+                        started = await self.db.ext.syscfg_cas(
+                            self._week_key(),
+                            json.dumps({**state, "phase": "running"}, ensure_ascii=False),
+                            json.dumps(state, ensure_ascii=False),
+                        )
+                        if not started:
+                            return ""
+                        state["phase"] = "running"
                         return await self._run_bracket(state, players)
                     if players:
                         # 人数不足：退回报名费
+                        # v3.25.5 幂等：CAS 置 done 后才退费，防并发双退
+                        done_state = {**state, "phase": "done", "players": []}
+                        refunded = await self.db.ext.syscfg_cas(
+                            self._week_key(),
+                            json.dumps(done_state, ensure_ascii=False),
+                            json.dumps(state, ensure_ascii=False),
+                        )
+                        if not refunded:
+                            return ""
                         for uid in players:
                             await self.db.add_player_gold(uid, self.ENTRY_FEE)
-                        state["phase"] = "done"
-                        state["players"] = []
-                        await self._save_state(state)
                         return f"⚔️ 本届斗法台报名不足 2 人，报名费已全数退回。"
-                    state["phase"] = "done"
-                    await self._save_state(state)
+                    # 空届次收尾（无资金操作，同样 CAS 化保持一致）
+                    done_state = {**state, "phase": "done"}
+                    await self.db.ext.syscfg_cas(
+                        self._week_key(),
+                        json.dumps(done_state, ensure_ascii=False),
+                        json.dumps(state, ensure_ascii=False),
+                    )
             # 2) 停服跨周兜底：扫描旧的未决届次（phase=signup 的历史周 key），退费了结
             async with self.db.conn.execute(
                 "SELECT key, value FROM system_config WHERE key LIKE 'tnm_week_%'"
@@ -132,11 +153,15 @@ class TournamentManager:
                 except Exception:
                     continue
                 if isinstance(old, dict) and old.get("phase") == "signup" and old.get("players"):
+                    # v3.25.5 幂等：CAS 置 done 后才退费，防并发双退
+                    old_done = {**old, "phase": "done", "players": []}
+                    claimed = await self.db.ext.syscfg_cas(
+                        key, json.dumps(old_done, ensure_ascii=False), raw
+                    )
+                    if not claimed:
+                        continue
                     for uid in old["players"]:
                         await self.db.add_player_gold(uid, self.ENTRY_FEE)
-                    old["phase"] = "done"
-                    old["players"] = []
-                    await self.db.ext.set_system_config(key, json.dumps(old, ensure_ascii=False))
                     logger.info(f"[tournament] 遗漏届次已退费了结: {key}")
                     return f"⚔️ 上届斗法台因停服未能开赛，全部报名费已退回，敬请谅解。"
             return ""
@@ -269,6 +294,9 @@ class TournamentManager:
             lines.append(f"📋 报名期（周一～周四）· 已报名 {len(state.get('players', []))}/{self.MAX_PLAYERS} 人")
             lines.append(f"💰 报名费 {self.ENTRY_FEE:,} 灵石 · 周五自动开赛")
             lines.append("💡 /斗法台 报名")
+        elif phase == "running":
+            # v3.25.5：开赛幂等引入的中间态，补显示
+            lines.append("⚔️ 本届斗法台正在激战，天机推演中……结果将在结算后公布。")
         elif phase == "done":
             champ = state.get("champion")
             champ_name = await self._name(champ) if champ else "虚位以待"

@@ -116,50 +116,72 @@ class StrongholdManager:
             if player.gold < amount:
                 return False, f"❌ 灵石不足（持有 {player.gold:,}，需 {amount:,}）。"
 
-            data = await self._ensure_data()
-            spot = data["spots"][str(spot_id)]
-            scores: Dict[str, int] = spot.setdefault("scores", {})
-            key = str(sect_id)
-            scores[key] = scores.get(key, 0) + amount
-            spot["score"] = scores[key]  # 展示用：本宗当前累计投入
+            # v3.25.5 并发加固：据点数据改 CAS 抢占（原"读快照→改内存→整体覆写"在并发
+            # 进攻下会覆盖他人积分；扣款原子但积分丢失。改为 CAS 成功才动钱，失败退款重试）
+            for _ in range(3):
+                raw = await self.db.ext.get_system_config(self._data_key(current_week()))
+                try:
+                    data = json.loads(raw) if raw else None
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    data = None
+                if not data:
+                    data = self._fresh_data(current_week())
+                spot = data["spots"].get(str(spot_id))
+                if not isinstance(spot, dict):
+                    return False, "❌ 据点数据异常，请稍后再试。"
 
-            # 每周同一宗门最多占 MAX_SPOTS_PER_SECT 个据点（若本宗已占此据点则不受限）
-            old_occupant = spot.get("occupant", 0)
-            changed = False
-            if old_occupant != sect_id:
-                held = await self._sect_spot_count(data, sect_id)
-                if held >= MAX_SPOTS_PER_SECT:
-                    return False, f"⚖️ 一周之内，一宗至多据守 {MAX_SPOTS_PER_SECT} 条灵脉。本宗已占 {held} 处。"
+                scores: Dict[str, int] = spot.setdefault("scores", {})
+                key = str(sect_id)
+                scores[key] = scores.get(key, 0) + amount
+                spot["score"] = scores[key]  # 展示用：本宗当前累计投入
 
-            # 扣灵石（通过所有校验后才扣，避免先扣后拒）
-            await self.db.add_player_gold(player.user_id, -amount)
+                # 每周同一宗门最多占 MAX_SPOTS_PER_SECT 个据点（若本宗已占此据点则不受限）
+                old_occupant = spot.get("occupant", 0)
+                if old_occupant != sect_id:
+                    held = await self._sect_spot_count(data, sect_id)
+                    if held >= MAX_SPOTS_PER_SECT:
+                        return False, f"⚖️ 一周之内，一宗至多据守 {MAX_SPOTS_PER_SECT} 条灵脉。本宗已占 {held} 处。"
 
-            # 积分反超现任占领宗门即易主（无主之地直接占领）
-            occ_key = str(old_occupant) if old_occupant else ""
-            occ_score = scores.get(occ_key, 0) if occ_key else 0
-            if not old_occupant:
-                spot["occupant"] = sect_id
-                changed = True
-            elif scores[key] > occ_score:
-                spot["occupant"] = sect_id
-                changed = True
+                # 积分反超现任占领宗门即易主（无主之地直接占领）
+                changed = False
+                occ_key = str(old_occupant) if old_occupant else ""
+                occ_score = scores.get(occ_key, 0) if occ_key else 0
+                if not old_occupant:
+                    spot["occupant"] = sect_id
+                    changed = True
+                elif scores[key] > occ_score:
+                    spot["occupant"] = sect_id
+                    changed = True
 
-            await self._save_data(data)
-
-            old_name = await self._sect_name(old_occupant)
-            my_name = await self._sect_name(sect_id)
-            lines = [
-                f"⚔️ {player.user_name} 代表【{my_name}】进攻【{STRONGHOLD_SPOTS[spot_id]}】！",
-                f"💰 投入 {amount:,} 灵石 → 本宗积分 {spot['score']:,}",
-            ]
-            if changed:
-                if old_occupant:
-                    lines.append(f"🌀 灵脉易主！积分反超【{old_name}】，【{my_name}】夺下据点！")
-                else:
-                    lines.append(f"🚩 【{my_name}】率先插旗，占领此灵脉！")
-            else:
-                lines.append(f"🛡️ 当前守方：【{await self._sect_name(spot.get('occupant', 0))}】")
-            return True, "\n".join(lines)
+                # 条件原子扣款（防透支），CAS 失败则退款重试
+                cursor = await self.db.conn.execute(
+                    "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                    (amount, player.user_id, amount)
+                )
+                await self.db.conn.commit()
+                if cursor.rowcount == 0:
+                    return False, f"❌ 灵石不足（需 {amount:,}）。"
+                if await self.db.ext.syscfg_cas(
+                    self._data_key(current_week()),
+                    json.dumps(data, ensure_ascii=False),
+                    raw or None,
+                ):
+                    old_name = await self._sect_name(old_occupant)
+                    my_name = await self._sect_name(sect_id)
+                    lines = [
+                        f"⚔️ {player.user_name} 代表【{my_name}】进攻【{STRONGHOLD_SPOTS[spot_id]}】！",
+                        f"💰 投入 {amount:,} 灵石 → 本宗积分 {spot['score']:,}",
+                    ]
+                    if changed:
+                        if old_occupant:
+                            lines.append(f"🌀 灵脉易主！积分反超【{old_name}】，【{my_name}】夺下据点！")
+                        else:
+                            lines.append(f"🚩 【{my_name}】率先插旗，占领此灵脉！")
+                    else:
+                        lines.append(f"🛡️ 当前守方：【{await self._sect_name(spot.get('occupant', 0))}】")
+                    return True, "\n".join(lines)
+                await self.db.add_player_gold(player.user_id, amount)  # CAS 失败回滚扣款
+            return False, "⚠️ 灵脉争夺正酣，请稍后再试。"
         except Exception as e:
             logger.error(f"[灵脉据点战] 进攻失败: {e}")
             return False, "❌ 进攻失败，请稍后再试。"
@@ -191,8 +213,13 @@ class StrongholdManager:
                         continue
 
             lines = ["🏆 仙盟争霸·灵脉据点战 本届结算", "━━━━━━━━━━━━━━━"]
-            # v3.23.0：先落库新一届数据（结算标记），再发奖——中途异常不会重发
-            await self._save_data(self._fresh_data(week))
+            # v3.25.5 幂等：CAS 抢占新一届初始化权后才发奖（原"先落库再发奖"标记在并发
+            # 双 tick 下都看到 raw 为空，占领宗门全宗奖励会双发）
+            claimed = await self.db.ext.syscfg_cas(
+                self._data_key(week), json.dumps(self._fresh_data(week), ensure_ascii=False), None
+            )
+            if not claimed:
+                return ""
             if not last_data:
                 lines.append("上一届风平浪静，无据点归属。")
             else:

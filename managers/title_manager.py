@@ -159,7 +159,8 @@ class TitleManager:
 
         # 3. 如果有补发，落库并返回提示
         if newly_granted:
-            await self.db.update_player(player)
+            # v3.25.5：查询路径补发只落 permanent_bonus，不再整行覆写并发变更
+            await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
             msg = f"\n🔄 【天道纠察】检测到你历史满足条件但遗漏的称号，已自动为你补发 {len(newly_granted)} 个！"
             return msg
             

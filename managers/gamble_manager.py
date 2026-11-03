@@ -21,6 +21,14 @@ class GambleManager:
         if player.gold < total_cost:
             return False, f"❌ 灵石不足！切 {count} 块原石需要 {total_cost:,} 灵石。"
 
+        # v3.25.5：条件原子扣款（不再整行覆写）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (total_cost, player.user_id, total_cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！切 {count} 块原石需要 {total_cost:,} 灵石。"
         player.gold -= total_cost
         
         # ===== 修复点：动态获取可用物品池，防止出现配置里没有的“幽灵物品” =====
@@ -54,8 +62,6 @@ class GambleManager:
                 results.append("🌌 天地异象！你切出了传说中的【护府令】x3！")
                 await self.storage_ring_mgr.store_item(player, "护府令", 3, silent=True)
 
-        await self.db.update_player(player)
-        
         msg = [
             f"⛏️ 你花费了 {total_cost:,} 灵石，切开了 {count} 块原石：",
             "━━━━━━━━━━━━━━━",
@@ -119,14 +125,21 @@ class GambleManager:
         if player.gold < target["price"]:
             return False, f"❌ 灵石不足！需要 {target['price']}。"
 
+        # v3.25.5：条件原子扣款（不再整行覆写）
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+            (target["price"], player.user_id, target["price"])
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 灵石不足！需要 {target['price']}。"
         player.gold -= target["price"]
-        
+
         if target["fake"]:
             penalty_hp = int(player.hp * 0.2) if player.hp > 0 else 0
             player.hp = max(1, player.hp - penalty_hp)
-            await self.db.update_player(player)
+            await self.db.update_player_fields(player.user_id, hp=player.hp)
             return True, f"🤢 你买下了【{target['name']}】，结果发现是个假货！你被毒气所伤，损失了 {penalty_hp} 点气血。"
         else:
             await self.storage_ring_mgr.store_item(player, target["name"], 1, silent=True)
-            await self.db.update_player(player)
             return True, f"✅ 交易成功！你获得了【{target['name']}】，已存入储物戒。"

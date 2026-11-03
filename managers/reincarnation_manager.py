@@ -1,6 +1,7 @@
 # managers/reincarnation_manager.py
 import json
 import math
+from typing import Tuple
 from ..data import DataBase
 from ..models import Player
 
@@ -13,7 +14,18 @@ class ReincarnationManager:
         self.storage_ring_mgr = storage_ring_mgr
 
     async def try_reincarnate(self, player: Player, heirloom_name: str = "") -> tuple[bool, str]:
-        """尝试飞升转生"""
+        """尝试飞升转生
+        v3.25.5 幂等锁：并发双开飞升会双发轮回玉（原子累加），先 CAS 抢占仪式权"""
+        lock_key = f"reinc_lock_{player.user_id}"
+        if not await self.db.ext.syscfg_cas(lock_key, "1", None):
+            return False, "❌ 飞升仪式正在进行中，请勿重复操作。"
+        try:
+            return await self._do_reincarnate(player, heirloom_name)
+        finally:
+            await self.db.ext.delete_system_config(lock_key)
+
+    async def _do_reincarnate(self, player: Player, heirloom_name: str = "") -> tuple[bool, str]:
+        """执行飞升转生（由 try_reincarnate 持锁调用）"""
         level_data = self.config_manager.get_level_data(player.cultivation_type)
         max_level = len(level_data) - 1
         
@@ -144,12 +156,29 @@ class ReincarnationManager:
             
         bonus_data.pop("heirloom", None)
         player.permanent_bonus = json.dumps(bonus_data, ensure_ascii=False)
-        await self.db.update_player(player)
-        
+        # v3.25.5：只写受影响字段，不再整行覆写并发变更
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+
         return True, f"✨ 传家宝解封成功！【{heirloom_name}】已存入你的储物戒。"
 
     async def buy_fate_shop_item(self, player: Player, item_id: int) -> tuple[bool, str]:
-        """仙缘商店兑换"""
+        """仙缘商店兑换
+        v3.25.5：仙缘点改条件原子扣款（原快照扣点+整行回写，并发下可双花/丢点）；
+        属性提升改定向增量，不再整行覆写"""
+        costs = {1: 100, 2: 50, 3: 500}
+        if item_id not in costs:
+            return False, "❌ 无效的商品编号。"
+        cost = costs[item_id]
+
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET fate_points = fate_points - ? WHERE user_id = ? AND fate_points >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 仙缘点不足，需要 {cost} 点。"
+        player.fate_points = max(0, player.fate_points - cost)
+
         try:
             bonus_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
         except Exception:
@@ -157,43 +186,122 @@ class ReincarnationManager:
 
         if item_id == 1:
             # 1. 修炼加速
-            cost = 100
-            if player.fate_points < cost:
-                return False, f"❌ 仙缘点不足，需要 {cost} 点。"
-            player.fate_points -= cost
-            
             current_mult = bonus_data.get("global_cultivation_multiplier", 0.0)
             bonus_data["global_cultivation_multiplier"] = current_mult + 0.1
             msg = "🌟 兑换成功！你的闭关修炼速度永久提升了 10%。"
-            
+
         elif item_id == 2:
             # 2. 初始灵石
-            cost = 50
-            if player.fate_points < cost:
-                return False, f"❌ 仙缘点不足，需要 {cost} 点。"
-            player.fate_points -= cost
-            player.gold += 10000
+            await self.db.add_player_gold(player.user_id, 10000)
             msg = "💰 兑换成功！你获得了 10,000 灵石。"
-            
-        elif item_id == 3:
-            # 3. 大道馈赠（全属性）
-            cost = 500
-            if player.fate_points < cost:
-                return False, f"❌ 仙缘点不足，需要 {cost} 点。"
-            player.fate_points -= cost
-            
-            player.mental_power += 100
-            player.max_spiritual_qi += 100
-            player.max_blood_qi += 100
-            player.magic_damage += 20
-            player.physical_damage += 20
-            player.magic_defense += 10
-            player.physical_defense += 10
-            msg = "✨ 兑换成功！大道之力加身，你的各项基础属性获得了永久提升！"
-            
+
         else:
-            return False, "❌ 无效的商品编号。"
+            # 3. 大道馈赠（全属性）：定向增量更新
+            await self.db.conn.execute(
+                """UPDATE players SET
+                       mental_power = mental_power + 100,
+                       max_spiritual_qi = max_spiritual_qi + 100,
+                       max_blood_qi = max_blood_qi + 100,
+                       magic_damage = magic_damage + 20,
+                       physical_damage = physical_damage + 20,
+                       magic_defense = magic_defense + 10,
+                       physical_defense = physical_defense + 10
+                   WHERE user_id = ?""",
+                (player.user_id,)
+            )
+            await self.db.conn.commit()
+            msg = "✨ 兑换成功！大道之力加身，你的各项基础属性获得了永久提升！"
 
         player.permanent_bonus = json.dumps(bonus_data, ensure_ascii=False)
-        await self.db.update_player(player)
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
         return True, f"{msg}\n当前剩余仙缘点：{player.fate_points}"
+
+    # ===== v3.31.0 轮回天赋树 =====
+
+    TALENT_MAX = 10
+    # 节点 -> (属性字段, 每级加成, 说明)；加成直接落到玩家永久属性（大道馈赠同模式）
+    TALENTS = {
+        "破煞": ("physical_damage", 25, "物伤 +25/级"),
+        "玄芒": ("magic_damage", 25, "法伤 +25/级"),
+        "铁骨": ("physical_defense", 15, "物防 +15/级"),
+        "御灵": ("magic_defense", 15, "法防 +15/级"),
+        "悟道": ("mental_power", 50, "精神力 +50/级"),
+    }
+
+    def _load_talents(self, player: Player) -> dict:
+        try:
+            data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            data = {}
+        t = data.get("talents")
+        return t if isinstance(t, dict) else {}
+
+    async def get_talents_panel(self, player: Player) -> str:
+        talents = self._load_talents(player)
+        lines = [
+            "🌟【轮回天赋】",
+            "━━━━━━━━━━━━━━━",
+            f"✨ 仙缘点：{player.fate_points}",
+            "（天赋唯有历经飞升者方可参悟，跨周目永久生效）",
+            "━━━━━━━━━━━━━━━",
+        ]
+        for name, (attr, per, desc) in self.TALENTS.items():
+            lv = int(talents.get(name, 0))
+            cost = 20 * (lv + 1)
+            cur = per * lv
+            status = "已臻圆满" if lv >= self.TALENT_MAX else f"下一级 {cost} 点"
+            lines.append(f"⚡ {name} Lv.{lv}/{self.TALENT_MAX}（已加成 +{cur}）· {desc} · {status}")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 /轮回悟道 <节点名> 消耗仙缘点参悟（如 /轮回悟道 破煞）")
+        lines.append("💡 仙缘点来源：/飞升（按境界）· 出师（+20）")
+        return "\n".join(lines)
+
+    async def upgrade_talent(self, player: Player, name: str) -> Tuple[bool, str]:
+        """参悟天赋：条件原子扣仙缘点 + 属性原子增量 + 永久落库"""
+        if player.reincarnation_count < 1:
+            return False, "❌ 轮回天赋唯有经历过飞升的修士方可参悟（需至少转生 1 次）。"
+        name = (name or "").strip()
+        if name not in self.TALENTS:
+            return False, "❌ 未知天赋节点。可选：" + " / ".join(self.TALENTS.keys())
+
+        talents = self._load_talents(player)
+        lv = int(talents.get(name, 0))
+        if lv >= self.TALENT_MAX:
+            return False, f"❌【{name}】已参悟至第 {self.TALENT_MAX} 层，无法再进。"
+        cost = 20 * (lv + 1)
+        if player.fate_points < cost:
+            return False, f"❌ 仙缘点不足！参悟【{name}】第 {lv + 1} 层需 {cost} 点（当前 {player.fate_points}）。"
+
+        # 条件原子扣仙缘点
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET fate_points = fate_points - ? WHERE user_id = ? AND fate_points >= ?",
+            (cost, player.user_id, cost)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 仙缘点不足！参悟【{name}】第 {lv + 1} 层需 {cost} 点。"
+        player.fate_points = max(0, player.fate_points - cost)
+
+        # 属性原子增量
+        attr, per, desc = self.TALENTS[name]
+        await self.db.conn.execute(
+            f"UPDATE players SET {attr} = {attr} + ? WHERE user_id = ?",
+            (per, player.user_id)
+        )
+        await self.db.conn.commit()
+
+        # 天赋等级落库（跨周目永久）
+        talents[name] = lv + 1
+        try:
+            bonus_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            bonus_data = {}
+        bonus_data["talents"] = talents
+        player.permanent_bonus = json.dumps(bonus_data, ensure_ascii=False)
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+
+        return True, (
+            f"🌟【{name}】参悟至第 {lv + 1} 层！\n"
+            f"📈 {desc}（累计 +{per * (lv + 1)}）\n"
+            f"✨ 消耗仙缘点 {cost}（剩余 {player.fate_points}）"
+        )

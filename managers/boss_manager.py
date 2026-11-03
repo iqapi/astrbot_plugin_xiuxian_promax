@@ -186,7 +186,13 @@ ATK：{atk}
         player.atk = atk if atk > 0 else max(1, player.experience // 10)
         if player.experience < 0: player.experience = 0
         if player.atkpractice < 0: player.atkpractice = 0
-        await self.db.update_player(player)
+        # v3.25.5：只落战前状态字段，不再整行覆写快照（防覆盖并发金币/物品变更）
+        fields_to_save = {"hp": player.hp, "mp": player.mp, "atk": player.atk}
+        if player.experience == 0:
+            fields_to_save["experience"] = 0
+        if player.atkpractice == 0:
+            fields_to_save["atkpractice"] = 0
+        await self.db.update_player_fields(user_id, **fields_to_save)
 
         player_stats = CombatStats(
             user_id=user_id,
@@ -225,10 +231,19 @@ ATK：{atk}
         reward = battle_result["reward"]
         
         if winner == user_id:
+            # v3.25.5：CAS 抢占击杀权（原两人并发挑战都按满血快照结算→双杀双份奖励+掉落；
+            # status=1 的存活 Boss 仅一人能把 status 置 0）
+            cursor = await self.db.conn.execute(
+                "UPDATE boss SET status = 0 WHERE boss_id = ? AND status = 1",
+                (boss.boss_id,)
+            )
+            await self.db.conn.commit()
+            if cursor.rowcount == 0:
+                return False, "⚔️ 你与Boss战至最后一刻，但它已被其他道友抢先斩杀！", None
             boss.status = 0
-            await self.db.ext.defeat_boss(boss.boss_id)
+
             player.gold += reward
-            
+
             item_msg = ""
             dropped_items = []
             if self.storage_ring_manager:
@@ -257,9 +272,17 @@ ATK：{atk}
 HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
             """.strip()
         else:
-            boss.hp = battle_result["boss_final_hp"]
-            await self.db.ext.update_boss(boss)
-            
+            # v3.25.5：原子扣血（原整行回写快照 hp，并发挑战时互相覆盖——后写者把
+            # 前者的伤害整段回滚、血量回升）；只减本场实际造成的伤害
+            boss_damage_taken = max(0, boss.hp - battle_result["boss_final_hp"])
+            await self.db.conn.execute(
+                "UPDATE boss SET hp = MAX(0, hp - ?) WHERE boss_id = ? AND status = 1",
+                (boss_damage_taken, boss.boss_id)
+            )
+            await self.db.conn.commit()
+            fresh_boss = await self.db.ext.get_boss_by_id(boss.boss_id)
+            boss.hp = fresh_boss.hp if fresh_boss else max(0, boss.hp - boss_damage_taken)
+
             result_msg = f"""
 💀 挑战失败
 ━━━━━━━━━━━━━━━
@@ -271,13 +294,15 @@ HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
 
 {boss.boss_name} 剩余HP：{boss.hp}/{boss.max_hp}
             """.strip()
-            
+
             if reward > 0:
                 player.gold += reward
-        
+
         player.hp = battle_result["player_final_hp"]
         player.mp = battle_result["player_final_mp"]
-        await self.db.update_player(player)
+        # v3.25.5：奖励与战损改原子落库，不再整行覆写玩家快照
+        await self.db.add_player_gold(user_id, reward)
+        await self.db.update_player_fields(user_id, hp=player.hp, mp=player.mp)
         
         if battle_result["winner"] != user_id and player.hp <= 1:
             import json

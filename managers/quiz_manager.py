@@ -154,8 +154,8 @@ class QuizManager:
     async def _load_session(self, uid: str) -> Optional[dict]:
         try:
             raw = await self.db.ext.get_system_config(self._session_key(uid))
-            data = json.loads(raw) if raw else None
-            if not isinstance(data, dict):
+            data = self._parse_session(raw)
+            if data is None:
                 return None
             # 300 秒过期
             if int(time.time()) - int(data.get("start_ts", 0)) > self.SESSION_EXPIRE:
@@ -165,6 +165,18 @@ class QuizManager:
         except Exception as e:
             logger.warning(f"[quiz] 读取会话失败: {e}")
             return None
+
+    @staticmethod
+    def _parse_session(raw) -> Optional[dict]:
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        return data
 
     async def _save_session(self, uid: str, session: Optional[dict]):
         value = json.dumps(session, ensure_ascii=False) if session else ""
@@ -203,6 +215,8 @@ class QuizManager:
             await self._save_session(uid, session)
         except Exception as e:
             logger.error(f"[quiz] 保存会话失败: {e}")
+            # v3.25.5：会话保存失败时回滚已扣的场次，不让玩家白扣
+            await self.db.ext.syscfg_adjust_number(self._cnt_key(uid), -1)
             return False, "❌ 科举考场故障，请稍后再试。"
 
         return True, self._render_questions(
@@ -230,32 +244,46 @@ class QuizManager:
     async def answer(self, player: Player, question_no: int, choice: str) -> Tuple[bool, str]:
         """/答题 <题号> <ABCD>：判对错立即发修为奖励，三题答完返回总结"""
         uid = player.user_id
-        session = await self._load_session(uid)
-        if not session:
-            return False, "❌ 你当前没有进行中的科举。先用 /科举 开考吧！"
-
-        no = str(question_no)
-        questions = session.get("questions", [])
-        if not (1 <= question_no <= len(questions)):
-            return False, f"❌ 题号需在 1 - {len(questions)} 之间。"
-        if no in session.get("answers_given", {}):
-            return False, f"❌ 第 {question_no} 题已经作答过了。"
-
         choice = (choice or "").strip().upper()
         if choice not in self.LETTERS:
             return False, "❌ 选项需为 A / B / C / D。"
 
-        q = questions[question_no - 1]
-        correct = self.LETTERS.index(choice) == q["answer"]
-        gained = q["exp"] if correct else 0
+        # v3.25.5 并发加固：作答落库改 CAS 抢占（原读-改-写在连发/多端同答时可能
+        # 重复领取同一题修为）；修为奖励改原子累加，不再整行覆写玩家快照
+        for _ in range(3):
+            raw = await self.db.ext.get_system_config(self._session_key(uid))
+            session = self._parse_session(raw)
+            if session is None:
+                return False, "❌ 你当前没有进行中的科举。先用 /科举 开考吧！"
+            if int(time.time()) - int(session.get("start_ts", 0)) > self.SESSION_EXPIRE:
+                await self.db.ext.set_system_config(self._session_key(uid), "")
+                return False, "⌛ 本次科举已超时作废，请重新 /科举 开考。"
 
-        # 修为奖励：科举奖励走 experience 累加后 update_player
+            no = str(question_no)
+            questions = session.get("questions", [])
+            if not (1 <= question_no <= len(questions)):
+                return False, f"❌ 题号需在 1 - {len(questions)} 之间。"
+            if no in session.get("answers_given", {}):
+                return False, f"❌ 第 {question_no} 题已经作答过了。"
+
+            q = questions[question_no - 1]
+            correct = self.LETTERS.index(choice) == q["answer"]
+            gained = q["exp"] if correct else 0
+
+            new_session = {**session,
+                           "answers_given": {**session.get("answers_given", {}), no: choice},
+                           "results": {**session.get("results", {}), no: correct}}
+            if await self.db.ext.syscfg_cas(
+                self._session_key(uid), json.dumps(new_session, ensure_ascii=False), raw or None
+            ):
+                session = new_session
+                break
+        else:
+            return False, "⚠️ 考场正忙，请稍后再试。"
+
+        # 修为奖励：原子累加
         if gained > 0:
-            player.experience += gained
-            await self.db.update_player(player)
-
-        session.setdefault("answers_given", {})[no] = choice
-        session.setdefault("results", {})[no] = correct
+            await self.db.add_player_exp(uid, gained)
 
         lines = [
             (f"✅ 第{question_no}题回答正确！获得科举奖励：修为 +{gained:,}"

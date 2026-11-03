@@ -99,7 +99,7 @@ class AuctionManager:
 
     async def buy_item(self, buyer: Player, auction_id: int) -> Tuple[bool, str]:
         """购买物品（带事务与防并发处理）"""
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             # 1. 检查商品是否存在
             async with self.db.conn.execute("SELECT * FROM auction_items WHERE id = ?", (auction_id,)) as cursor:
@@ -114,34 +114,46 @@ class AuctionManager:
                 return False, "❌ 不能购买自己上架的物品，如需撤回请使用下架功能。"
 
             total_price = item_data["price"] * item_data["count"]
-            if buyer.gold < total_price:
-                await self.db.conn.rollback()
-                return False, f"❌ 灵石不足！\n需要 {total_price:,} 灵石，你只有 {buyer.gold:,} 灵石。"
 
-            # 2. 尝试存入买家储物戒
+            # 2. 尝试存入买家储物戒（事务内重取买家：命令快照可能过期）
+            buyer_fresh = await self.db.get_player_by_id(buyer.user_id)
+            if not buyer_fresh:
+                await self.db.conn.rollback()
+                return False, "❌ 玩家不存在或已被删除。"
+            if buyer_fresh.gold < total_price:
+                await self.db.conn.rollback()
+                return False, f"❌ 灵石不足！\n需要 {total_price:,} 灵石，你只有 {buyer_fresh.gold:,} 灵石。"
+
             success, store_msg = await self.storage_ring_mgr.store_item(
-                buyer, item_data["item_name"], item_data["count"], 
+                buyer_fresh, item_data["item_name"], item_data["count"],
                 external_transaction=True, silent=True
             )
             if not success:
                 await self.db.conn.rollback()
                 return False, f"❌ 购买失败：你的储物戒空间不足，请先清理背包。"
 
-            # 3. 扣除买家灵石
-            buyer.gold -= total_price
-            await self.db.update_player(buyer, commit=False)
+            # 3. 扣除买家灵石（v3.25.5：条件原子扣款，原快照整行回写并发下可双花/覆盖）
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (total_price, buyer.user_id, total_price)
+            )
+            if cursor.rowcount == 0:
+                await self.db.conn.rollback()
+                return False, "❌ 灵石不足！"
 
-            # 4. 给卖家打款（扣除 5% 交易税）
+            # 4. 给卖家打款（扣除 5% 交易税；v3.25.5：原子加款，不再整行覆写）
             seller = await self.db.get_player_by_id(item_data["seller_id"])
             if seller:
                 seller_income = int(total_price * (1 - self.TAX_RATE))
-                seller.gold += seller_income
-                await self.db.update_player(seller, commit=False)
+                await self.db.conn.execute(
+                    "UPDATE players SET gold = gold + ? WHERE user_id = ?",
+                    (seller_income, item_data["seller_id"])
+                )
 
             # 5. 从坊市删除该记录
             await self.db.conn.execute("DELETE FROM auction_items WHERE id = ?", (auction_id,))
             await self.db.conn.commit()
-            
+
             return True, f"✅ 购买成功！\n花费：{total_price:,} 灵石\n获得：【{item_data['item_name']}】x{item_data['count']}（已存入储物戒）"
 
         except Exception as e:
@@ -151,7 +163,7 @@ class AuctionManager:
 
     async def cancel_item(self, player: Player, auction_id: int) -> Tuple[bool, str]:
         """下架物品"""
-        await self.db.conn.execute("BEGIN IMMEDIATE")
+        await self.db.begin_immediate()
         try:
             async with self.db.conn.execute("SELECT * FROM auction_items WHERE id = ?", (auction_id,)) as cursor:
                 row = await cursor.fetchone()

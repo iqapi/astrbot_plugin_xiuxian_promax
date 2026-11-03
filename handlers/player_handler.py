@@ -470,6 +470,15 @@ class PlayerHandler:
         except Exception:
             pass
 
+        # v3.32.0 灵潮：全服随机增益窗口，闭关收益 +30%
+        try:
+            spirit_tide_mgr = getattr(self, "spirit_tide_mgr", None)
+            if spirit_tide_mgr and await spirit_tide_mgr.is_active():
+                gained_exp = int(gained_exp * 1.30)
+                tide_note += f"\n🌌 灵潮汹涌：修炼收益 +{int(spirit_tide_mgr.BONUS * 100)}%"
+        except Exception:
+            pass
+
         # 仙灵道侣加成（玄霜：闭关+5%起）
         try:
             comp_bonus = await self.social_mgr_ref.companion_bonus_async(player.user_id, "cultivate")
@@ -497,6 +506,28 @@ class PlayerHandler:
             if _avatar_until > int(time.time()):
                 gained_exp = int(gained_exp * 1.20)
                 tide_note += "\n🤖 化身行功：修炼收益+20%"
+        except Exception:
+            pass
+
+        # v3.28.0 道心被动：每 10 道心闭关收益 +1%（上限 +10%，永不折损）
+        try:
+            enlighten_mgr = getattr(self, "enlighten_mgr", None)
+            if enlighten_mgr:
+                passive = await enlighten_mgr.get_passive(player.user_id)
+                if passive > 0:
+                    gained_exp = int(gained_exp * (1 + passive))
+                    tide_note += f"\n🧘 道心通明：修炼收益 +{int(passive * 100)}%"
+        except Exception:
+            pass
+
+        # v3.28.0 顿悟：15% 概率本次收益暴击（每日至多 1 次，原子认领）
+        try:
+            enlighten_mgr = getattr(self, "enlighten_mgr", None)
+            if enlighten_mgr:
+                mult, wnote = await enlighten_mgr.roll_enlighten(player)
+                if mult > 1.0:
+                    gained_exp = int(gained_exp * mult)
+                    tide_note += wnote
         except Exception:
             pass
 
