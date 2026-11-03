@@ -57,6 +57,20 @@ from .spirit_tide_manager import SpiritTideManager
 from .sect_raid_manager import SectRaidManager
 # v3.34.0 仙途回忆录
 from .memoir_manager import MemoirManager
+# v3.35.0 妖兽巢穴入侵
+from .nest_defense_manager import NestDefenseManager
+# v3.36.0 天道盘
+from .dao_bet_manager import DaoBetManager
+# v3.37.0 仙府传功
+from .mentor_manager import MentorManager
+# v3.39.0 丹药合成
+from .pill_synth_manager import PillSynthManager
+# v3.42.0 灵石红包
+from .redpacket_manager import RedPacketManager
+# v3.50.0 天道封号台
+from .title_auction_manager import TitleAuctionManager
+# v3.45.0 秘境藏宝图
+from .treasure_map_manager import TreasureMapManager
 
 __all__ = [
     "CombatManager", "CombatStats", "SectManager", "RiftManager",
@@ -67,5 +81,6 @@ __all__ = [
     "GambleManager", "ForgeManager", "DemonInvasionManager", "PetManager",
     "AuctionManager", "EscortManager", "EncounterManager", "LifeSkillManager", "CalamityManager",
     "TowerManager", "MeritManager", "HuntManager", "WanderMerchantManager", "LadderManager",
-    "SpiritTideManager", "SectRaidManager", "MemoirManager"
+    "SpiritTideManager", "SectRaidManager", "MemoirManager", "NestDefenseManager", "DaoBetManager",
+    "MentorManager", "PillSynthManager", "RedPacketManager", "TreasureMapManager", "TitleAuctionManager"
 ]

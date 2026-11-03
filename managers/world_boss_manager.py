@@ -1,7 +1,7 @@
 # managers/world_boss_manager.py
 import time
 import random
-from typing import Tuple, List, Dict
+from typing import Tuple
 from astrbot.api import logger
 from ..data import DataBase
 from ..models import Player
@@ -259,7 +259,7 @@ class WorldBossManager:
         # 5. 构造战报
         msg = [
             f"⚔️ 你对【{boss['boss_name']}】造成了 {final_damage:,} 点伤害！",
-            f"━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━",
             f"📊 伤害占比：{damage_percent:.2f}%",
             f"❤️ Boss剩余血量：{new_hp:,} / {boss['max_hp']:,}",
         ]
@@ -294,8 +294,8 @@ class WorldBossManager:
             pass
 
         msg = [
-            f"🎉 世界Boss已被成功击杀！",
-            f"━━━━━━━━━━━━━━━",
+            "🎉 世界Boss已被成功击杀！",
+            "━━━━━━━━━━━━━━━",
         ]
         
         for i, dmg in enumerate(damages):

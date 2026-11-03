@@ -1,7 +1,6 @@
 # managers/dual_cultivation_manager.py
 """双修系统管理器"""
 import time
-import json
 from typing import Tuple, Optional, Dict
 from ..data import DataBase
 from ..models import Player
@@ -178,7 +177,7 @@ class DualCultivationManager:
         exp_ratio = max(initiator.experience, acceptor.experience) / max(min(initiator.experience, acceptor.experience), 1)
         if exp_ratio > DUAL_CULT_MAX_EXP_RATIO:
             await self._delete_request(request["id"])
-            return False, f"❌ 双方修为差距已超过限制，双修取消。"
+            return False, "❌ 双方修为差距已超过限制，双修取消。"
         
         now = int(time.time())
 

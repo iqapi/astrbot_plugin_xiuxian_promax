@@ -4,6 +4,8 @@ import json
 import time
 from typing import Tuple, Optional, Dict
 
+from astrbot.api import logger
+
 from ..data.data_manager import DataBase
 from ..models import Player
 
@@ -340,6 +342,71 @@ class SocialManager:
         # v3.25.5 修复：master 是加成后重新读取的，这里不能再 +gain（原显示双计）
         return True, f"\n🎓 你的突破令师父【{mname}】欣喜，师德 +{gain}（当前 {master.virtue_points}）"
 
+    # ===== v3.41.0 心魔试炼（出师考）=====
+
+    @staticmethod
+    def _chukao_pass_key(uid: str) -> str:
+        return f"chukao_pass_{uid}"
+
+    @staticmethod
+    def _chukao_cnt_key(uid: str) -> str:
+        import time
+        return f"chukao_cnt_{uid}_{time.strftime('%Y%m%d')}"
+
+    async def graduation_trial(self, disciple: Player) -> Tuple[bool, str]:
+        """心魔试炼（出师考）：弟子每日 1 次挑战自身心魔，
+        通过后获得出师考通过标记——出师时师徒奖励翻倍。"""
+        uid = disciple.user_id
+        rel = await self.get_master_of(uid)
+        if not rel:
+            return False, "❌ 你尚未拜师，无需出师考。先 /拜师 @高境界道友。"
+        if disciple.level_index < 2:
+            return False, "❌ 心魔试炼需至少达到境界 2（练气后期）——根基太浅，心魔难防。"
+        if not await self.db.ext.syscfg_claim_slot(self._chukao_cnt_key(uid), 1):
+            return False, "❌ 今日心魔试炼已挑战过（每日 1 次），心魔也需要喘息。"
+        if await self.db.ext.get_system_config(self._chukao_pass_key(uid)) == "1":
+            await self.db.ext.syscfg_adjust_number(self._chukao_cnt_key(uid), -1)
+            return False, "✅ 你已通过出师考！请师父直接 /出师 @你 领取翻倍大礼。"
+
+        # 心魔 = 弟子自身的镜像（攻 ×1.15 / 血 ×1.25）——战胜自己方能出师
+        from .combat_manager import CombatManager, CombatStats
+        cm = CombatManager()
+        hp, mp = cm.calculate_hp_mp(disciple.experience)
+        atk = cm.calculate_atk(
+            disciple.experience, disciple.atkpractice, 0,
+            disciple.physical_damage, disciple.magic_damage, disciple.cultivation_type
+        )
+        p_stats = CombatStats(
+            user_id=uid, name=disciple.user_name or f"道友{uid[:6]}",
+            hp=hp, max_hp=hp, mp=mp, max_mp=mp, atk=atk,
+            exp=disciple.experience,
+            element=cm.get_element_from_name(disciple.main_technique) or cm.get_element_from_name(disciple.weapon),
+        )
+        mirror = CombatStats(
+            user_id="inner_demon", name="心魔·另一个自己",
+            hp=int(hp * 1.25), max_hp=int(hp * 1.25), mp=mp, max_mp=mp,
+            atk=int(atk * 1.15), defense=10, crit_rate=10,
+        )
+        result = cm.player_vs_boss(p_stats, mirror)
+        win = result.get("winner") == uid
+        if win:
+            await self.db.ext.set_system_config(self._chukao_pass_key(uid), "1")
+            return True, (
+                "🪞【心魔试炼】通过！\n"
+                "━━━━━━━━━━━━━━━\n"
+                f"你直面心魔·另一个自己，{result.get('rounds', '?')} 回合后将其斩落！\n"
+                "✅ 出师考通过标记已点亮\n"
+                "🎁 师父执行 /出师 @你 时，师徒双方奖励【翻倍】\n"
+                "💡 已通过者重复挑战不再消耗次数"
+            )
+        return True, (
+            "🪞【心魔试炼】失败……\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"心魔借你之力反噬，{result.get('rounds', '?')} 回合后你败下阵来。\n"
+            "💫 试炼不损分毫，明日再来——战胜自己，方能出师。\n"
+            "💡 提示：心魔是你的镜像（攻+15%/血+25%），先把自己变强"
+        )
+
     async def graduate_disciple(self, master: Player, disciple_id: str) -> Tuple[bool, str]:
         """出师（师父操作，徒弟需境界≥3）"""
         rel = await self.get_master_of(disciple_id)
@@ -351,28 +418,112 @@ class SocialManager:
         if d.level_index < 3:
             dn = d.user_name or disciple_id[:8]
             return False, f"❌ 弟子【{dn}】尚未达到筑基期（境界3），尚需打磨。"
+        # v3.41.0：出师考通过 → 奖励翻倍并消费标记
+        passed = await self.db.ext.get_system_config(self._chukao_pass_key(disciple_id)) == "1"
+        mult = 2 if passed else 1
         # 奖励双方（v3.25.5：改原子记账，不再整行覆写快照）
-        d_reward_gold, d_reward_exp = 30000, 20000
-        m_reward_gold = 20000
+        d_reward_gold, d_reward_exp = 30000 * mult, 20000 * mult
+        m_reward_gold = 20000 * mult
+        d_fate = 20 * mult
         await self.db.add_player_gold(d.user_id, d_reward_gold)
         await self.db.add_player_exp(d.user_id, d_reward_exp)
         await self.db.conn.execute(
-            "UPDATE players SET fate_points = fate_points + 20 WHERE user_id = ?", (d.user_id,)
+            "UPDATE players SET fate_points = fate_points + ? WHERE user_id = ?", (d_fate, d.user_id)
         )
         await self.db.add_player_gold(master.user_id, m_reward_gold)
         await self.db.conn.execute(
             "UPDATE master_relations SET graduated = 1 WHERE id = ?", (rel["id"],)
         )
         await self.db.conn.commit()
+        if passed:
+            await self.db.ext.delete_system_config(self._chukao_pass_key(disciple_id))
+        # v3.44.0：出师反哺师父威望 +10
+        prestige = await self.db.ext.syscfg_adjust_number(self._prestige_key(master.user_id), 10)
         dn = d.user_name or disciple_id[:8]
+        bonus_note = "\n🪞 心魔试炼加成：全部奖励翻倍！" if passed else "\n💡 通过 /出师考 可让出师奖励翻倍（弟子每日可挑战）"
+        prestige_note = f"\n🏛️ 师门威望 +10（当前 {prestige}）—— /师门威望 查看里程碑"
         return True, (
             f"🎓 出师礼成！\n"
             f"━━━━━━━━━━━━━━━\n"
             f"弟子【{dn}】已至筑基，学有所成！\n"
-            f"弟子获得：{d_reward_gold:,} 灵石 + {d_reward_exp:,} 修为 + 20 仙缘点\n"
+            f"弟子获得：{d_reward_gold:,} 灵石 + {d_reward_exp:,} 修为 + {d_fate} 仙缘点\n"
             f"你获得：{m_reward_gold:,} 灵石（传道之酬）\n"
-            f"师徒缘分长存，自此江湖再见亦是故人。"
+            f"师徒缘分长存，自此江湖再见亦是故人。{bonus_note}{prestige_note}"
         )
+
+    # ===== v3.44.0 师门威望 =====
+
+    # 威望门槛 -> (灵石奖励, 称号)
+    PRESTIGE_TIERS = {
+        10: (10000, None),
+        30: (30000, None),
+        60: (80000, "一代名师"),
+    }
+
+    @staticmethod
+    def _prestige_key(uid: str) -> str:
+        return f"shimen_prestige_{uid}"
+
+    async def get_prestige(self, master_id: str) -> int:
+        return await self.db.ext.syscfg_get_number(self._prestige_key(master_id))
+
+    def _prestige_tier(self, points: int) -> Tuple[int, str]:
+        idx = 0
+        names = ["初为人师", "小有名气", "桃李满门", "万世师表"]
+        for i, (th, _) in enumerate(sorted(self.PRESTIGE_TIERS.items())):
+            if points >= th:
+                idx = i + 1
+        return idx, names[idx]
+
+    async def get_prestige_panel(self, master: Player) -> str:
+        uid = master.user_id
+        pts = await self.get_prestige(uid)
+        idx, tname = self._prestige_tier(pts)
+        async with self.db.conn.execute(
+            "SELECT COUNT(*) FROM master_relations WHERE master_id = ? AND graduated = 1", (uid,)
+        ) as cursor:
+            graduated = (await cursor.fetchone())[0]
+        lines = [
+            "🏛️【师门威望】",
+            "━━━━━━━━━━━━━━━",
+            f"📜 名师称号：{tname}",
+            f"⭐ 威望：{pts}（每名弟子出师 +10）",
+            f"🎓 已出师弟子：{graduated} 名",
+        ]
+        unclaimed = []
+        for th, (gold, _) in sorted(self.PRESTIGE_TIERS.items()):
+            if pts >= th and not await self.db.ext.get_system_config(f"prestige_claim_{uid}_{th}"):
+                unclaimed.append(f"{th} 威望（{gold:,} 灵石）")
+        if unclaimed:
+            lines.append(f"🎁 可领取里程碑奖励：{'、'.join(unclaimed)} → /师门威望领取")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 收徒→弟子出师即得威望，威望里程碑可领取丰厚奖励")
+        return "\n".join(lines)
+
+    async def claim_prestige_milestone(self, master: Player) -> Tuple[bool, str]:
+        """领取已达威望里程碑（从高到低找第一个未领的）"""
+        uid = master.user_id
+        pts = await self.get_prestige(uid)
+        for th in sorted(self.PRESTIGE_TIERS.keys(), reverse=True):
+            if pts < th:
+                continue
+            if await self.db.ext.get_system_config(f"prestige_claim_{uid}_{th}"):
+                continue
+            if not await self.db.ext.syscfg_claim_slot(f"prestige_claim_{uid}_{th}", 1):
+                continue
+            gold, title = self.PRESTIGE_TIERS[th]
+            await self.db.add_player_gold(uid, gold)
+            title_note = ""
+            if title:
+                try:
+                    from .title_hooks import TitleHooks
+                    msg = await TitleHooks(self.db).grant_manual(master, title)
+                    if msg:
+                        title_note = f"\n{msg.strip()}"
+                except Exception as e:
+                    logger.warning(f"[师门威望] 称号授予失败: {e}")
+            return True, f"🏛️ 威望里程碑（{th} 点）奖励已领取！\n💰 灵石 +{gold:,}{title_note}"
+        return False, "❌ 暂无可领取的威望里程碑奖励。"
 
     async def dismiss_disciple(self, master: Player, disciple_id: str) -> Tuple[bool, str]:
         """逐出师门"""

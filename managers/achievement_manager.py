@@ -18,7 +18,7 @@
 """
 
 import json
-from typing import Optional, Tuple, Dict, List, Callable
+from typing import Tuple, Dict, List
 
 from astrbot.api import logger
 

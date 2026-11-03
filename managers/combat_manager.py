@@ -4,7 +4,7 @@
 """
 
 import random
-from typing import Tuple, Dict, Optional, List
+from typing import Tuple, Dict, List
 from dataclasses import dataclass
 
 @dataclass
@@ -150,7 +150,7 @@ class CombatManager:
     @classmethod
     def player_vs_player(cls, player1: CombatStats, player2: CombatStats, combat_type: int = 1) -> Dict:
         """玩家vs玩家战斗 (限制5回合，按剩余血量百分比判定)"""
-        combat_log = [f"☆━━━━ 战斗开始 ━━━━☆", f"{player1.name} VS {player2.name}"]
+        combat_log = ["☆━━━━ 战斗开始 ━━━━☆", f"{player1.name} VS {player2.name}"]
         round_num = 0
         max_rounds = 5  # ★ 修改：最多5回合
         
@@ -260,8 +260,8 @@ class CombatManager:
         player2.defense = 100
         
         combat_log = [
-            f"⚖️ 【天道压制】双方基础属性已被强制拉平！",
-            f"（但保留了功法、装备、灵兽的特殊加成）",
+            "⚖️ 【天道压制】双方基础属性已被强制拉平！",
+            "（但保留了功法、装备、灵兽的特殊加成）",
             f"{player1.name} (ATK {player1.atk}) VS {player2.name} (ATK {player2.atk})",
             ""
         ]
@@ -327,7 +327,7 @@ class CombatManager:
     @classmethod
     def player_vs_boss(cls, player: CombatStats, boss: CombatStats) -> Dict:
         """玩家vs Boss战斗 (保持100回合)"""
-        combat_log = [f"☆━━━━ Boss战开始 ━━━━☆", f"{player.name} 挑战 {boss.name}"]
+        combat_log = ["☆━━━━ Boss战开始 ━━━━☆", f"{player.name} 挑战 {boss.name}"]
         round_num = 0
         total_damage_dealt = 0
         

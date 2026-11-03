@@ -9,7 +9,7 @@
 
 import json
 import time
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict
 
 from astrbot.api import logger
 

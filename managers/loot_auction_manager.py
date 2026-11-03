@@ -232,7 +232,7 @@ class LootAuctionManager:
             logger.warning(f"拍卖落槌：赢家 {win_uid} 不存在，拍品奖励未发放（托管款 {win_amt:,} 已收取）")
 
         lines = [
-            f"🔔【天机阁拍卖会】落槌！\n━━━━━━━━━━━━━━━",
+            "🔔【天机阁拍卖会】落槌！\n━━━━━━━━━━━━━━━",
             f"✨ 拍品：【{loot_name}】以 {win_amt:,} 灵石成交！",
             f"👑 得主：【{win_name}】",
             f"💎 获得拍品奖励：修为 {loot.get('exp', 0):,} + 灵石 {loot.get('gold', 0):,}（已发放）",
@@ -278,7 +278,7 @@ class LootAuctionManager:
             lines.append(f"💰 当前最高价：{top_amt:,} 灵石（{ranking[0][2]}）")
             lines.append("━━━━━━━━━━━━━━━")
             lines.append("📋 出价榜：")
-            for i, (uid, amt, name) in enumerate(ranking[:5], start=1):
+            for i, (_uid, amt, name) in enumerate(ranking[:5], start=1):
                 medal = ["🥇", "🥈", "🥉"][i - 1] if i <= 3 else f"{i}."
                 lines.append(f"   {medal} {name} - {amt:,} 灵石")
         else:

@@ -27,7 +27,7 @@ class BankHandlers:
             "━━━━━━━━━━━━━━━",
             f"💰 存款余额：{info['balance']:,} 灵石",
             f"📈 待领利息：{info['pending_interest']:,} 灵石",
-            f"📊 日利率：0.1%（复利）",
+            "📊 日利率：0.1%（复利）",
             "━━━━━━━━━━━━━━━",
             f"💎 持有灵石：{player.gold:,}",
         ]

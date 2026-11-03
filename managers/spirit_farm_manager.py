@@ -3,7 +3,7 @@
 import time
 import json
 import random
-from typing import Tuple, Optional, Dict, List, TYPE_CHECKING
+from typing import Tuple, Optional, Dict, TYPE_CHECKING
 from ..data import DataBase
 from ..models import Player
 
@@ -297,7 +297,7 @@ class SpiritFarmManager:
                 pct = int((season_mult - 1) * 100)
                 msg_lines.append(f"{season['icon']} 季节【{season['name']}】生效：产量{pct:+d}%")
             if stored_items:
-                msg_lines.append(f"📦 存入储物戒：")
+                msg_lines.append("📦 存入储物戒：")
                 for item in stored_items:
                     msg_lines.append(f"  {item}")
         

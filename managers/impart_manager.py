@@ -4,9 +4,8 @@
 参照NoneBot2插件的xn_xiuxian_impart实现
 """
 
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Optional
 from ..data.data_manager import DataBase
-from ..models import Player
 from ..models_extended import ImpartInfo
 
 class ImpartManager:

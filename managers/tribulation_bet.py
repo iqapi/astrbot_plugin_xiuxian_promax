@@ -84,7 +84,6 @@ class TribulationBetManager:
         try:
             if player is None or player.level_index < TRIB_LEVEL:
                 return False
-            key = self._pool_key(player.user_id)
             existing = await self._load_pool(player.user_id)
             if existing and existing.get("open"):
                 return False

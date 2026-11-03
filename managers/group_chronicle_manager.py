@@ -14,7 +14,6 @@ from typing import Optional
 from astrbot.api import logger
 
 from ..data.data_manager import DataBase
-from ..models import Player
 
 __all__ = ["GroupChronicleManager"]
 

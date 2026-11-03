@@ -1,600 +1,424 @@
-<img src="https://capsule-render.vercel.app/api?type=venom&height=220&text=%E6%A8%A1%E6%8B%9F%E4%BF%AE%E4%BB%99&subText=%E4%BB%99%E7%BC%98%E4%B8%87%E8%B1%A1%20%C2%B7%20%E7%BE%A4%E8%81%8A%E6%94%BE%E7%BD%AE%E4%BF%AE%E4%BB%99%E6%B8%B8%E6%88%8F&fontSize=62&descSize=26&color=0:FFE29A,50:D4AF37,100:6B4F1A&section=header&stroke=FFE29A&strokeWidth=2" alt="模拟修仙 · 仙缘万象" width="100%">
+<div align="center">
 
-<p align="center">
-  <img src="logo.png" alt="模拟修仙" width="140">
-</p>
+<img src="logo.png" width="160" alt="logo"/>
 
-<p align="center">
-  <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/stargazers">
-    <img src="https://img.shields.io/github/stars/iqapi/astrbot_plugin_xiuxian_promax?style=for-the-badge&logo=github&color=ffd700" alt="Stars">
-  </a>
-  <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/forks">
-    <img src="https://img.shields.io/github/forks/iqapi/astrbot_plugin_xiuxian_promax?style=for-the-badge&logo=github" alt="Forks">
-  </a>
-  <a href="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml">
-    <img src="https://github.com/iqapi/astrbot_plugin_xiuxian_promax/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
-  <img src="https://img.shields.io/badge/version-v3.34.0-gold?style=for-the-badge" alt="Version">
-  <img src="https://img.shields.io/badge/指令-220+-gold?style=for-the-badge" alt="Commands">
-  <img src="https://img.shields.io/badge/玩法-37-9cf?style=for-the-badge" alt="Features">
-  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="License">
-  <img src="https://img.shields.io/badge/python-3.10+-green?style=for-the-badge&logo=python" alt="Python">
-</p>
+# astrbot_plugin_xiuxian_promax
 
-<p align="center">
-  <b>⭐ 觉得不错就点个 Star 吧 —— 你的 Star 是持续更新的动力！</b>
-</p>
+✨ *AstrBot 文字修仙放置游戏插件 · 从凡人到飞升的完整仙途* ✨
+
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue)](LICENSE) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![AstrBot](https://img.shields.io/badge/AstrBot-3.4+-FF6B35)](https://github.com/AstrBotDevs/AstrBot) [![Version](https://img.shields.io/badge/Version-v3.50.0-gold)](https://github.com/iqapi/astrbot_plugin_xiuxian_promax) [![Tests](https://img.shields.io/badge/Tests-107%20passing-brightgreen?logo=pytest)](tests/) [![GitHub Stars](https://img.shields.io/github/stars/iqapi/astrbot_plugin_xiuxian_promax?style=social)](https://github.com/iqapi/astrbot_plugin_xiuxian_promax/stargazers)
+
+**工作摸鱼的同时亦可得道飞升 · 25+ 玩法系统 · 40+ 指令 · 107 项自动化测试**
+
+[功能特色](#-功能特色) · [快速上手](#-快速上手) · [指令大全](#-指令大全) · [架构](#-项目架构) · [测试](#-测试) · [版本历程](#-版本历程) · [配置](#-配置)
+
+</div>
 
 ---
 
-> **插件版本:** v3.34.0 · **游戏版本:** v6.18 · **数据库:** v29
-> **原作者:** xiaojuwa · **二改:** [Zspor](https://github.com/Zspor/astrbot_plugin_monixiuxian2) · **三改维护:** [云兮](https://github.com/iqapi)
+## 📖 目录
 
-一款为 AstrBot 深度重构的**放置类群聊修仙游戏**。从炼气一层到混元大罗金仙，**220+ 指令、13 大经典系统、24 个新玩法**，与群友一起修仙问道。
-
-- 🗡️ **经典系统**：七大门派 · 60 条历练路线 · 110+ 奇遇 · 110 称号图鉴 · 五行克制 · 世界Boss
-- 🌙 **新玩法矩阵**：天象 / 天骄榜赛季 / 渡劫观礼 / 轮回周目 / 灵脉据点战 / 玩家结契 / 登仙台世界工程 …（见下表）
-- 🛡️ **工程品质**：原子并发原语 + 26 项单测 + CI 自动回归 · 全卡片新中式仙侠视觉 · 管理员运营面板
-
----
-
-## ✨ 玩法总览
-
-### 🧘 经典系统
-
-| 系统 | 内容 |
-|------|------|
-| ⚔️ **七大门派** | 灵修/体修/魔修/剑修/鬼修/佛修/御兽，各带专属倍率 |
-| 🗺️ **历练秘境** | 60 条路线按境界解锁 · 秘境每日词缀 · 战力碾压可扫荡 |
-| 🎲 **奇遇** | 110+ Roguelike 三选一事件，善行/恶行影响因果 |
-| 🏅 **称号图鉴** | 110 称号六品阶 · 收集里程碑永久加成 · 同阶称号可熔炼进阶 |
-| 🌗 **五行克制** | 金木水火土相生相克，克制+30% 被克-20% |
-| 👹 **全服Boss** | 每周自动降临 · 战利品全服托管竞拍 · 伤害由战力决定 |
-| 💍 **社交** | 师徒 · NPC仙灵道侣 · 押镖劫道 · 双修 · 洞府掠夺 |
-| 🌾 **经营** | 灵田四季 · 洞天家具 · 炼丹火候 · 炼器强化 · 宗门建筑/科技树 |
-| 💰 **经济** | 银行复利/贷款 · 坊市交易 · 黑市赌石 · 突破资费/拍卖行回收 |
-
-### 🌙 新玩法（v3.19 ~ v3.25）
-
-| 类别 | 玩法 |
-|------|------|
-| 🌦️ **每日仪式** | 修仙天气 · 每日求签 · 修仙科举 · 幸运罗盘 · 天材地宝争夺 |
-| 🤝 **社交羁绊** | 玩家结契（羁绊值加成）· 道侣试炼 · 群聊灵植园 · 渡劫观礼下注 |
-| 🏆 **长线目标** | 天骄榜赛季 · 修仙成就 · 图鉴收集 · 轮回周目 · 登仙台世界工程 |
-| ⚔️ **阵营对抗** | 灵脉据点战（宗门周赛）· 斗法台锦标赛（自动淘汰赛）· 悬赏行会 |
-| 🛠️ **效率养成** | 秘境扫荡 · 灵宠出战 · 宗门科技树 · 称号熔炼 |
+- [功能特色](#-功能特色)
+- [快速上手](#-快速上手)
+- [指令大全](#-指令大全)
+- [项目架构](#-项目架构)
+- [测试](#-测试)
+- [版本历程](#-版本历程)
+- [配置](#-配置)
+- [贡献](#-贡献)
+- [许可证](#-许可证)
 
 ---
 
-## 📦 安装
+## 💛 功能特色
 
-### 1. 环境要求
-- AstrBot（建议 v4.x+）
-- Python 3.10+
+### 核心玩法
 
-### 2. 依赖
-```
-aiosqlite>=0.19.0
-Pillow>=9.0.0
-```
+| 系统 | 描述 |
+|:---|:---|
+| 🧘 **闭关修炼** | 挂机修炼获取修为，受家具/宗门/季节/天气/道心等多重加成 |
+| ⚡ **突破境界** | 从练气到飞升共 65 层境界，含保底/连败补偿/心魔试炼/回生丹 |
+| ⚔️ **战斗竞技** | 决斗/切磋/传承PK/大比切磋，五行克制+装备+灵兽+称号多重加成 |
+| 🗺️ **探索冒险** | 历练路线/秘境探索/除妖/镇妖塔/妖兽图鉴/藏宝图/奇遇事件 |
+| 💊 **炼丹炼器** | 200+ 丹药配方、装备强化洗练词条、丹药合成、火候/丹劫机制 |
+| 🏛️ **宗门系统** | 创建/加入宗门、捐献建设、科技树、宗门秘境Boss、捐献周榜 |
+| 🧧 **社交系统** | 结契道侣、仙侣送礼、师徒出师考、师门威望、仙府传功 |
+| 🌌 **世界事件** | 魔潮入侵/天魔潜伏/灵潮涌动/巢穴来袭/世界Boss/斗法台锦标赛 |
 
-### 3. 部署
-```
-将本仓库放入 AstrBot 的 data/plugins/astrbot_plugin_xiuxian_promax
-重启 AstrBot 即自动完成初始化与数据库建表（v29，全程无缝自动迁移）
-```
+### 经济系统
 
-### 4. 配置（WebUI 可视化配置）
-- `ACCESS_CONTROL.WHITELIST_GROUPS`：启用的群号（**必配，否则全服事件不广播**）
-- `ACCESS_CONTROL.BOSS_ADMINS`：管理员 QQ（仙界管理/生成Boss/开启魔潮）
-- `IMAGE_CARDS`：11 个图片卡片独立开关（含总开关）
-- `VALUES`：数值调参（签到/突破/银行利率/商店折扣等均有默认值）
-- `FILES.DATABASE_FILE`：数据库文件名
+| 系统 | 描述 |
+|:---|:---|
+| 💰 **银行** | 存取/利息/突破贷款/流水 |
+| 🏪 **坊市交易** | 玩家自由上架/购买 |
+| 🎲 **赌坊** | 切原石/黑市/天道盘 |
+| 🧧 **红包** | 拼手气红包 |
+| 🪷 **功德善堂** | 功德兑换珍宝 |
+| 🏛️ **天道封号台** | 月度竞拍专属封号 |
 
-### 5. 旧版迁移
-从 `astrbot_plugin_monixiuxian2` 或 `astrbot_plugin_xiuxian` 升级：首次启动**自动整体迁移数据**，玩家数据无缝保留。
+### 长线养成
+
+| 系统 | 描述 |
+|:---|:---|
+| ✨ **飞升轮回** | 跨周目成长、轮回天赋树、仙缘商店、传家宝 |
+| 📚 **称号图鉴** | 110+ 称号六品阶、称号熔炼 |
+| 🗡️ **段位天梯** | PVP 积分段位、里程碑奖励 |
+| 📋 **修炼周报** | 本周全维度数据总览 |
 
 ---
 
-## 🚀 快速上手（玩家视角）
+## 🚀 快速上手
 
-```
-我要修仙 剑修        ← 创建角色（7职业任选）
-新手七日            ← 七日任务链，第7天得称号【仙途新星】
-签到 / 修仙天气      ← 每日福利 + 看今日天象加成
-闭关 → 出关          ← 挂机修炼
-开始历练             ← 选择 60 条路线之一
-突破                 ← 提升境界（保底机制：连败递增+渡劫道韵）
-称号图鉴 / 成就      ← 收集与里程碑
-修仙帮助            ← 全部 220+ 指令（支持 /修仙帮助 <关键字> 搜索）
+```bash
+# 安装插件后重启 AstrBot，发送：
+/我要修仙          # 创建角色（选职业：灵/体/魔/剑/鬼/佛/御兽）
+/闭关              # 挂机修炼 → /出关 领取修为
+/签到              # 每日签到（节日大奖）
+/突破              # 修为够了就突破境界
+/开始历练 巡山问道  # 挂机历练赚灵石
+/除妖              # 野外战斗刷怪（每日5次）
+/镇妖塔            # 爬塔挑战（每日3次）
 ```
 
 ---
 
-## 🧪 部署前自检 / CI
+## 📖 指令大全
 
-```
-py -3 -X utf8 scripts\_final_check.py            # 全局体检（语法/指令覆盖/配置对账）
-py -3 -X utf8 tests\test_core_logic.py           # 核心逻辑单测
-py -3 -X utf8 tests\test_atomic_primitives.py    # 并发原语单测（真实SQLite）
-```
-> CI：`.github/workflows/ci.yml` 每次 push 自动跑「语法 + 双测试套件 + 体检」；ruff 规则见 `ruff.toml`。
+> 💡 所有指令均可带 `/` 前缀使用 · `/修仙帮助 <关键词>` 可过滤查询
 
----
+<details open>
+<summary><b>🌟 入门与基础</b></summary>
 
-## 📊 项目规模
-
-| 指标 | 数量 |
-|------|------|
-| Python 模块 | 128 文件 |
-| 注册指令 | 220+ |
-| 玩法系统 | 13 经典 + 24 新玩法 |
-| 奇遇事件 | 113 |
-| 称号 | 110（六品阶） |
-| 历练路线 | 60（境界 0-31 全覆盖） |
-| 数据库版本 | v29（全程无缝自动迁移） |
-| 自动化测试 | 26 项（核心逻辑 + 并发原语） |
-
-## 🛠️ 技术亮点
-
-- **并发安全**：自研 system_config 原子原语（CAS / 原子数值键 / 限次认领 / 过期清理），全部托管型玩法收敛到 5 个原语上，26 项单测守护
-- **数值闭环**：产出金字塔校准（270 天毕业曲线）、注入-回收双通道、概率保底分段设计
-- **图片渲染**：纯 Pillow 新中式仙侠卡（水墨远山/朱红印章/云头纹/毛玻璃子面板），零背景图依赖，20+ 指令全卡片化
-- **可观测**：全指令参与度埋点 + 管理员运营/经济面板，玩法调参数据驱动
-- **工程质量**：CI 自动回归 · ruff · 指令-帮助一致性体检 · 零迁移新增玩法
-
-
-<details>
-<summary><b>📍 点击展开完整逻辑图（GitHub 原生渲染 Mermaid）</b></summary>
-
-```mermaid
-graph LR
-  classDef sys fill:#6a5520,stroke:#ffd700,stroke-width:2px,color:#fff,font-weight:bold;
-  subgraph help["帮助工具"]
-    help_0["修仙帮助"]
-    help_1["解卡"]
-  end
-  subgraph player["玩家基础"]
-    player_2["我要修仙"]
-    player_3["我的信息"]
-    player_4["弃道重修"]
-    player_5["闭关"]
-    player_6["出关"]
-    player_7["签到"]
-    player_8["一键日常"]
-  end
-  subgraph equip["装备"]
-    equip_9["我的装备"]
-    equip_10["装备"]
-    equip_11["卸下"]
-  end
-  subgraph breakthrough["修炼突破"]
-    breakthrough_12["突破信息"]
-    breakthrough_13["突破"]
-  end
-  subgraph pill["丹药"]
-    pill_14["服用丹药"]
-    pill_15["丹药背包"]
-    pill_16["丹药信息"]
-  end
-  subgraph shop["商店"]
-    shop_17["丹阁"]
-    shop_18["器阁"]
-    shop_19["百宝阁"]
-    shop_20["物品信息"]
-    shop_21["购买"]
-    shop_22["购买物品"]
-  end
-  subgraph ring["储物戒"]
-    ring_23["储物戒"]
-    ring_24["取出"]
-    ring_25["更换储物戒"]
-    ring_26["丢弃"]
-    ring_27["赠予"]
-    ring_28["接收"]
-    ring_29["拒绝"]
-    ring_30["搜索物品"]
-    ring_31["取出所有"]
-  end
-  subgraph sect["宗门"]
-    sect_32["创建宗门"]
-    sect_33["加入宗门"]
-    sect_34["退出宗门"]
-    sect_35["我的宗门"]
-    sect_36["宗门任务"]
-    sect_37["完成宗门任务"]
-    sect_38["宗门列表"]
-    sect_39["宗门捐献"]
-    sect_40["踢出成员"]
-    sect_41["宗主传位"]
-    sect_42["职位变更"]
-    sect_43["大比切磋"]
-  end
-  subgraph oldboss["旧Boss"]
-    oldboss_44["世界Boss"]
-    oldboss_45["挑战Boss"]
-  end
-  subgraph ranking["排行榜"]
-    ranking_46["境界排行"]
-    ranking_47["战力排行"]
-    ranking_48["灵石排行"]
-    ranking_49["宗门排行"]
-    ranking_50["存款排行"]
-    ranking_51["贡献排行"]
-  end
-  subgraph pvp["战斗PVP"]
-    pvp_52["决斗"]
-    pvp_53["切磋"]
-  end
-  subgraph rift["秘境"]
-    rift_54["秘境列表"]
-    rift_55["探索秘境"]
-    rift_56["退出秘境"]
-  end
-  subgraph adventure["历练"]
-    adventure_57["开始历练"]
-    adventure_58["历练状态"]
-    adventure_59["历练信息"]
-  end
-  subgraph alchemy["炼丹"]
-    alchemy_60["丹药配方"]
-    alchemy_61["炼丹"]
-  end
-  subgraph impart["传承"]
-    impart_62["传承信息"]
-  end
-  subgraph nickname["道号"]
-    nickname_63["改道号"]
-  end
-  subgraph bank["银行"]
-    bank_64["银行"]
-    bank_65["存灵石"]
-    bank_66["取灵石"]
-    bank_67["领取利息"]
-    bank_68["贷款"]
-    bank_69["还款"]
-    bank_70["银行流水"]
-    bank_71["突破贷款"]
-  end
-  subgraph bounty["悬赏"]
-    bounty_72["悬赏令"]
-    bounty_73["接取悬赏"]
-    bounty_74["悬赏状态"]
-    bounty_75["完成悬赏"]
-    bounty_76["放弃悬赏"]
-  end
-  subgraph impartpk["传承PK"]
-    impartpk_77["传承挑战"]
-    impartpk_78["传承排行"]
-  end
-  subgraph land["洞天"]
-    land_79["我的洞天"]
-    land_80["购买洞天"]
-    land_81["升级洞天"]
-    land_82["洞天收取"]
-    land_83["进阶洞天"]
-  end
-  subgraph farm["灵田"]
-    farm_84["我的灵田"]
-    farm_85["开垦灵田"]
-    farm_86["种植"]
-    farm_87["收获"]
-    farm_88["升级灵田"]
-  end
-  subgraph eye["灵眼"]
-    eye_89["灵眼信息"]
-    eye_90["抢占灵眼"]
-    eye_91["灵眼收取"]
-    eye_92["释放灵眼"]
-  end
-  subgraph dailytask["日常任务"]
-    dailytask_93["任务榜"]
-    dailytask_94["接取任务"]
-    dailytask_95["领取任务奖励"]
-  end
-  subgraph worldboss["世界Boss"]
-    worldboss_96["挑战世界Boss"]
-    worldboss_97["世界Boss状态"]
-  end
-  subgraph robbery["掠夺"]
-    robbery_98["开启护府"]
-    robbery_99["潜入洞府"]
-  end
-  subgraph gamble["赌石黑市"]
-    gamble_100["切原石"]
-    gamble_101["黑市"]
-    gamble_102["黑市购买"]
-  end
-  subgraph forge["炼器"]
-    forge_103["强化"]
-    forge_104["洗练"]
-  end
-  subgraph demon["天魔入侵"]
-    demon_105["开启天魔入侵"]
-    demon_106["查验天魔"]
-    demon_107["天魔状态"]
-  end
-  subgraph pet["灵兽"]
-    pet_108["我的灵兽"]
-    pet_109["孵化灵兽"]
-    pet_110["喂养灵兽"]
-    pet_111["放生灵兽"]
-    pet_112["吞噬灵兽"]
-  end
-  subgraph auction["坊市"]
-    auction_113["坊市"]
-    auction_114["坊市上架"]
-    auction_115["坊市购买"]
-    auction_116["坊市下架"]
-  end
-  subgraph spirit["仙灵"]
-    spirit_117["仙灵结缘"]
-    spirit_118["仙灵共修"]
-    spirit_119["仙灵解除"]
-    spirit_120["仙灵代收"]
-  end
-  subgraph mentor["师徒"]
-    mentor_121["拜师"]
-    mentor_122["出师"]
-    mentor_123["逐出师门"]
-    mentor_124["师徒"]
-    mentor_125["师德兑换"]
-  end
-  subgraph title["称号图鉴"]
-    sys_title["称号图鉴"]
-    title_127["佩戴称号"]
-    title_128["我的称号"]
-  end
-  subgraph tide["魔潮天灾"]
-    tide_129["开启魔潮"]
-    tide_130["魔潮状态"]
-    tide_131["抵御魔潮"]
-    tide_132["仙界日历"]
-  end
-  subgraph avatar["化身托管"]
-    avatar_133["激活化身"]
-  end
-  subgraph escort["押镖劫道"]
-    escort_134["押镖"]
-    escort_135["完成押镖"]
-    escort_136["放弃押镖"]
-    escort_137["劫镖"]
-  end
-  subgraph karma["功德因果"]
-    karma_138["行善"]
-  end
-  subgraph admintool["管理工具"]
-    admintool_139["仙界管理"]
-  end
-  subgraph lifeskill["生活职业"]
-    lifeskill_140["选择生活职业"]
-    lifeskill_141["制符"]
-  end
-  subgraph encounter["奇遇"]
-    encounter_142["奇遇选择"]
-  end
-  subgraph furnish["洞天装修"]
-    furnish_143["洞天装修"]
-  end
-  subgraph sectbuild["宗门建筑"]
-    sectbuild_144["宗门建筑"]
-    sectbuild_145["升级建筑"]
-  end
-  subgraph misc2["其他扩展"]
-    misc2_146["完成探索"]
-    misc2_147["提前退出"]
-    misc2_148["完成历练"]
-    misc2_149["双修"]
-    misc2_150["接受双修"]
-    misc2_151["拒绝双修"]
-    misc2_152["飞升"]
-    misc2_153["解封传家宝"]
-    misc2_154["仙缘商店"]
-    misc2_155["仙缘兑换"]
-    misc2_156["开启宗门大比"]
-    misc2_157["结束宗门大比"]
-    misc2_158["施肥"]
-    misc2_159["杂交"]
-    misc2_160["储物戒附魔"]
-    misc2_161["升级丹炉"]
-    misc2_162["季节"]
-    misc2_163["火候"]
-    misc2_164["功德榜"]
-    misc2_165["气运榜"]
-    misc2_166["师德榜"]
-  end
-  subgraph equipset["装备图鉴"]
-    装备图鉴["装备图鉴"]
-  end
-  subgraph mailbox["离线信箱"]
-    信箱["信箱"]
-  end
-  subgraph pillparty["宗门丹会"]
-    宗门丹会["宗门丹会"]
-    领丹会丹["领丹会丹"]
-  end
-  subgraph xianpu["仙谱"]
-    仙谱["仙谱"]
-  end
-  sys_title{"⚙ 称号图鉴"}:::sys
-  sys_encounter{"⚙ 奇遇系统"}:::sys
-  sys_advisor{"⚙ 智能提示引擎"}:::sys
-  sys_karma{"⚙ 功德因果"}:::sys
-  sys_mentor{"⚙ 师徒系统"}:::sys
-  sys_spirit{"⚙ 仙灵道侣"}:::sys
-  sys_daily{"⚙ 日常任务"}:::sys
-  sys_bounty{"⚙ 悬赏系统"}:::sys
-  hub_breakthrough -->|境界称号| sys_title
-  hub_breakthrough -->|师德+5| sys_mentor
-  hub_breakthrough -->|下一步指引| sys_advisor
-  player_5 --> sys_advisor
-  player_7 --> sys_advisor
-  adventure_57 -->|20%触发| sys_encounter
-  misc2_148 --> sys_bounty
-  misc2_148 --> sys_title
-  misc2_146 -->|25%触发| sys_encounter
-  misc2_146 --> sys_daily
-  shop_21 --> ring_23
-  shop_21 --> hub_pill
-  escort_135 --> sys_bounty
-  escort_135 --> sys_karma
-  escort_137 -->|业力| sys_karma
-  worldboss_96 --> sys_daily
-  worldboss_96 --> sys_title
-  tide_131 --> sys_karma
-  demon_106 --> sys_title
-  spirit_117 --> sys_spirit
-  spirit_117 -->|互斥| misc2_149
-  spirit_120 --> sys_spirit
-  sect_43 --> sys_title
-  misc2_152 --> sys_title
-  karma_138 --> sys_karma
-  alchemy_61 --> sys_title
-  alchemy_61 --> sys_advisor
-  hub_breakthrough{"修炼突破"}
-  hub_pill{"丹药"}
-  装备 --> equipset_panel["🎴 套装生效"]
-  劫镖 --> mailbox_node["📮 离线信箱"]
-  悬赏助力 --> mailbox_node
-
-```
+| 指令 | 说明 |
+|:---|:---|
+| `/我要修仙 [职业]` | 创建角色（灵/体/魔/剑/鬼/佛/御兽） |
+| `/我的信息` | 个人面板（卡片） |
+| `/我的装备` | 装备面板（卡片） |
+| `/签到` | 每日签到（节日大奖+卡片） |
+| `/闭关` / `/出关` | 挂机修炼 |
+| `/突破 [破境丹]` | 突破境界 |
+| `/突破记录` | 突破心得录（统计+近期50次） |
+| `/改道号 <名>` | 修改道号 |
+| `/行善` | 每日行善积功德 |
+| `/选择生活职业 <名>` | 炼器/符箓/阵法 |
+| `/新手七日` | 新手引导（7天奖励） |
+| `/一键日常` | 智能日常引导 |
+| `/修仙帮助 [关键词]` | 完整指令大全 |
 
 </details>
 
-## 📜 更新日志（三改）
-
 <details>
-<summary><b>📖 点击展开完整版本沿革</b></summary>
+<summary><b>⚔️ 战斗与竞技</b></summary>
 
-**游戏版本沿革（v6.x 时代）**
-
-```
-v6.0   终极生态版   七职业/动态Boss/坊市/传家宝转生
-v6.8   五行奇遇     五行克制/丹劫/押镖劫道/奇遇系统
-v6.9   墨玉卡片     磨砂玻璃图片渲染器
-v6.10  天道无常     功德因果/生活职业/宗门建筑/魔潮天灾
-v6.11  天道酬勤     原子更新/五行标注/管理员工具/单测
-v6.12  万象奇遇     110 奇遇/押镖平衡
-v6.13  化身托管     化身傀儡/天道庇佑/商店卡片
-v6.14  四时轮转     灵田季节系统
-v6.15  完璧版       任务判定修复/结算海报/帮助全量
-v6.16  情缘师徒     NPC仙灵道侣/师徒/火候/魔潮自动化
-v6.17  称号图鉴     110 称号六品阶加成体系
-v6.18  万象更新     前缀强制/自动上货/随机任务池
-```
-
-**插件版本沿革（v3.x 三改维护）**
-
-```
-v3.18.3  缺陷修复版     审计 70 条缺陷全清：资产丢失/并发双领/事务击穿/迁移备份/配置接线
-v3.18.4  数值平衡版     押镖收益收敛/exp丹境界衰减/保底分段/经济闭环/270天毕业曲线
-v3.19.0  十一玩法版     天象/天骄榜/渡劫观礼/轮回周目/灵植园/道侣试炼/灵脉战/秘境扫荡/悬赏行会/图鉴收集/签到里程碑
-v3.20.0  十七玩法版     科举/罗盘/玩家结契/成就/灵宠出战/天材地宝
-v3.21.0  二十玩法版     斗法台锦标赛/宗门科技树/Boss拍卖行
-v3.22.0  廿四玩法版     登仙台世界工程/称号熔炼/每日求签/修仙群史
-v3.23.0  并发安全加固   原子原语(CAS/数值键/限次)落地，观礼密封重设计，7高危14中危全清
-v3.24.x  工程优化版     启动崩溃修复/性能四项/GameStore/main.py拆分/CI+单测/管理员工具箱
-v3.25.x  视觉重制版     新中式仙侠卡片(水墨远山/朱红印章/云头纹)/物品功效展示/卡片全量覆盖/复查修缮
-v3.25.2  指令注册回退   实测 Mixin 继承链指令无法被 AstrBot 唤醒，52 条新玩法指令全部移回 main.py，
-                        删除 commands/ 包（require_whitelist/封禁拦截/埋点/卡片适配器保留，内联主类）
-v3.25.3  回退善后修复   ① 拼接错位：/仙界管理 装饰器误挂到 send_text_card（管理面板失效、卡片函数被
-                        当指令调用报 AstrMessageEvent 错），已复位并全文件扫描确认 0 悬空装饰器
-                        ② `..` 相对导入越界（main.py 顶层模块）：卡片/GameStore 静默失败，改 `.utils/.managers`
-                        ③ 卡片生成异常不再静默吞掉，记录 error 日志便于排查
-v3.25.4  卡片内容修复   【关键】卡片适配器把 MessageEventResult 对象当文本（银行/排行等卡片正文出现
-                        "MessageEventResult(chain=[type=<Component..." 垃圾），新增 _res_text 解包组件链
-                        提取纯文本，13 处调用全部修正；另扫描出 7 对指令前缀包含冲突待观察
-v3.25.5  全量Bug清剿   【崩溃】/提前退出历练/秘境 NameError；/炼丹 重复 BEGIN 事务必崩；/丹药配方 调用
-                        不存在方法必崩；/大比切磋 装备玩家必崩（sect_config 误当 ConfigManager）；/购买物品
-                        连写形式必查无此物；装备卡片无装备时静默失效；/传承挑战 @目标解析失效
-                        【经济】师德兑换不扣点白嫖+退款反加点；/种植 不扣种子无限刷灵草/修为/灵石；
-                        查验天魔可自验白拿 3 万；丹会奖池 4/5 丹药名不存在且丹药误走储物戒（宗主还未实际发放）
-                        【逻辑】突破连败保底/道韵提示丢失；仙界日历周六显示"还有7天"；深查称号恒为 0；
-                        揪出天魔称号永不触发；sect 战斗未传 exp；卡片大标题 fill=None 隐形
-                        【静态】修复 11 处 F821 未定义名称（json/time/is_success/boss_name/draw/logger 等）
-                        【并发加固】玩家悬赏整池 CAS 化（领取/取消/过期退款防双发托管赏金，扣款条件原子防透支）；
-                        拍卖出价 CAS 抢占（防并发出价覆盖致托管款蒸发）；魔潮贡献/进度键改原子累加+DELETE 清理
-                        （修复 int("") 崩溃链）；宗门科技研读 CAS（防重复扣款/科技丢失）；飞升/斗法台开赛/
-                        灵脉周结算加幂等锁（防双发轮回玉/冠军奖/全宗奖励）；出师弟子可再拜师（UNIQUE 冲突）；
-                        灵兽契约先占坑后扣款、吞噬先返还后删除（防资金/灵兽蒸发）；system_config 新增
-                        delete_system_config 原语
-                        【S1原子化】奖励/扣款路径批量改原子接口（add_player_gold/add_player_exp/条件原子扣款/
-                        update_player_fields 定向落库），消除"快照 Player→update_player 整行回写"覆盖并发变更：
-                        科举答题（会话 CAS+场次回滚）/秘境结算/悬赏助力 CAS/robbery/师徒出师/仙灵结缘共修/
-                        灵眼抢占 rowcount 化+收取 CAS/灵田全套/称号钩子计数与落库/建宗退宗踢人捐献大比/
-                        宗门任务结算权抢占/仙缘商店条件扣点/坊市购买事务内重取+条件扣款/完成悬赏 rowcount 门禁/
-                        洞天购买占坑+收取 CAS/天魔结算 CAS+批量 SQL/押镖结算权抢占+退出冷却/魔潮捐献/
-                        提前退出奖励原子化/每日任务池稳定哈希（修 PYTHONHASHSEED 重启漂移）
-                        【第四批】仙灵代收洞天 CAS 防并发双收+情缘钳制非负；求婚 CAS 抢占请求位后再扣礼金
-                        （防并发吞礼金/异常不退）；观礼下注 CAS 化（防注单覆盖托管款蒸发/开奖池复活双退款）+
-                        遗留池作废 CAS 防双退款；接受赠予事务卫生（过期清理挪到 BEGIN 前，防内部 commit 击穿
-                        事务致物品蒸发）；秘境完成门禁原子化（防天骄榜双计）；扫荡剩余次数显示差一修复+
-                        余额不足回滚场次
-                        【第五批】双修接受冷却改条件原子占用（防多人并发接受重复吃发起者 10% 修为，收益原子化）；
-                        大比每日次数改 syscfg_claim_slot 原子限次（防连发刷爆 3 次/日）；洞天进阶保留已购家具
-                        （原 DELETE 重建家具蒸发）+ 按设计注释实现 0.3 折扣成本 + 无洞天价格表与配置对齐
-                        【第六批·事务卫生】新增 db.begin_immediate() 安全事务入口并统一替换全部 22 处裸
-                        BEGIN IMMEDIATE——共享单连接下协程 A 事务未结束时 B 的裸 BEGIN 必抛
-                        "transaction within a transaction" 且 B 的 rollback 会波及 A 的未提交工作；
-                        现改为冲突让步重试，各事务段互不裹挟；世界Boss挑战加 CAS 击杀权（防并发双杀双奖）
-                        + 战败分支改原子扣血（防伤害被后写者回滚）+ 奖励/战损原子落库；历练结算三个自带
-                        commit 的回调（结契羁绊/道侣周任务/天骄榜）挪到事务提交后执行，恢复结算完整原子性
-                        【第七批·收尾清扫】C4 残留快照回写原子化（丹炉升级/家具购买/图鉴加成/奇遇事件结算/
-                        劫镖所得/七日奖励/护府大阵/切原石/黑市购买/传承PK/生活职业/灵兽喂养/新手引导/
-                        师德称号落库/Boss 战前状态——15 文件 16 处，残留 9 处均为事务内新鲜重取的安全写法）；
-                        C3 移除"换命符"半成品死代码（该物品不存在于任何配置，功能永远无法触发，
-                        已留实现指引注释）
-v3.26.0  新玩法三连   【🗼 镇妖塔】逐层爬塔 PVE：/镇妖塔 挑战最高层+1（每日3次，妖兽属性指数递增），
-                        /镇妖塔扫荡 快速拿奖（每日2次60%收益），/镇妖塔榜 全服登塔榜，每 3/5/10 层里程碑
-                        掉落，破全服纪录播报，新增称号【破阵先锋】【镇妖塔主】
-                        【🐾 灵兽探险】/灵兽派遣 [地点] 派灵兽外出8小时（5大地点收益侧重不同，收获随灵兽
-                        等级成长），/灵兽归来 收取灵石/修为/灵兽经验/概率物品——灵兽闲置时间有了价值
-                        【🪷 功德善堂】功德消费闭环：/功德善堂 查看货架，/功德兑换 <编号>（引雷符/空间石/
-                        天道庇佑24h可叠加/称号【济世善人】），功德原子扣减、失败自动退还；/行善 同步原子化
-                        全部状态复用 system_config 键，无新表无迁移；奖励全走原子原语
-v3.27.0  除妖系统     /除妖 猎杀一只与自身境界相当的随机妖兽（每日5次，属性随机浮动），
-                        战利品修为/灵石+概率掉落引雷符/洗练石/强化石/空间石，战败保底+气血受创；
-                        /除妖信息 查看体力与累计战绩；累计50只获称号【降妖伏魔】；与镇妖塔分工：
-                        塔=固定阶梯进度挑战，除妖=每日随机刷怪产出；奖励全走原子原语
-v3.28.0  顿悟与道心   出关 15% 概率顿悟：本次修炼收益 ×1.5/×2/×3（每日至多1次，原子认领防连刷）；
-                        每次顿悟 +1 道心，每 10 道心提供闭关收益 +1%（上限+10%）的永不折损被动；
-                        /悟道 查看道心与顿悟状态；新增 managers/enlighten_manager.py
-v3.29.0  云游商人     /云游商人 每 2 小时刷新 3 件 5-8 折特惠（时间种子确定性生成，全服同步、无需
-                        持久化），/云游购买 <编号> 每人每件每期限购 1 份（原子限购）；丹药入丹药背包、
-                        其余入储物戒；扣款条件原子、失败自动释放限购并退款
-v3.30.0  段位天梯     PVP 积分段位体系：决斗 胜+3/负-1、切磋 胜+1（发起方结算，积分钳≥0），
-                        六大段位（青铜→宗师）达标即晋升，/天梯 面板、/天梯领取 段位里程碑一次性
-                        奖励（2000~80000灵石）、/天梯榜 全服高手榜；晋升播报+新称号【初入天梯】
-                        【天梯战魂】【天梯至圣】；积分/胜场全走原子原语
-v3.31.0  轮回天赋树   仙缘点深度消耗系统：/轮回天赋 查看五节点天赋树（破煞/玄芒/铁骨/御灵/悟道，
-                        各 10 层，物伤/法伤/物防/法防/精神力直接加成），/轮回悟道 <节点名> 消耗仙缘点
-                        参悟（20×层数递增）；需至少转生 1 次解锁，天赋等级存 permanent_bonus 跨周目
-                        永久生效；仙缘点条件原子扣减、属性原子增量
-v3.32.0  灵潮事件     全服随机增益窗口：后台任务每 5 分钟判定（每 30 分钟时段至多一次，CAS 防重复），
-                        18% 概率开启 25 分钟灵潮——全服闭关/历练修为 +30%，开启即全服播报；
-                        /灵潮 查看状态；与天气/求签/道心/称号等个人加成叠加
-v3.33.0  宗门秘境     宗门协力 Boss：/召唤宗门Boss（宗主/长老，消耗 2000 资材，HP 随宗门人数成长，
-                        12 小时存续），/讨伐宗门Boss（每日2次，伤害原子扣减共享血池、个人伤害原子累计），
-                        血量归零触发全宗结算（全员 3000 灵石 + 8000 修为，伤害榜 Top3 追加洗练石）；
-                        到期遁走资材不退；结算 CAS 抢占防双发
-v3.34.0  仙途回忆录   /回忆录 个人生涯年报：修炼（境界/修为/周目）+ 战斗（镇妖塔/除妖/天梯）+
-                        积累（道心/功德/师德/仙缘/轮回玉）+ 生活（灵石/存款/贡献/洞天）四大篇章，
-                        纯聚合读取零写入
-```
+| 指令 | 说明 |
+|:---|:---|
+| `/切磋 @人` | 友谊切磋（天梯+1分） |
+| `/决斗 @人` | 生死决斗（天梯+3分） |
+| `/挑战世界Boss` | 全服Boss战 |
+| `/大比切磋 @人` | 宗门大比 |
+| `/传承挑战 @人` | 传承PK |
+| `/天梯` / `/天梯榜` | PVP段位面板与排行 |
+| `/除妖` | 野外战斗（每日5次） |
+| `/妖兽图鉴` | 收集8种妖兽（集齐奖2万） |
+| `/镇妖塔` | 爬塔挑战（每日3次） |
+| `/镇妖塔榜` | 全服登塔排行 |
 
 </details>
 
-> 📖 各版本详细变更见提交历史与 Release 说明。
+<details>
+<summary><b>💊 丹药与炼丹</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/丹药配方` | 可炼配方列表 |
+| `/炼制丹药 <ID>` | 炼丹（投料→/火候→成丹） |
+| `/丹药背包` | 丹药库存 |
+| `/服用丹药 <名>` | 使用丹药 |
+| `/丹药合成` / `/合成丹药 <产物>` | 三丹归一 |
+| `/升级丹炉` | 丹炉等级+成功率 |
+| `/强化` | 装备强化（带保底） |
+| `/洗练` | 词条洗练 |
+
+</details>
+
+<details>
+<summary><b>🏔️ 修炼玩法</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/修炼周报` | 本周数据总览 |
+| `/回忆录` | 生涯年报 |
+| `/悟道` | 道心与顿悟 |
+| `/仙界日历` | 季节与事件预告 |
+| `/求签` / `/今日运势` | 每日运势 |
+| `/修仙天气` | 天象加成 |
+| `/激活化身` | 30天闭关+20% |
+
+</details>
+
+<details>
+<summary><b>🏪 经济与交易</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/银行` / `/存灵石` / `/取灵石` | 银行系统 |
+| `/贷款` / `/突破贷款` / `/还款` | 突破贷款 |
+| `/坊市` / `/坊市上架` / `/坊市购买` | 玩家交易 |
+| `/拍卖行` / `/竞拍 <金额>` | Boss掉落竞拍 |
+| `/切原石` / `/黑市` / `/黑市购买` | 赌坊 |
+| `/云游商人` / `/云游购买 <编号>` | 限时特惠（每2h刷新） |
+| `/天道盘` / `/天道盘押 <红\|玄> <灵石>` | 全服赌盘 |
+| `/发红包` / `/抢红包 <编号>` | 拼手气红包 |
+| `/功德善堂` / `/功德兑换 <编号>` | 功德商店 |
+| `/藏宝图` / `/合成藏宝图` / `/探寻宝藏` | 碎片寻宝 |
+
+</details>
+
+<details>
+<summary><b>🏛️ 宗门</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/创建宗门` / `/加入宗门` / `/退出宗门` | 宗门管理 |
+| `/宗门捐献 <灵石>` | 捐献（贡献+建设度） |
+| `/宗门捐献榜` | 周捐献排行 |
+| `/宗门科技` / `/宗门研科技` | 科技树 |
+| `/宗门任务` | 宗门日常 |
+| `/宗门秘境` / `/召唤宗门Boss` / `/讨伐宗门Boss` | 协力Boss |
+| `/灵脉战` / `/进攻灵脉` | 据点争夺 |
+| `/开启护府` / `/潜入洞府 @人` | 护府/掠夺 |
+
+</details>
+
+<details>
+<summary><b>🧧 社交</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/结契 @人` / `/接受结契` / `/解除结契` | 玩家道侣 |
+| `/仙侣送礼 <物品>` | 送礼+羁绊 |
+| `/双修 @人` / `/接受双修` | 双修 |
+| `/拜师 @人` / `/出师 @人` / `/出师考` | 师徒系统 |
+| `/师门威望` / `/师门威望领取` | 名师威望 |
+| `/师德兑换 <编号>` | 师德商店 |
+| `/仙灵结缘` / `/仙灵共修` / `/仙灵代收` | NPC道侣 |
+| `/传功 @后辈` | 老带新（双向增益） |
+| `/信箱` | 离线事件信件 |
+
+</details>
+
+<details>
+<summary><b>✨ 飞升与长线</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/飞升 [传家宝]` | 飞升转生 |
+| `/轮回天赋` / `/轮回悟道 <节点>` | 天赋树 |
+| `/仙缘商店` / `/仙缘突破卷` | 仙缘兑换 |
+| `/轮回宝阁` / `/轮回兑换 <编号>` | 轮回玉商店 |
+| `/称号图鉴` / `/佩戴称号 <名>` | 称号系统 |
+| `/称号熔炼` | 三同阶熔炼高一阶 |
+
+</details>
+
+<details>
+<summary><b>🎴 其他玩法</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/科举` / `/答题 <号> <ABCD>` | 修仙科举 |
+| `/罗盘` / `/罗盘 抽 <N>` | 幸运罗盘 |
+| `/成就` / `/成就领取 <编号>` | 成就系统 |
+| `/收集图鉴` / `/签到里程碑` | 收集与签到奖励 |
+| `/悬赏行会` / `/发布悬赏` / `/接玩家悬赏` | 玩家悬赏 |
+| `/扫荡秘境 <编号>` | 秘境扫荡 |
+| `/天道悬赏` | 全服悬赏 |
+| `/夺宝` / `/天材地宝` | 全服限时抢夺 |
+| `/登仙台` / `/助登仙台` | 全服世界工程 |
+| `/灵植园` / `/照料灵园` | 群聊共建灵园 |
+| `/道侣试炼` | 道侣共同任务 |
+| `/修仙群史` | 群聊大事记 |
+| `/任务榜` / `/接取任务` / `/领取任务奖励` | 天道任务 |
+
+</details>
+
+<details>
+<summary><b>🌑 天道天灾与活动</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/仙界日历` | 季节+事件预告 |
+| `/魔潮状态` / `/抵御魔潮 <灵石>` | 魔潮天灾 |
+| `/天魔状态` / `/查验天魔 @人` | 天魔入侵 |
+| `/灵潮` | 全服随机增益窗口 |
+| `/巢穴状态` / `/驰援巢穴` | 妖兽巢穴防御战 |
+
+</details>
+
+<details>
+<summary><b>📊 排行榜</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/境界排行` / `/战力排行` / `/灵石排行` | 基础排行 |
+| `/存款排行` / `/宗门排行` / `/贡献排行` | 经济排行 |
+| `/功德榜` / `/气运榜` / `/师德榜` | 道德排行 |
+| `/天骄榜` | 90天赛季修为增量榜 |
+| `/天梯榜` / `/镇妖塔榜` / `/宗门捐献榜` | 玩法排行 |
+
+</details>
+
+<details>
+<summary><b>🛠️ 管理员</b></summary>
+
+| 指令 | 说明 |
+|:---|:---|
+| `/仙界管理` | 管理面板（查/封/设/发/补偿） |
+| `/开启魔潮` / `/开启天魔入侵` | 活动控制 |
+| `/开启宗门大比` / `/结束宗门大比` | 大比控制 |
+| `/开启巢穴入侵` | 巢穴防御战 |
+
+</details>
+
+---
+
+## 🗂️ 项目架构
+
+```
+astrbot_plugin_xiuxian_promax/
+├── main.py                  # 指令注册入口
+├── config_manager.py        # 配置管理
+├── models.py / models_extended.py  # 数据模型
+├── core/                    # 核心业务
+│   ├── breakthrough_manager.py   # 突破（含心得录/保底/道韵/贷款）
+│   ├── cultivation_manager.py    # 修炼
+│   ├── equipment_manager.py      # 装备/强化/洗练
+│   ├── pill_manager.py           # 丹药/合成/背包
+│   ├── shop_manager.py           # 商店
+│   └── storage_ring_manager.py   # 储物戒
+├── data/                    # 数据层
+│   ├── data_manager.py           # 基础CRUD + 原子原语
+│   ├── database_extended.py      # 扩展CRUD + CAS/数值键
+│   ├── migration.py              # 建表/迁移（v29）
+│   └── default_configs.py        # 默认配置
+├── handlers/                # 指令处理器（34 模块）
+├── managers/                # 玩法管理器（55+ 模块）
+├── utils/                   # 工具
+│   ├── image_generator.py        # 新中式仙侠卡片渲染
+│   └── config_loader.py          # 配置加载
+├── config/                  # JSON 配置（17 个文件）
+├── resources/               # 图片资源
+├── tests/                   # 测试套件（107 项）
+└── scripts/                 # 开发脚本
+```
+
+---
+
+## 🧪 测试
+
+```bash
+# 全量测试（107 项）
+python -m unittest discover -s tests
+
+# 语法检查
+python scripts/check_syntax.py
+
+# 导入烟测（20 核心模块）
+python scripts/import_smoke.py
+
+# Lint
+ruff check . --select F821,F823,F401,F841,B007,E722
+```
+
+<details>
+<summary>测试覆盖详情</summary>
+
+| 模块 | 用例数 | 覆盖内容 |
+|:---|:---|:---|
+| `test_atomic_primitives.py` | 10 | CAS 抢占/原子扣减/限次认领/竞态交错/日键清理 |
+| `test_core_logic.py` | 16 | 战斗公式/五行克制/银行利息/配置/称号/季节/炼丹 |
+| `test_gameplay_managers.py` | 81 | 镇妖塔/功德善堂/顿悟/天梯/合成/保底/天道盘/巢穴/宗门秘境/回忆录/除妖/图鉴/藏宝图/周报/心魔试炼/威望/送礼/封号/突破卷/周榜 |
+
+全部测试使用**真实临时 SQLite 数据库**（migration v29 全量建表），验证完整业务闭环。
+
+</details>
+
+---
+
+## 📋 版本历程
+
+<details>
+<summary><b>点击展开 27 个版本</b></summary>
+
+| 版本 | 主题 |
+|:---|:---|
+| v3.26.0 | 🗼 镇妖塔 + 🐾 灵兽探险 + 🪷 功德善堂 |
+| v3.27.0 | 🗡️ 除妖系统 |
+| v3.28.0 | 🧘 顿悟与道心 |
+| v3.29.0 | 🧳 云游商人 |
+| v3.30.0 | ⚔️ 段位天梯 |
+| v3.31.0 | 🌟 轮回天赋树 |
+| v3.32.0 | 🌌 灵潮事件 |
+| v3.33.0 | 🐉 宗门秘境 |
+| v3.34.0 | 📖 仙途回忆录 |
+| v3.35.0 | 🐗 妖兽巢穴入侵 |
+| v3.36.0 | 🎲 天道盘 |
+| v3.37.0 | 🏮 仙府传功 |
+| v3.38.0 | 👻 秘境幽影 |
+| v3.39.0 | ⚗️ 丹药合成 |
+| v3.40.0 | 🛡️ 强化保底 |
+| v3.40.1 | 🔧 质量修缮（160+ 静态清零） |
+| v3.40.2 | 🧪 正规测试（67 项测试套件） |
+| v3.41.0 | 🪞 心魔试炼 |
+| v3.42.0 | 🧧 灵石红包 |
+| v3.43.0 | 📚 妖兽图鉴 |
+| v3.44.0 | 🏛️ 师门威望 |
+| v3.45.0 | 🗺️ 秘境藏宝图 |
+| v3.46.0 | 💝 仙侣送礼 |
+| v3.47.0 | 📊 突破心得录 |
+| v3.48.0 | 🏛️ 宗门捐献周榜 |
+| v3.49.0 | 📋 修炼周报 |
+| v3.50.0 | 🏛️ 封号台 + 📜 仙缘突破卷 |
+
+</details>
+
+---
+
+## ⚙️ 配置
+
+插件首次启动自动生成 `_config.json`，可在 AstrBot WebUI 中配置：
+
+| 配置项 | 说明 |
+|:---|:---|
+| `BOSS_ADMINS` | 管理员 QQ 号列表 |
+| `WHITELIST_GROUPS` | 白名单群号列表 |
+| `IMAGE_CARDS` | 卡片渲染开关 |
+
+游戏数值配置位于 `config/` 目录下的 17 个 JSON 文件（等级/丹药/武器/宗门/Boss/秘境等），修改后重启生效。
+
+---
+
+## 🤝 贡献
+
+欢迎提交 PR！开发前请阅读 [AGENTS.md](AGENTS.md) 了解项目规范。
+
+```bash
+# 开发环境
+pip install ruff pyflakes
+
+# 提交前检查
+python -m unittest discover -s tests
+python scripts/check_syntax.py
+ruff check . --select F821,F823,F401,F841,B007,E722
+```
 
 ## 📜 许可证
 
-[AGPL-3.0](LICENSE) · 原作与二改贡献同样遵循原许可证
+[AGPL-3.0](LICENSE) · 原作 [xiaojuwa](https://github.com/xiaojuwa) · 三改 [云兮](https://github.com/iqapi)
 
 ## 💬 支持
 
 - 提交 [Issue](https://github.com/iqapi/astrbot_plugin_xiuxian_promax/issues)
 - 觉得好用请点一个 ⭐Star，这是免费开源插件最大的鼓励！
 
----
-
-<img src="https://capsule-render.vercel.app/api?type=waving&height=130&text=%E9%81%93%E5%8F%8B%EF%BC%8C%E4%BB%99%E9%80%94%E6%BC%AB%E6%BC%AB%EF%BC%8C%E4%B8%8E%E5%90%9B%E5%90%8C%E8%A1%8C%E3%80%82&fontSize=30&color=0:6B4F1A,50:D4AF37,100:FFE29A&section=footer" alt="道友，仙途漫漫，与君同行。" width="100%">
+</div>

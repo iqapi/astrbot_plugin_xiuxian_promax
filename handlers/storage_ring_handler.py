@@ -56,7 +56,7 @@ class StorageRingHandler:
             f"【{ring_info['name']}】（{ring_info['rank']}）\n",
             f"{ring_info['description']}\n",
             f"\n容量：{ring_info['used']}/{ring_info['capacity']}格\n",
-            f"━━━━━━━━━━━━━━━\n",
+            "━━━━━━━━━━━━━━━\n",
         ]
 
         # 按分类显示存储的物品
@@ -395,9 +395,9 @@ class StorageRingHandler:
             current_capacity = self.storage_ring_manager.get_ring_capacity(player.storage_ring)
 
             lines = [
-                f"=== 储物戒列表 ===\n",
+                "=== 储物戒列表 ===\n",
                 f"当前：【{player.storage_ring}】({current_capacity}格)\n",
-                f"━━━━━━━━━━━━━━━\n",
+                "━━━━━━━━━━━━━━━\n",
             ]
 
             for ring in rings:
@@ -509,14 +509,14 @@ class StorageRingHandler:
     async def handle_store_all(self, player: Player, event: AstrMessageEvent, category: str = None):
         """批量存入物品（预留接口，实际物品来源需要其他系统配合）"""
         yield event.plain_result(
-            f"📦 批量存入功能说明：\n"
-            f"当前物品会在以下情况自动存入储物戒：\n"
-            f"  · 商店购买物品\n"
-            f"  · 历练/秘境获得物品\n"
-            f"  · Boss击杀掉落\n"
-            f"  · 悬赏任务奖励\n"
-            f"  · 卸下装备\n"
-            f"\n所有物品获取后会自动存入储物戒"
+            "📦 批量存入功能说明：\n"
+            "当前物品会在以下情况自动存入储物戒：\n"
+            "  · 商店购买物品\n"
+            "  · 历练/秘境获得物品\n"
+            "  · Boss击杀掉落\n"
+            "  · 悬赏任务奖励\n"
+            "  · 卸下装备\n"
+            "\n所有物品获取后会自动存入储物戒"
         )
 
     @player_required
@@ -556,11 +556,11 @@ class StorageRingHandler:
         
         lines = [f"=== 批量取出【{category}】 ===\n"]
         if retrieved:
-            lines.append(f"✅ 已取出：\n")
+            lines.append("✅ 已取出：\n")
             for item in retrieved:
                 lines.append(f"  · {item}\n")
         if failed:
-            lines.append(f"\n❌ 失败：\n")
+            lines.append("\n❌ 失败：\n")
             for item in failed:
                 lines.append(f"  · {item}\n")
         

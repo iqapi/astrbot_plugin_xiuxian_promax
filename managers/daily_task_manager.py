@@ -1,8 +1,7 @@
 # managers/daily_task_manager.py
-import random
 import time
 import json
-from typing import Tuple, List, Dict
+from typing import Tuple
 from ..data import DataBase
 from ..models import Player
 
@@ -238,6 +237,6 @@ class DailyTaskManager:
                 
             return True, "\n".join(msg), total_items
             
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise

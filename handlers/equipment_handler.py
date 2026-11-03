@@ -92,7 +92,8 @@ class EquipmentHandler:
         try:
             from ..utils.image_generator import render_card_async, card_enabled
             if card_enabled("CARD_EQUIP"):
-                element_of = lambda n: (self.config_manager.get_item_element(n) if n else "")
+                def element_of(n):
+                    return (self.config_manager.get_item_element(n) if n else "")
                 equip_rows = [
                     ("武器", player.weapon or "未装备"),
                     ("防具", player.armor or "未装备"),
@@ -129,7 +130,7 @@ class EquipmentHandler:
         try:
             from ..managers.enhance_systems import EquipSetManager
             set_panel = EquipSetManager(self.db).panel(player)
-            triggered_lines = [l for l in set_panel.splitlines() if l.startswith("✅")]
+            triggered_lines = [ln for ln in set_panel.splitlines() if ln.startswith("✅")]
             if triggered_lines:
                 yield event.plain_result("🎴【套装生效】\n" + "\n".join(triggered_lines))
         except Exception:
@@ -266,7 +267,7 @@ class EquipmentHandler:
                     player, unequipped_item_name, 1, silent=True
                 )
                 if store_success:
-                    storage_msg = f"\n已存入储物戒"
+                    storage_msg = "\n已存入储物戒"
                 else:
                     storage_msg = f"\n⚠️ 存入储物戒失败：{store_msg}"
 

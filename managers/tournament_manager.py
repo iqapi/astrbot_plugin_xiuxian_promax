@@ -131,7 +131,7 @@ class TournamentManager:
                             return ""
                         for uid in players:
                             await self.db.add_player_gold(uid, self.ENTRY_FEE)
-                        return f"⚔️ 本届斗法台报名不足 2 人，报名费已全数退回。"
+                        return "⚔️ 本届斗法台报名不足 2 人，报名费已全数退回。"
                     # 空届次收尾（无资金操作，同样 CAS 化保持一致）
                     done_state = {**state, "phase": "done"}
                     await self.db.ext.syscfg_cas(
@@ -163,7 +163,7 @@ class TournamentManager:
                     for uid in old["players"]:
                         await self.db.add_player_gold(uid, self.ENTRY_FEE)
                     logger.info(f"[tournament] 遗漏届次已退费了结: {key}")
-                    return f"⚔️ 上届斗法台因停服未能开赛，全部报名费已退回，敬请谅解。"
+                    return "⚔️ 上届斗法台因停服未能开赛，全部报名费已退回，敬请谅解。"
             return ""
         except Exception as e:
             logger.error(f"斗法台开赛异常: {e}")
@@ -264,14 +264,14 @@ class TournamentManager:
             await self.db.add_player_gold(uid, self.SEMI_GOLD)
 
         lines = [
-            f"⚔️【斗法台锦标赛】落幕！",
-            f"━━━━━━━━━━━━━━━",
+            "⚔️【斗法台锦标赛】落幕！",
+            "━━━━━━━━━━━━━━━",
         ]
         lines.extend(log_lines[-3:])
         lines.append("━━━━━━━━━━━━━━━")
         lines.append(f"🏆 本届冠军：【{champ_name}】")
         lines.append(f"奖励：{self.CHAMPION_GOLD:,} 灵石 + {self.CHAMPION_EXP:,} 修为！")
-        lines.append(f"💡 下周一 /斗法台 报名，卷土重来！")
+        lines.append("💡 下周一 /斗法台 报名，卷土重来！")
         return "\n".join(lines)
 
     def _combat(self):

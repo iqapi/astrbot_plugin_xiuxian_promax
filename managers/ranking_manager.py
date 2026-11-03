@@ -3,7 +3,7 @@
 排行榜系统管理器 - 处理各种排行榜逻辑
 """
 
-from typing import Tuple, List, TYPE_CHECKING, Optional
+from typing import Tuple, TYPE_CHECKING, Optional
 from ..data.data_manager import DataBase
 from ..managers.combat_manager import CombatManager
 
@@ -267,7 +267,7 @@ class RankingManager:
             sect_name = sect_name[:MAX_NAME_LENGTH] + "…"
         
         msg = f"📊 {sect_name} 贡献排行\n"
-        msg += f"━━━━━━━━━━━━━━━\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         
         for idx, member in enumerate(sorted_members, 1):
             name = _safe_name(member, member.user_id)

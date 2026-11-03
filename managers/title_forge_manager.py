@@ -12,7 +12,6 @@ import random
 import time
 from typing import Tuple, List
 
-from astrbot.api import logger
 
 from ..data.data_manager import DataBase
 from ..models import Player

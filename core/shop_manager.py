@@ -2,12 +2,10 @@
 
 import random
 import time
-import json
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 from astrbot.api import AstrBotConfig, logger
 from ..config_manager import ConfigManager
-from ..models import Item
 
 class ShopManager:
     """商店管理器，负责商店物品生成、刷新和购买"""
@@ -394,7 +392,7 @@ class ShopManager:
             remaining = (last_refresh + refresh_hours * 3600) - int(time.time())
             if remaining > 0:
                 lines.append(f"\n下次刷新: {remaining // 3600}小时{(remaining % 3600) // 60}分钟后")
-        lines.append(f"\n提示: 使用 '购买 [物品名]' 购买物品")
+        lines.append("\n提示: 使用 '购买 [物品名]' 购买物品")
         return "".join(lines)
 
     # v3.24.2：功法/饰品通用 effects 词条表（键 → 中文标签）

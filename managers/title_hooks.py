@@ -1,7 +1,6 @@
 # managers/title_hooks.py
 """称号颁发钩子：各玩法计数 + 统一检查授予。
 计数存 system_config: title_cnt_<key>_<uid>"""
-from typing import Optional
 from astrbot.api import logger
 
 from ..data.data_manager import DataBase

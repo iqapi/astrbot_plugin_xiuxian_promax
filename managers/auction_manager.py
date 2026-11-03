@@ -130,7 +130,7 @@ class AuctionManager:
             )
             if not success:
                 await self.db.conn.rollback()
-                return False, f"❌ 购买失败：你的储物戒空间不足，请先清理背包。"
+                return False, "❌ 购买失败：你的储物戒空间不足，请先清理背包。"
 
             # 3. 扣除买家灵石（v3.25.5：条件原子扣款，原快照整行回写并发下可双花/覆盖）
             cursor = await self.db.conn.execute(
@@ -183,7 +183,7 @@ class AuctionManager:
             )
             if not success:
                 await self.db.conn.rollback()
-                return False, f"❌ 储物戒已满，无法下架退回物品。请清理背包后再试。"
+                return False, "❌ 储物戒已满，无法下架退回物品。请清理背包后再试。"
 
             await self.db.conn.execute("DELETE FROM auction_items WHERE id = ?", (auction_id,))
             await self.db.conn.commit()

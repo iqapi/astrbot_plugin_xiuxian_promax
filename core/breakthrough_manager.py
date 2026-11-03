@@ -2,6 +2,7 @@
 
 import json
 import random
+import time
 from typing import Optional, Tuple
 from astrbot.api import logger
 
@@ -145,6 +146,16 @@ class BreakthroughManager:
 
         level_data = self.config_manager.get_level_data(player.cultivation_type)
 
+        # v3.50.0 仙缘突破卷：自动消耗一张，成功率 +8%
+        try:
+            from ..managers.reincarnation_manager import ReincarnationManager
+            charge_bonus, charge_note = await ReincarnationManager.consume_bt_charge(self.db, player)
+            if charge_bonus > 0:
+                success_rate = min(1.0, success_rate + charge_bonus)
+                rate_info += charge_note
+        except Exception:
+            pass
+
         # 3. 判定突破结果（资费已缴，无论成败不退）
         player.gold -= breakthrough_cost
         cost_note = f"\n💰 突破资费：-{breakthrough_cost:,} 灵石（剩余 {player.gold:,}）"
@@ -222,13 +233,11 @@ class BreakthroughManager:
                 blood_qi_gain = next_level_data.get("breakthrough_blood_qi_gain", 0)
                 player.max_blood_qi += blood_qi_gain
                 player.blood_qi = player.max_blood_qi
-                energy_name = "气血"
                 energy_gain = blood_qi_gain
             else:
                 spiritual_qi_gain = next_level_data.get("breakthrough_spiritual_qi_gain", 0)
                 player.max_spiritual_qi += spiritual_qi_gain
                 player.spiritual_qi = player.max_spiritual_qi
-                energy_name = "灵气"
                 energy_gain = spiritual_qi_gain
 
             player.lifespan += lifespan_gain
@@ -328,6 +337,8 @@ class BreakthroughManager:
 
             if tribbet_opened:
                 success_msg += "\n🎆 观礼奖池已封存，5 分钟后全服开奖，/观礼 查看下注情况！"
+            # v3.47.0 突破心得录：记录成功
+            await self._record_breakthrough(player, current_level_name, next_level_name, True, pill_name)
             return True, success_msg, False
 
         else:
@@ -360,9 +371,11 @@ class BreakthroughManager:
                         f"请继续修炼，重回巅峰！"
                     )
                     logger.info(f"玩家 {player.user_id} 突破失败触发回生丹，成功复活")
+                    await self._record_breakthrough(player, current_level_name, next_level_name, False, pill_name, resurrected=True)
                     return False, resurrection_msg, False
 
                 # 真死
+                await self._record_breakthrough(player, current_level_name, next_level_name, False, pill_name, died=True)
                 await self.db.delete_player_cascade(player.user_id)
                 death_msg = (
                     f"💀 突破失败，走火入魔！💀\n"
@@ -397,7 +410,7 @@ class BreakthroughManager:
                     if daoyun >= 100:
                         pity_data["daoyun"] = 0
                         pity_data["daoyun_guarantee"] = 1
-                        pity_note = f"\n🌠 道韵圆满！你隐约触到了那扇门——下次突破【必定成功】"
+                        pity_note = "\n🌠 道韵圆满！你隐约触到了那扇门——下次突破【必定成功】"
                     else:
                         pity_note = f"\n🌠 渡劫道韵：{daoyun}/100（满100后下次突破必定成功）"
 
@@ -418,8 +431,81 @@ class BreakthroughManager:
                 if pity_note:
                     fail_msg += pity_note
                 logger.info(f"玩家 {player.user_id} 突破失败：{current_level_name} -> {next_level_name}，损失修为 {exp_penalty}")
+                await self._record_breakthrough(player, current_level_name, next_level_name, False, pill_name)
                 return False, fail_msg, False
-    
+
+    # ===== v3.47.0 突破心得录 =====
+
+    BT_LOG_KEY = "bt_log_{uid}"
+    BT_LOG_MAX = 50
+
+    async def _record_breakthrough(self, player, from_level: str, to_level: str,
+                                   success: bool, pill_name: str = None,
+                                   resurrected: bool = False, died: bool = False):
+        """记录突破尝试到心得录（FIFO 最多 50 条）"""
+        uid = player.user_id
+        key = self.BT_LOG_KEY.format(uid=uid)
+        try:
+            raw = await self.db.ext.get_system_config(key)
+            entries = json.loads(raw) if raw else []
+            if not isinstance(entries, list):
+                entries = []
+        except (json.JSONDecodeError, TypeError):
+            entries = []
+        entries.append({
+            "ts": int(time.time()),
+            "from": from_level,
+            "to": to_level,
+            "ok": success,
+            "pill": pill_name or "",
+            "died": died,
+            "res": resurrected,
+        })
+        entries = entries[-self.BT_LOG_MAX:]
+        await self.db.ext.set_system_config(key, json.dumps(entries, ensure_ascii=False))
+
+    async def get_breakthrough_stats(self, player) -> str:
+        """突破心得面板：统计 + 近期记录"""
+        uid = player.user_id
+        key = self.BT_LOG_KEY.format(uid=uid)
+        try:
+            raw = await self.db.ext.get_system_config(key)
+            entries = json.loads(raw) if raw else []
+            if not isinstance(entries, list):
+                entries = []
+        except (json.JSONDecodeError, TypeError):
+            entries = []
+
+        total = len(entries)
+        wins = sum(1 for e in entries if e.get("ok"))
+        fails = total - wins
+        deaths = sum(1 for e in entries if e.get("died"))
+        res = sum(1 for e in entries if e.get("res"))
+        rate = f"{wins * 100 // total}%" if total else "—"
+
+        lines = [
+            "📊【突破心得录】",
+            "━━━━━━━━━━━━━━━",
+            f"📈 总尝试：{total} 次 · 成功 {wins} · 失败 {fails} · 成功率 {rate}",
+        ]
+        if deaths:
+            lines.append(f"💀 走火入魔：{deaths} 次")
+        if res:
+            lines.append(f"💊 回生丹救回：{res} 次")
+        if not entries:
+            lines.append("（尚无突破记录——大道漫漫，试试 /突破？）")
+        else:
+            lines.append("—— 近期记录 ——")
+            for e in entries[-10:]:
+                import time as _t
+                ts = _t.strftime("%m-%d %H:%M", _t.localtime(e["ts"]))
+                mark = "✅" if e["ok"] else ("💀" if e.get("died") else "❌")
+                pill = f"（{e['pill']}）" if e.get("pill") else ""
+                lines.append(f"  {mark} {e['from']} → {e['to']} {ts}{pill}")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("💡 突破心得录自动记录最近 50 次突破尝试")
+        return "\n".join(lines)
+
     async def _handle_breakthrough_loan_repay(self, player: Player) -> str:
         """处理突破贷款自动还款"""
         try:

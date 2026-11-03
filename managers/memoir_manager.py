@@ -50,7 +50,6 @@ class MemoirManager:
         except Exception:
             pass
         sect_contrib = int(getattr(player, "sect_contribution", 0) or 0)
-        ring_level = 0
         land_level = 0
         try:
             row = None
@@ -93,7 +92,7 @@ class MemoirManager:
             (160, "💠 铂金武尊"), (280, "💎 钻石战圣"), (450, "🔮 宗师·通神"),
         ]
         idx = 0
-        for i, (th, name) in enumerate(tiers):
+        for i, (th, _name) in enumerate(tiers):
             if points >= th:
                 idx = i
         return idx, tiers[idx][1]

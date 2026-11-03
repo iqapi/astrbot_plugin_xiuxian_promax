@@ -226,7 +226,6 @@ class CalamityManager:
 
         # 3. 自动开启判定（今日是否该开）
         local = _time.localtime()
-        now = _time.time()
         key_today = f"tide_auto_{_time.strftime('%Y%m%d')}"
         already = await self._get(key_today)
         if already:

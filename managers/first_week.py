@@ -69,7 +69,6 @@ class FirstWeekManager:
 
         lines = ["🗓️【新手七日仙途】", "━━━━━━━━━━━━━━━"]
         for d in DAYS:
-            done_all = d["key"] == "all"
             status = "✅已领" if d["title"] in claimed else ("🔓可领" if self._day_ready(state, d, day, acts) else ("⏳未达成" if d["day"] <= day else f"🔒第{d['day']}天解锁"))
             lines.append(f"[第{d['day']}日] {d['title']} {status}")
             lines.append(f"   任务：{d['task']}")
@@ -139,8 +138,8 @@ class FirstWeekManager:
                     title_note = "\n🏅 七日圆满！获得称号【仙途新星】（灵品·物伤+40 修为+5%）"
 
             return True, (
-                f"🎁【七日仙途】领取成功！\n"
-                f"━━━━━━━━━━━━━━━\n"
+                "🎁【七日仙途】领取成功！\n"
+                "━━━━━━━━━━━━━━━\n"
                 + "\n".join(f"✅ {c}" for c in new_claims)
                 + f"\n━━━━━━━━━━━━━━━\n"
                 f"💰 灵石：+{total_gold:,}\n"

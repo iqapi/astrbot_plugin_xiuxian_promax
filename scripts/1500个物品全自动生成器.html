@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>修仙物品终极生成器 - 1500件</title>
+    <style>
+        body { background-color: #2c3e50; color: white; font-family: "Microsoft YaHei"; text-align: center; padding-top: 50px; }
+        .container { background: #34495e; padding: 40px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        button { padding: 15px 30px; font-size: 20px; background-color: #e67e22; color: white; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; margin-top: 20px; }
+        button:hover { background-color: #d35400; }
+        #status { margin-top: 20px; font-size: 18px; color: #2ecc71; }
+        p { color: #bdc3c7; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>修仙世界终极物品生成器</h1>
+        <p>包含 1500 个随机物品 + 4 个必装核心道具</p>
+        <p>（强化石、洗练石、护府令、迷神香）</p>
+        <button onclick="generate()">⚡ 点击生成 items.json</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        function generate() {
+            document.getElementById('status').innerText = "正在疯狂搓丹药、打造装备，请稍候...";
+            
+            setTimeout(() => {
+                const pref = ['青锋','紫电','幽冥','九天','太虚','焚天','寒霜','破军','噬魂','龙渊','诛仙','灭世','造化','混元','太极','两仪','四象','八卦','混沌','鸿蒙','星辰','日月','山河','乾坤','无极','长生','轮回','寂灭','九幽','万古'];
+                const mats = ['精铁','陨铁','玄铁','星辰沙','月华石','日曜晶','神木心','龙骨','凤血','雷霆木','极冰','地火','幽冥草','血灵芝','菩提子','仙露'];
+                
+                const rank_mult = { '黄阶': 1, '玄阶': 10, '地阶': 100, '天阶': 1000 };
+                let items = {};
+                let names = new Set();
+                
+                // ==========================================
+                // 植入必备的功能性道具（固定ID，防止被覆盖）
+                // ==========================================
+                items['9001'] = { name: '护府令', type: '材料', rank: '玄阶', shop_weight: 100, price: 10000, volume: 1, description: '开启后24小时内免疫偷窃，但产出降低20%。' };
+                items['9002'] = { name: '迷神香', type: '材料', rank: '玄阶', shop_weight: 100, price: 5000, volume: 1, description: '潜入洞府偷窃的必备道具。' };
+                items['9998'] = { name: '强化石', type: '材料', rank: '玄阶', shop_weight: 500, price: 500, volume: 1, description: '用于炼器强化的基础材料。' };
+                items['9999'] = { name: '洗练石', type: '材料', rank: '地阶', shop_weight: 100, price: 2000, volume: 1, description: '用于洗练装备词条的稀有材料。' };
+                
+                names.add('护府令'); 
+                names.add('迷神香'); 
+                names.add('强化石'); 
+                names.add('洗练石');
+                
+                let id = 1000;
+                
+                // 生成 1500 个随机物品
+                for (let i = 0; i < 1500; i++) {
+                    id++;
+                    // 决定品阶
+                    let r = Math.random();
+                    let rank = '黄阶';
+                    if (r <= 0.03) rank = '天阶';
+                    else if (r <= 0.15) rank = '地阶';
+                    else if (r <= 0.45) rank = '玄阶';
+                    
+                    let mult = rank_mult[rank];
+                    
+                    // 决定类型
+                    let typeRoll = Math.random() * 100;
+                    let cat = '';
+                    if (typeRoll < 30) cat = '丹药';
+                    else if (typeRoll < 55) cat = '武器';
+                    else if (typeRoll < 75) cat = '防具';
+                    else if (typeRoll < 85) cat = '功法';
+                    else if (typeRoll < 95) cat = '材料';
+                    else cat = '符箓';
+                    
+                    // 组合名字
+                    let p = pref[Math.floor(Math.random() * pref.length)];
+                    let m = mats[Math.floor(Math.random() * mats.length)];
+                    let suffix = '';
+                    
+                    if (cat === '丹药') suffix = ['丹','丸','散','液'][Math.floor(Math.random()*4)];
+                    else if (cat === '武器') suffix = ['剑','刀','枪','棍','鞭','弓','扇','伞'][Math.floor(Math.random()*8)];
+                    else if (cat === '防具') suffix = ['衣','甲','袍','冠','履','佩'][Math.floor(Math.random()*6)];
+                    else if (cat === '功法') suffix = ['诀','经','功','录','谱'][Math.floor(Math.random()*5)];
+                    else if (cat === '材料') suffix = ['石','铁','草','骨','液','皮'][Math.floor(Math.random()*6)];
+                    else suffix = ['符','箓','阵'][Math.floor(Math.random()*3)];
+                    
+                    let name = p + suffix;
+                    if (names.has(name)) name = p + m + suffix;
+                    let counter = 1;
+                    while (names.has(name)) {
+                        name = p + m + suffix + '·' + counter;
+                        counter++;
+                    }
+                    names.add(name);
+                    
+                    // 基础属性
+                    let price = Math.floor(Math.random() * 190 + 10) * mult;
+                    let volume = (cat === '武器' || cat === '防具') ? 5 : 1;
+                    
+                    let item = {
+                        name: name,
+                        type: (cat === '武器' || cat === '防具') ? '法器' : cat,
+                        rank: rank,
+                        shop_weight: Math.max(1, 1000 - mult),
+                        price: price,
+                        volume: volume,
+                        description: `这是一件${rank}级别的${cat}，蕴含着天地之力。`
+                    };
+                    
+                    // 根据类型分配效果
+                    if (cat === '武器') {
+                        item.subtype = '武器';
+                        item.physical_damage = Math.floor(Math.random() * 40 + 10) * mult;
+                        if (rank === '地阶' || rank === '天阶') item.effects = { crit_rate: 5 * mult, lifesteal: 2 * mult };
+                    } else if (cat === '防具') {
+                        item.subtype = '防具';
+                        item.physical_defense = Math.floor(Math.random() * 25 + 5) * mult;
+                        item.magic_defense = Math.floor(Math.random() * 25 + 5) * mult;
+                        if (rank === '天阶') item.effects = { counter_damage: 20 };
+                    } else if (cat === '丹药') {
+                        let pillType = Math.floor(Math.random() * 3);
+                        if (pillType === 0) item.effect = { add_hp: Math.floor(Math.random() * 400 + 100) * mult };
+                        else if (pillType === 1) item.effect = { add_experience: Math.floor(Math.random() * 1500 + 500) * mult };
+                        else {
+                            item.effect_type = 'temporary';
+                            item.duration_minutes = 30;
+                            item.physical_damage_multiplier = 0.1 * mult;
+                        }
+                    } else if (cat === '功法') {
+                        item.exp_multiplier = 0.02 * mult;
+                        if (rank === '天阶') item.effects = { crit_rate: 15, combo_rate: 10 };
+                    } else if (cat === '符箓') {
+                        item.effects = { magic_damage: Math.floor(Math.random() * 150 + 50) * mult };
+                    }
+                    
+                    items[id.toString()] = item;
+                }
+                
+                // 导出为 JSON 并下载
+                const jsonStr = JSON.stringify(items, null, 4);
+                const blob = new Blob([jsonStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'items.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                document.getElementById('status').innerText = "✅ 生成成功！共 1504 个物品，items.json 已开始下载！";
+            }, 100);
+        }
+    </script>
+</body>
+</html>

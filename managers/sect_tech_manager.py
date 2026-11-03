@@ -13,7 +13,7 @@
 """
 
 import json
-from typing import Optional, Tuple, Dict
+from typing import Tuple, Dict
 
 from astrbot.api import logger
 

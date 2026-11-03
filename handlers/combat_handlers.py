@@ -6,9 +6,6 @@ from astrbot.api.all import *
 from ..managers.combat_manager import CombatManager, CombatStats
 from ..data.data_manager import DataBase
 from ..core import EquipmentManager, PillManager
-from .utils import player_required
-from ..models import Player
-from ..models_extended import UserStatus
 
 DUEL_COOLDOWN = 300
 SPAR_COOLDOWN = 60

@@ -40,7 +40,7 @@ class DemonInvasionHandlers:
                             "活动结束时，如果你还没被找出来，你将获得丰厚奖励！\n"
                             "（注意：别人可以购买照妖镜查验你，小心行事）"
                         ))
-                    except:
+                    except Exception:
                         pass
                     
         yield event.plain_result(msg)

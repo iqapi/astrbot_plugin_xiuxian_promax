@@ -1,7 +1,7 @@
 # core/storage_ring_manager.py
 
 import json
-from typing import TYPE_CHECKING, Optional, Tuple, List, Dict
+from typing import TYPE_CHECKING, Optional, Tuple, List
 from ..models import Player
 
 if TYPE_CHECKING:
@@ -143,12 +143,8 @@ class StorageRingManager:
                 player = fresh_player
                 
             items = player.get_storage_ring_items()
-            
-            item_volume = self._get_item_volume(item_name)
-            required_volume = item_volume * count
-            available = self.get_available_slots(player)
-            
-            # v6.20 无限空间：不再因容量拒绝入库
+
+            # v6.20 无限空间：不再因容量拒绝入库（容量校验变量已随该改动废弃）
 
             items[item_name] = items.get(item_name, 0) + count
             player.set_storage_ring_items(items)

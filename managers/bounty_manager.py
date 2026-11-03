@@ -226,7 +226,6 @@ class BountyManager:
             return False, "该悬赏已失效，请刷新列表。"
 
         diff_key = template.get("difficulty", "easy")
-        diff_cfg = self.difficulties.get(diff_key, {})
         cached_bounties = self._get_cached_bounties(player.user_id)
         cached = None
         if cached_bounties:

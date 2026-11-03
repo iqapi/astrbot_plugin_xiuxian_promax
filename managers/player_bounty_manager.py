@@ -15,7 +15,6 @@ import json
 import time
 from typing import Tuple
 
-from astrbot.api import logger
 
 from ..data.data_manager import DataBase
 from ..models import Player

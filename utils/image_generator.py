@@ -420,8 +420,6 @@ def render_card(
         row_h = 56
         section_gap = 32
 
-        probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
-
         # ===== 预排版：智能列宽（数值自适应扩展，杜绝截断）=====
         VALUE_RATIO_MAX = 0.62   # 数值列最多占内容宽 62%
         LABEL_RATIO_MIN = 0.24   # 字段列最少 24%

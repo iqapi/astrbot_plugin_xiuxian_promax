@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, fields as _dc_fields
 from enum import IntEnum
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 import json
 
 
@@ -12,7 +12,7 @@ def row_to_model(cls, row):
     return cls(**{k: v for k, v in dict(row).items() if k in valid})
 
 if TYPE_CHECKING:
-    from .config_manager import ConfigManager
+    pass
 
 
 class UserStatus(IntEnum):
@@ -63,7 +63,7 @@ class Sect:
             if self.mainbuff == "0" or not self.mainbuff:
                 return []
             return json.loads(self.mainbuff) if isinstance(self.mainbuff, str) else [self.mainbuff]
-        except:
+        except Exception:
             return []
     
     def set_mainbuff_list(self, buff_list: List[int]):
@@ -74,7 +74,7 @@ class Sect:
             if self.secbuff == "0" or not self.secbuff:
                 return []
             return json.loads(self.secbuff) if isinstance(self.secbuff, str) else [self.secbuff]
-        except:
+        except Exception:
             return []
     
     def set_secbuff_list(self, buff_list: List[int]):
@@ -120,7 +120,7 @@ class Rift:
     def get_rewards(self) -> dict:
         try:
             return json.loads(self.rewards)
-        except:
+        except Exception:
             return {}
     
     def set_rewards(self, rewards_dict: dict):
@@ -149,7 +149,7 @@ class UserCd:
     def get_extra_data(self) -> dict:
         try:
             return json.loads(self.extra_data)
-        except:
+        except Exception:
             return {}
     
     def set_extra_data(self, data: dict):

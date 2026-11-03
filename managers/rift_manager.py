@@ -6,8 +6,9 @@
 import random
 import time
 from typing import Tuple, List, Optional, Dict, TYPE_CHECKING
+from astrbot.api import logger
 from ..data.data_manager import DataBase
-from ..models_extended import Rift, UserStatus
+from ..models_extended import UserStatus
 from ..models import Player
 
 if TYPE_CHECKING:
@@ -111,7 +112,7 @@ class RiftManager:
             
             msg += f"【{rift.rift_name}】(ID:{rift.rift_id})\n"
             if rift.required_level == 0:
-                msg += f"  等级要求：无限制\n"
+                msg += "  等级要求：无限制\n"
             else:
                 msg += f"  等级要求：{level_name} 及以上\n"
             msg += f"  修为奖励：{exp_range[0]:,}-{exp_range[1]:,}\n"
@@ -324,8 +325,71 @@ class RiftManager:
             "items": dropped_items,
             "rift_name": rift_name
         }
-        
+
+        # v3.45.0 藏宝图碎片：秘境完成 20% 掉落
+        try:
+            from .treasure_map_manager import TreasureMapManager
+            tm = TreasureMapManager(self.db)
+            if random.random() < tm.FRAG_DROP_RIFT:
+                if await tm.drop_fragment(user_id):
+                    msg = msg + "\n🧩 你在秘境角落拾获一张【藏宝图碎片】！（/藏宝图 查看）"
+        except Exception as _e:
+            logger.error(f"[藏宝图] 碎片掉落异常: {_e}")
+        # ===== v3.38.0 秘境幽影：完成探索后 12% 概率遭遇隐藏幽影（额外战斗奖励） =====
+        try:
+            shadow_msg = await self._shadow_encounter(user_id, player, rift_level)
+            if shadow_msg:
+                msg = msg + "\n\n" + shadow_msg
+        except Exception as e:
+            logger.error(f"[秘境幽影] 遭遇结算异常: {e}")
+
         return True, msg, reward_data
+
+    async def _shadow_encounter(self, user_id: str, player: Player, rift_level: int) -> str:
+        """幽影遭遇：12% 概率，战胜得双倍修为+概率掉宝，战败无损失（保底探索已成）"""
+        import random as _random
+        if _random.random() >= 0.12:
+            return ""
+
+        from .combat_manager import CombatManager, CombatStats
+        cm = CombatManager()
+        hp, mp = cm.calculate_hp_mp(player.experience)
+        atk = cm.calculate_atk(
+            player.experience, player.atkpractice, 0,
+            player.physical_damage, player.magic_damage, player.cultivation_type
+        )
+        p_stats = CombatStats(
+            user_id=user_id, name=player.user_name or f"道友{user_id[:6]}",
+            hp=hp, max_hp=hp, mp=mp, max_mp=mp, atk=atk,
+            exp=player.experience,
+            element=cm.get_element_from_name(player.main_technique) or cm.get_element_from_name(player.weapon),
+        )
+        shadow_lv = max(1, rift_level)
+        s_hp = int(600 * (1.2 ** (shadow_lv - 1)))
+        s_atk = int(75 * (1.15 ** (shadow_lv - 1)))
+        shadow = CombatStats(
+            user_id="shadow", name=f"幽影·秘境残念（Lv.{shadow_lv}）",
+            hp=s_hp, max_hp=s_hp, mp=0, max_mp=0, atk=s_atk, defense=10 + 5 * shadow_lv, crit_rate=15,
+        )
+        result = cm.player_vs_boss(p_stats, shadow)
+        if result.get("winner") != user_id:
+            return (
+                "👻【幽影袭来】秘境残念现身偷袭，你仓皇脱离（探索收益不受影响）！"
+            )
+
+        # 幽影奖励：按幽影强度给修为 + 概率掉落引雷符/洗练石
+        bonus_exp = int(s_hp * 0.5)
+        await self.db.add_player_exp(user_id, bonus_exp)
+        loot_note = ""
+        roll = _random.random()
+        if self.storage_ring_manager and roll < 0.18:
+            item = "引雷符" if roll < 0.10 else "洗练石"
+            ok, _ = await self.storage_ring_manager.store_item(player, item, 1, silent=True)
+            loot_note = f"\n🎁 幽影遗落：【{item}】x1" + ("" if ok else "（储物戒已满，丢失）")
+        return (
+            f"👻【幽影袭来】秘境深处的残念现身，被你一剑破灭！\n"
+            f"📈 幽影馈赠：修为 +{bonus_exp:,}{loot_note}"
+        )
     
     async def exit_rift(self, user_id: str) -> Tuple[bool, str]:
         """

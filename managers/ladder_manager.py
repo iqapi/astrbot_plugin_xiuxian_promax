@@ -50,7 +50,7 @@ class LadderManager:
 
     def tier_of(self, points: int) -> Tuple[int, str]:
         idx = 0
-        for i, (th, name) in enumerate(self.TIERS):
+        for i, (th, _name) in enumerate(self.TIERS):
             if points >= th:
                 idx = i
         return idx, self.TIERS[idx][1]

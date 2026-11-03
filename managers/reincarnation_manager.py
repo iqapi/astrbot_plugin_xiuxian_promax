@@ -216,6 +216,64 @@ class ReincarnationManager:
         await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
         return True, f"{msg}\n当前剩余仙缘点：{player.fate_points}"
 
+    # ===== v3.50.0 仙缘突破卷 =====
+
+    BT_CHARGE_COST = 150       # 每张突破卷费用
+    BT_CHARGE_BONUS = 0.08     # 每张 +8%
+    BT_CHARGE_MAX = 3          # 最多囤 3 张
+
+    async def buy_bt_charge(self, player: Player) -> Tuple[bool, str]:
+        """购买仙缘突破卷：条件原子扣仙缘点，permanent_bonus["bt_charges"] 累加"""
+        try:
+            bonus_data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+        except Exception:
+            bonus_data = {}
+        charges = int(bonus_data.get("bt_charges", 0))
+        if charges >= self.BT_CHARGE_MAX:
+            return False, f"❌ 突破卷已囤满（{charges}/{self.BT_CHARGE_MAX}），先去 /突破 消耗吧！"
+        cursor = await self.db.conn.execute(
+            "UPDATE players SET fate_points = fate_points - ? WHERE user_id = ? AND fate_points >= ?",
+            (self.BT_CHARGE_COST, player.user_id, self.BT_CHARGE_COST)
+        )
+        await self.db.conn.commit()
+        if cursor.rowcount == 0:
+            return False, f"❌ 仙缘点不足！每张突破卷需 {self.BT_CHARGE_COST} 点（当前 {player.fate_points}）。"
+        player.fate_points = max(0, player.fate_points - self.BT_CHARGE_COST)
+        bonus_data["bt_charges"] = charges + 1
+        player.permanent_bonus = json.dumps(bonus_data, ensure_ascii=False)
+        await self.db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+        return True, (
+            f"📜 仙缘突破卷购买成功！（{charges + 1}/{self.BT_CHARGE_MAX}）\n"
+            f"💰 消耗仙缘点 {self.BT_CHARGE_COST}\n"
+            f"✨ 下次 /突破 自动消耗一张，成功率 +{int(self.BT_CHARGE_BONUS * 100)}%\n"
+            f"💡 可囤 {self.BT_CHARGE_MAX - charges - 1} 张，突破时自动逐张消耗"
+        )
+
+    @staticmethod
+    def get_bt_charge_bonus(player: Player) -> Tuple[float, int]:
+        """读取当前突破卷加成与剩余张数。返回 (加成小数, 张数)"""
+        try:
+            data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            charges = int(data.get("bt_charges", 0))
+            return min(charges, 3) * 0.08, charges
+        except Exception:
+            return 0.0, 0
+
+    @staticmethod
+    async def consume_bt_charge(db, player: Player) -> Tuple[float, str]:
+        """突破时消耗一张突破卷。返回 (加成, 提示)；无卷返回 (0.0, "")"""
+        try:
+            data = json.loads(player.permanent_bonus) if player.permanent_bonus else {}
+            charges = int(data.get("bt_charges", 0))
+            if charges <= 0:
+                return 0.0, ""
+            data["bt_charges"] = charges - 1
+            player.permanent_bonus = json.dumps(data, ensure_ascii=False)
+            await db.update_player_fields(player.user_id, permanent_bonus=player.permanent_bonus)
+            return 0.08, f"\n📜 仙缘突破卷生效！成功率 +8%（剩余 {charges - 1} 张）"
+        except Exception:
+            return 0.0, ""
+
     # ===== v3.31.0 轮回天赋树 =====
 
     TALENT_MAX = 10
@@ -245,7 +303,7 @@ class ReincarnationManager:
             "（天赋唯有历经飞升者方可参悟，跨周目永久生效）",
             "━━━━━━━━━━━━━━━",
         ]
-        for name, (attr, per, desc) in self.TALENTS.items():
+        for name, (_attr, per, desc) in self.TALENTS.items():
             lv = int(talents.get(name, 0))
             cost = 20 * (lv + 1)
             cur = per * lv

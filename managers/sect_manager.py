@@ -6,11 +6,10 @@
 import json
 import random
 import time
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, Optional, Dict
 from astrbot.api import logger
 from ..data.data_manager import DataBase
 from ..models_extended import Sect, UserStatus
-from ..models import Player
 
 SECT_NAME_MIN_LENGTH = 2
 SECT_NAME_MAX_LENGTH = 12
@@ -49,7 +48,7 @@ class SectManager:
             return False, f"❌ 宗门名称长度需在{SECT_NAME_MIN_LENGTH}-{SECT_NAME_MAX_LENGTH}字之间！"
         for forbidden in SECT_NAME_FORBIDDEN:
             if forbidden.lower() in name.lower():
-                return False, f"❌ 宗门名称包含禁用词汇！"
+                return False, "❌ 宗门名称包含禁用词汇！"
         return True, ""
     
     def get_buildings(self, sect: Sect) -> Dict[str, int]:
@@ -224,6 +223,16 @@ class SectManager:
         await self.db.conn.commit()
         if cursor.rowcount == 0:
             return False, f"❌ 你的灵石不足！当前拥有 {player.gold} 灵石。"
+
+        # v3.48.0：宗门捐献周榜（原子累加，周键自动轮转）
+        try:
+            import time as _time
+            week = _time.strftime('%G-W%V')
+            await self.db.ext.syscfg_adjust_number(f"sect_donate_week_{player.sect_id}_{week}", stone_amount)
+            await self.db.ext.syscfg_adjust_number(f"sect_donate_user_{user_id}_{week}", stone_amount)
+        except Exception:
+            pass
+
         # 同步内存对象，供后续消息展示
         player.gold -= stone_amount
         player.sect_contribution += stone_amount
@@ -422,6 +431,49 @@ class SectManager:
             return False, "❌ 当前没有进行中的大比。"
         await self.db.ext.set_system_config("sect_battle_active", "0")
         return True, "🏁 宗门大比结束！天道压制解除，全服已恢复正常状态。"
+
+    async def get_donate_ranking(self, player) -> str:
+        """/宗门捐献榜 全服宗门周捐献排行"""
+        import time as _time
+        week = _time.strftime('%G-W%V')
+        async with self.db.conn.execute(
+            "SELECT key, value FROM system_config WHERE key LIKE ?",
+            (f"sect_donate_week_%_{week}",)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        entries = []
+        for key, value in rows:
+            sid_str = key.replace("sect_donate_week_", "").replace(f"_{week}", "")
+            try:
+                sid = int(sid_str)
+                amt = int(value)
+            except (TypeError, ValueError):
+                continue
+            if amt > 0:
+                entries.append((sid, amt))
+        entries.sort(key=lambda x: -x[1])
+
+        lines = ["🏛️【宗门捐献周榜】", "━━━━━━━━━━━━━━━"]
+        if not entries:
+            lines.append("本周尚无宗门捐献——/宗门捐献 <灵石> 为宗门出力！")
+        else:
+            medals = ["🥇", "🥈", "🥉"]
+            for i, (sid, amt) in enumerate(entries[:10], 1):
+                sect = await self.db.ext.get_sect_by_id(sid)
+                name = sect.sect_name if sect else f"宗门#{sid}"
+                medal = medals[i - 1] if i <= 3 else f"{i}."
+                lines.append(f"{medal} {name} —— 本周捐献 {amt:,} 灵石")
+        # 我的贡献
+        if player and player.sect_id:
+            my_amt = await self.db.ext.syscfg_get_number(
+                f"sect_donate_user_{player.user_id}_{week}"
+            )
+            my_sect = await self.db.ext.get_sect_by_id(player.sect_id)
+            my_name = my_sect.sect_name if my_sect else "?"
+            lines.append("━━━━━━━━━━━━━━━")
+            lines.append(f"🪙 你的本周捐献：{my_amt:,} 灵石（{my_name}）")
+        lines.append("💡 /宗门捐献 <灵石> 为宗门出力，灵石转化为贡献与建设度")
+        return "\n".join(lines)
 
     async def record_battle_result(self, user_id: str, is_winner: bool = True) -> str:
         """记录大比结果，胜利者发称号，失败/平局发保底"""

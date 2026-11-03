@@ -126,7 +126,7 @@ class BankManager:
             
             await self.db.conn.commit()
             return True, f"成功存入 {amount:,} 灵石！\n当前余额：{new_balance:,} 灵石"
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise
     
@@ -162,7 +162,7 @@ class BankManager:
             
             await self.db.conn.commit()
             return True, f"成功取出 {amount:,} 灵石！\n当前余额：{new_balance:,} 灵石\n当前持有：{player.gold:,} 灵石"
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise
     
@@ -298,7 +298,7 @@ class BankManager:
                 f"当前持有：{player.gold:,} 灵石\n"
                 f"💀 逾期将被银行追杀致死！"
             )
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise
     
@@ -352,7 +352,7 @@ class BankManager:
                 f"━━━━━━━━━━━━━━━\n"
                 f"当前持有：{player.gold:,} 灵石"
             )
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise
     

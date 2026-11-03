@@ -2,7 +2,6 @@
 import random
 import time
 from typing import Tuple, Dict, Optional
-from astrbot.api import logger
 from ..data import DataBase
 from ..models import Player
 
@@ -17,8 +16,11 @@ class PetManager:
         "青龙幼崽": {"desc": "神兽血脉，全面增加主人属性", "attr": "all", "val": 20}
     }
 
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, storage_ring_mgr=None):
         self.db = db
+        # v3.40.2 修复：探险收取的掉落发放需要储物戒（此前未注入，命中掉落概率即 AttributeError，
+        # 导致 8 小时探险成果丢失）
+        self.storage_ring_mgr = storage_ring_mgr
 
     async def get_pet(self, user_id: str) -> Optional[Dict]:
         """获取玩家灵兽信息"""
@@ -48,7 +50,7 @@ class PetManager:
             await self.db.conn.commit()
         except Exception as e:
             if "UNIQUE" in str(e):
-                return False, f"❌ 你已经契约了灵兽，无法携带第二只。\n💡 如果需要更换，请先使用 /放生灵兽 或 /吞噬灵兽。"
+                return False, "❌ 你已经契约了灵兽，无法携带第二只。\n💡 如果需要更换，请先使用 /放生灵兽 或 /吞噬灵兽。"
             raise
 
         cursor = await self.db.conn.execute(
@@ -268,8 +270,9 @@ class PetManager:
             lines.append(pet_note.strip())
         # 概率物品
         item_name, chance = dest_cfg["item"]
-        if _random.random() < chance and self.storage_ring_mgr:
-            ok, _ = await self.storage_ring_mgr.store_item(player, item_name, 1, silent=True)
+        ring = getattr(self, "storage_ring_mgr", None)
+        if _random.random() < chance and ring:
+            ok, _ = await ring.store_item(player, item_name, 1, silent=True)
             if ok:
                 lines.append(f"🎁 意外收获：【{item_name}】x1（已存入储物戒）")
         lines.append("━━━━━━━━━━━━━━━")

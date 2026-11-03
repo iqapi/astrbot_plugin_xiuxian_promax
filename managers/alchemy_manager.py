@@ -6,10 +6,9 @@
 import json
 import random
 import time
-from typing import Tuple, List, Dict, Optional, TYPE_CHECKING
+from typing import Tuple, Dict, Optional, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models import Player
-from ..models_extended import UserStatus
 
 if TYPE_CHECKING:
     from ..config_manager import ConfigManager
@@ -283,7 +282,7 @@ class AlchemyManager:
             
             if missing_materials:
                 await self.db.conn.rollback()
-                return False, f"❌ 材料不足！\n" + "\n".join(f"  · {m}" for m in missing_materials), None
+                return False, "❌ 材料不足！\n" + "\n".join(f"  · {m}" for m in missing_materials), None
             
             # 扣除材料（灵石和储物戒物品）
             player.gold -= required_gold
@@ -454,6 +453,6 @@ class AlchemyManager:
             await self.db.conn.commit()
             return True, msg, result_data
             
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise

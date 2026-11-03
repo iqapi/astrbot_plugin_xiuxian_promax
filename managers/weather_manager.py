@@ -2,7 +2,7 @@
 """天象系统 v6.18 - 每日全服天象，影响闭关/历练/奇遇/突破/灵田收益"""
 import random
 import time
-from typing import Dict, Optional
+from typing import Optional
 
 from ..data.data_manager import DataBase
 
@@ -133,7 +133,7 @@ class WeatherManager:
 
         lines = [
             f"{today.get('icon', '🌤️')}【今日天象】{today.get('name', '未知')}",
-            f"━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━",
             f"{today.get('desc', '天地如常')}",
         ]
         effects = today.get("effects") or {}

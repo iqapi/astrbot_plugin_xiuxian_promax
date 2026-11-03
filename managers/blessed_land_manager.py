@@ -2,7 +2,7 @@
 """洞天福地系统管理器"""
 import time
 import json
-from typing import Tuple, Optional, Dict, List
+from typing import Tuple, Optional, Dict
 from ..data import DataBase
 from ..models import Player
 

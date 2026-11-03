@@ -8,6 +8,7 @@
 - 状态存 system_config 数值键（hunt_cnt_* / hunt_total_*），无新表；奖励全走原子原语
 """
 
+import json
 import random
 from typing import Tuple
 
@@ -42,11 +43,97 @@ class HuntManager:
 
     @staticmethod
     def _total_key(uid: str) -> str:
-        return "hunt_total_"
+        # v3.40.2 修复：原实现漏拼 uid，全玩家除妖总数互相污染（称号进度/排行错乱）
+        return f"hunt_total_{uid}"
 
     async def get_total(self, uid: str) -> int:
         """累计除妖数（称号进度用）"""
         return await self.db.ext.syscfg_get_number(self._total_key(uid))
+
+    async def _drop_map_fragment(self, uid: str) -> bool:
+        """v3.45.0：藏宝图碎片掉落（15%，原子累加）"""
+        from .treasure_map_manager import TreasureMapManager
+        if random.random() >= TreasureMapManager.FRAG_DROP_HUNT:
+            return False
+        return await TreasureMapManager(self.db).drop_fragment(uid)
+
+    # ===== v3.43.0 妖兽图鉴 =====
+
+    BESTIARY_REWARD = 20000  # 集齐全图鉴一次性奖励
+
+    @staticmethod
+    def _bestiary_key(uid: str) -> str:
+        return f"bestiary_{uid}"
+
+    @staticmethod
+    def _body_of(monster_name: str) -> str:
+        """从'前缀+本体'全名中提取本体物种"""
+        for body in HuntManager.BODIES:
+            if body in monster_name:
+                return body
+        return monster_name
+
+    async def record_species(self, uid: str, monster_name: str) -> Tuple[bool, str]:
+        """记录遭遇的妖兽物种。返回 (是否新发现, 本体名)——CAS 读改写防并发丢记录"""
+        body = self._body_of(monster_name)
+        raw = await self.db.ext.get_system_config(self._bestiary_key(uid))
+        try:
+            seen = json.loads(raw) if raw else []
+            if not isinstance(seen, list):
+                seen = []
+        except (json.JSONDecodeError, TypeError):
+            seen = []
+        if body in seen:
+            return False, body
+        seen.append(body)
+        claimed = await self.db.ext.syscfg_cas(
+            self._bestiary_key(uid), json.dumps(seen, ensure_ascii=False), raw or None
+        )
+        if not claimed:
+            # 并发冲突：重读一次合并
+            raw2 = await self.db.ext.get_system_config(self._bestiary_key(uid))
+            try:
+                seen2 = json.loads(raw2) if raw2 else []
+            except (json.JSONDecodeError, TypeError):
+                seen2 = []
+            if body not in seen2:
+                seen2.append(body)
+            await self.db.ext.set_system_config(
+                self._bestiary_key(uid), json.dumps(seen2, ensure_ascii=False)
+            )
+        return True, body
+
+    async def get_bestiary(self, player: Player) -> str:
+        """妖兽图鉴面板：收集进度 + 集齐奖励领取"""
+        uid = player.user_id
+        raw = await self.db.ext.get_system_config(self._bestiary_key(uid))
+        try:
+            seen = json.loads(raw) if raw else []
+            if not isinstance(seen, list):
+                seen = []
+        except (json.JSONDecodeError, TypeError):
+            seen = []
+        total = len(self.BODIES)
+        collected = len(seen)
+        lines = [
+            "📚【妖兽图鉴】",
+            "━━━━━━━━━━━━━━━",
+            f"收集进度：{collected}/{total}",
+        ]
+        for body in self.BODIES:
+            mark = "✅" if body in seen else "❔"
+            lines.append(f"  {mark} {body}")
+        lines.append("━━━━━━━━━━━━━━━")
+        if collected >= total:
+            claimed = await self.db.ext.syscfg_claim_slot(f"bestiary_done_{uid}", 1)
+            if claimed:
+                await self.db.add_player_gold(uid, self.BESTIARY_REWARD)
+                lines.append(f"🎉 图鉴集齐！天道嘉奖 {self.BESTIARY_REWARD:,} 灵石（已发放）")
+            else:
+                lines.append("🎉 图鉴已集齐，奖励已领取")
+        else:
+            lines.append(f"💡 /除妖 遭遇新物种即自动收录，集齐 {total} 种奖励 {self.BESTIARY_REWARD:,} 灵石")
+        return "\n".join(lines)
 
     async def hunt(self, player: Player) -> Tuple[bool, str, bool]:
         """除妖一次。返回 (有战报, 消息, 是否胜利)"""
@@ -121,7 +208,7 @@ class HuntManager:
             await self.db.add_player_gold(uid, gold_reward)
 
             # 累计击杀（称号用）
-            total = await self.db.ext.syscfg_adjust_number("hunt_total_" + uid, 1)
+            total = await self.db.ext.syscfg_adjust_number(self._total_key(uid), 1)
 
             lines = [
                 f"⚔️【除妖】你斩杀了{name}！",
@@ -140,6 +227,22 @@ class HuntManager:
                         lines.append(f"🎁 掉落：【{item_name}】x1" + ("" if ok else "（储物戒已满，丢失）"))
                     break
             lines.append(f"🗡️ 累计除妖：{total} 只")
+            # v3.43.0 妖兽图鉴：记录物种（无论胜负，遭遇即收录）
+            new_species, body = await self.record_species(uid, name)
+            if new_species:
+                lines.append(f"📚 图鉴收录新物种：【{body}】")
+            # v3.49.0 周报记录
+            try:
+                from .weekly_report_manager import WeeklyReportManager
+                wr = WeeklyReportManager(self.db)
+                await wr.record_hunt(uid)
+                if win:
+                    await wr.record_hunt_win(uid)
+            except Exception:
+                pass
+            # v3.45.0 藏宝图碎片：胜利 15% 掉落
+            if await self._drop_map_fragment(uid):
+                lines.append("🧩 你在妖兽巢穴中发现了【藏宝图碎片】！（/藏宝图 查看）")
             return True, "\n".join(lines), True
 
         # 战败：气血大损 + 保底
@@ -158,10 +261,9 @@ class HuntManager:
 
     async def get_panel(self, player: Player) -> str:
         """除妖面板"""
-        import time
         uid = player.user_id
         used = await self.db.ext.syscfg_get_number(self._cnt_key(uid))
-        total = await self.db.ext.syscfg_get_number("hunt_total_" + uid)
+        total = await self.db.ext.syscfg_get_number(self._total_key(uid))
         return (
             "🗡️【除妖卫道】\n"
             "━━━━━━━━━━━━━━━\n"

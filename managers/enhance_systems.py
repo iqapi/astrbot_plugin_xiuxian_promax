@@ -2,8 +2,7 @@
 """v6.21 体验增强包：装备套装 / 离线信箱 / 境界压制衰减"""
 import json
 import time
-import re
-from typing import Tuple, List
+from typing import List
 
 from ..data.data_manager import DataBase
 from ..models import Player
@@ -120,7 +119,7 @@ class MailboxManager:
 
         unread = sum(1 for m in mails if not m.get("read"))
         lines = [f"📮 信箱（{len(mails)} 封，未读 {unread}）", "━━━━━━━━━━━━━━━"]
-        for i, m in enumerate(reversed(mails[-10:]), 1):  # 最新10封
+        for _i, m in enumerate(reversed(mails[-10:]), 1):  # 最新10封
             tstr = time.strftime("%m-%d %H:%M", time.localtime(m["time"]))
             mark = "🆕" if not m.get("read") else "  "
             lines.append(f"{mark} [{tstr}] {m['from']}")

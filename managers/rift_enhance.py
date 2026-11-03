@@ -12,7 +12,7 @@
 import json
 import random
 import time
-from typing import Tuple, Dict
+from typing import Tuple
 
 from astrbot.api import logger
 

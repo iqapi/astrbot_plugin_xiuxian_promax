@@ -4,7 +4,6 @@ import json
 import time
 from typing import Tuple, Optional, Dict
 
-from astrbot.api import logger
 from ..data.data_manager import DataBase
 from ..models import Player
 from .title_data import TITLES, TIERS
@@ -349,7 +348,7 @@ class TitleManager:
         
         lines = [f"🏅 我的称号（已拥有 {len(owned_titles)} 个）", "━━━━━━━━━━━━━━━"]
         for t, _ in owned_titles:
-            tier_name = TIERS.get(t["tier"], (f"未知",))[0]
+            tier_name = TIERS.get(t["tier"], ("未知",))[0]
             stats_desc = self._format_stats(t["stats"])
             
             mark = ""

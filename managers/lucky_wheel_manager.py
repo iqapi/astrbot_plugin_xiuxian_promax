@@ -7,7 +7,6 @@
 - 状态全部存 system_config（不建新表）
 """
 
-import json
 import time
 import random
 from typing import Tuple

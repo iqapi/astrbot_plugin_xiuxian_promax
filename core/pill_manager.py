@@ -1,7 +1,7 @@
 # core/pill_manager.py
 
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, Tuple
 from astrbot.api import logger
 
 from ..models import Player
@@ -75,7 +75,7 @@ class PillManager:
             return ("💊药力丹", "服用立即永久增加属性（一次性消耗）")
         if effect_type == "temporary":
             mins = pill_data.get("duration_minutes", 0)
-            return (f"⏱临时丹", f"服用后 {mins} 分钟内生效，到期自动失效（不重复叠加）")
+            return ("⏱临时丹", f"服用后 {mins} 分钟内生效，到期自动失效（不重复叠加）")
         if effect_type == "permanent":
             return ("🌟永久丹", "服用永久增加属性，受 30% 上限约束")
         if effect_type == "instant":

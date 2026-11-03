@@ -1,7 +1,7 @@
 # core/equipment_manager.py
 
 import json
-from typing import Optional, List, Dict, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 from ..models import Player, Item
 from ..data import DataBase
 
@@ -208,7 +208,7 @@ class EquipmentManager:
             if item.name in techniques_list:
                 return False, f"功法【{item.name}】已装备"
             if len(techniques_list) >= 3:
-                return False, f"功法栏已满（最多3个），请先卸下其他功法"
+                return False, "功法栏已满（最多3个），请先卸下其他功法"
             techniques_list.append(item.name)
             player.set_techniques_list(techniques_list)
             await self.db.update_player(player)

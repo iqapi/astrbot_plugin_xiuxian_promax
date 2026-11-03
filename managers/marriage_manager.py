@@ -37,8 +37,10 @@ BOND_BONUS_CAP = 0.05       # 加成上限 5%
 class MarriageManager:
     """玩家结契（玩家间道侣）"""
 
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, storage_ring_mgr=None):
         self.db = db
+        # v3.46.0：仙侣送礼需要储物戒取放物品
+        self.storage_ring_mgr = storage_ring_mgr
 
     # ===== 存取 =====
 
@@ -277,6 +279,74 @@ class MarriageManager:
                 )
         except Exception as e:
             logger.error(f"[玩家结契] 增加羁绊失败: {e}")
+
+    # ===== v3.46.0 仙侣送礼 =====
+
+    GIFT_BOND = 2          # 送礼双方羁绊 +2
+    GIFT_DAILY = 1         # 每日限赠 1 次
+
+    @staticmethod
+    def _gift_key(uid: str) -> str:
+        import time
+        return f"marrigift_{uid}_{time.strftime('%Y%m%d')}"
+
+    async def send_gift(self, player: Player, item_name: str,
+                        storage_ring_mgr) -> Tuple[bool, str]:
+        """/仙侣送礼 <物品名>：从自己储物戒赠一件物品给结契道侣，双方羁绊 +2。"""
+        me = player.user_id
+        partner_id = await self.get_partner_id(me)
+        if not partner_id:
+            return False, "💔 你尚未与道侣结契。/结契 @道友 先定情缘。"
+        item_name = (item_name or "").strip()
+        if not item_name:
+            return False, "❌ 请指定要赠予的物品：/仙侣送礼 <物品名>（从你的储物戒赠出）"
+
+        if not await self.db.ext.syscfg_claim_slot(self._gift_key(me), self.GIFT_DAILY):
+            return False, "❌ 今日已赠过仙礼——情意贵在长久，明日再送。"
+
+        partner = await self.db.get_player_by_id(partner_id)
+        if not partner:
+            await self.db.ext.syscfg_adjust_number(self._gift_key(me), -1)
+            return False, "❌ 道侣数据异常，送礼失败（名额已退回）。"
+
+        if not storage_ring_mgr:
+            await self.db.ext.syscfg_adjust_number(self._gift_key(me), -1)
+            return False, "❌ 储物戒系统未加载，送礼失败（名额已退回）。"
+
+        ok, msg = await storage_ring_mgr.retrieve_item(player, item_name, 1)
+        if not ok:
+            await self.db.ext.syscfg_adjust_number(self._gift_key(me), -1)
+            return False, f"❌ 赠送失败：你的储物戒里没有【{item_name}】x1。"
+
+        ok2, msg2 = await storage_ring_mgr.store_item(partner, item_name, 1, silent=True)
+        if not ok2:
+            # 对方装不下 → 退回自己的储物戒
+            await storage_ring_mgr.store_item(player, item_name, 1, silent=True)
+            await self.db.ext.syscfg_adjust_number(self._gift_key(me), -1)
+            return False, f"❌ 道侣储物戒已满，礼物已退回（{msg2}）"
+
+        await self.add_bond(me, partner_id, self.GIFT_BOND)
+        marriage = await self._load_marriage(me)
+        bond_now = marriage.get("bond", 0) if marriage else 0
+        pname = partner.user_name or partner_id[:8]
+
+        try:
+            from .enhance_systems import MailboxManager
+            await MailboxManager(self.db).send(
+                partner_id, "仙侣馈赠",
+                f"你的道侣【{player.user_name or me[:8]}】送来一份【{item_name}】，情意深重。"
+            )
+        except Exception:
+            pass
+
+        return True, (
+            f"💝 仙礼已送达！\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"【{item_name}】x1 已放入 {pname} 的储物戒\n"
+            f"💞 双方羁绊 +{self.GIFT_BOND}（当前 {bond_now}）\n"
+            f"💡 羁绊提供修为加成（每 100 点 +1%，上限 5%），/仙侣共修 亦可培养\n"
+            f"⏳ 每日限赠 1 次"
+        )
 
     async def handle_info(self, player: Player, event) -> str:
         """/结契信息：查看伴侣、结契天数、羁绊与加成"""

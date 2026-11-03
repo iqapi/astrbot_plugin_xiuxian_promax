@@ -1,6 +1,5 @@
 # managers/next_step.py
 """智能下一步提示系统 v6.19：根据玩家状态推荐合理的下一步指令"""
-from typing import Optional
 
 from ..data.data_manager import DataBase
 from ..models import Player
